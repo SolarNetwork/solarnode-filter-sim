@@ -51,6 +51,41 @@ The UI sources are under `web/src/main`:
 | `scss/`      | Styles. |
 | `img/`       | Images. |
 
+# Web API
+
+The UI talks to the app through a small JSON API. The request and response types are the
+records in the `s10k.node.sim.filter.domain` package.
+
+| Endpoint | Description |
+|:---------|:------------|
+| `GET /api/info` | The application name and version. |
+| `GET /api/filter-types` | The supported filter types, sorted by name. |
+| `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
+
+A minimal simulation request runs one Expression filter on the main chain:
+
+```json
+{
+  "config": {
+    "mainChainId": "main",
+    "filters": [
+      {"id": "main", "factoryUid": "net.solarnetwork.node.datum.xform.user",
+       "settings": {"uid": "Chain - Main"}, "filterIds": ["exp"]},
+      {"id": "exp", "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+       "settings": {"uid": "EXP", "expressionConfigsCount": "1",
+         "expressionConfigs[0].name": "kw",
+         "expressionConfigs[0].datumPropertyTypeKey": "i",
+         "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+         "expressionConfigs[0].expression": "watts / 1000.0"}}
+    ]
+  },
+  "datum": [{"created": "2025-10-01 00:00:00Z", "sourceId": "/meter/1", "i": {"watts": 1234}}]
+}
+```
+
+The request can also include `history` datum, a starting `environment` (operational modes and
+Local State CSV), and `options` such as `"detail": "Debug"` for state snapshots.
+
 # Building
 
 ```sh

@@ -6,7 +6,9 @@ junit-jupiter = "6.0.1"
 # (~/.ivy2/local) with `ant publish`, set the version here and build with -PlocalIvy
 sn-common = "4.54.0"
 sn-common-expr-spel = "4.2.1"
-sn-node = "4.8.0"
+# 4.10.0 adds BaseDatumFilterSupport.getStatisticCount(); until it is on Maven Central, build
+# with -PlocalIvy
+sn-node = "4.10.0"
 sn-node-datum-filter-standard = "4.7.0"
 
 [libraries]
