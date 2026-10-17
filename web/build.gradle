@@ -1,0 +1,59 @@
+import com.github.gradle.node.npm.task.NpmTask
+
+/*
+ * The web UI: a Vite + TypeScript project. The Vite build output is packaged into this
+ * project's jar under static/, so Spring Boot serves it from the class path.
+ *
+ * For UI development with hot reload, run `npm run dev` in this directory instead (see
+ * README-Developers.md).
+ */
+
+plugins {
+	id 'java'
+	id 'com.github.node-gradle.node' version '7.1.0'
+}
+
+group = 's10k.node'
+version = '0.1.0'
+
+node {
+	// use a Gradle-managed Node so builds do not depend on a locally installed one
+	download = true
+	version = '24.21.0'
+	npmInstallCommand = 'ci'
+}
+
+def viteBuild = tasks.register('viteBuild', NpmTask) {
+	group = 'build'
+	description = 'Builds the web UI with Vite.'
+	dependsOn tasks.named('npmInstall')
+	args = ['run', 'build']
+	inputs.dir('src/main')
+	inputs.files('package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts')
+	outputs.dir(layout.buildDirectory.dir('dist'))
+}
+
+def webLintStamp = layout.buildDirectory.file('webLint.stamp')
+def webLint = tasks.register('webLint', NpmTask) {
+	group = 'verification'
+	description = 'Checks the web UI sources with ESLint and Prettier.'
+	dependsOn tasks.named('npmInstall')
+	args = ['run', 'check']
+	inputs.dir('src/main')
+	inputs.files('package.json', 'package-lock.json', 'eslint.config.js', '.prettierrc.json')
+	// a stamp file, so the task is up-to-date when the sources have not changed
+	outputs.file(webLintStamp)
+	doLast {
+		webLintStamp.get().asFile.text = 'OK\n'
+	}
+}
+
+tasks.named('processResources', ProcessResources) {
+	from(viteBuild) {
+		into 'static'
+	}
+}
+
+tasks.named('check') {
+	dependsOn webLint
+}

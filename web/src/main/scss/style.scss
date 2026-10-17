@@ -1,0 +1,32 @@
+@import "bootstrap/scss/bootstrap";
+
+$bootstrap-icons-font-dir: "../../../node_modules/bootstrap-icons/font/fonts";
+@import "bootstrap-icons/font/bootstrap-icons.scss";
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+}
+
+// the three panels from the mockup: inputs and palette, canvas, inspector
+.sim-layout {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 22rem 1fr 24rem;
+	min-height: 0;
+}
+
+.sim-left,
+.sim-right {
+	overflow: auto;
+}
+
+.sim-canvas {
+	position: relative;
+	overflow: hidden;
+}

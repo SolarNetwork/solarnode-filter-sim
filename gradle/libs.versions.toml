@@ -1,0 +1,19 @@
+[versions]
+fastcsv = "4.4.0"
+junit-jupiter = "6.0.1"
+
+# SolarNetwork bundles; to use an unreleased version published to the local Ivy repository
+# (~/.ivy2/local) with `ant publish`, set the version here and build with -PlocalIvy
+sn-common = "4.54.0"
+sn-common-expr-spel = "4.2.1"
+sn-node = "4.8.0"
+sn-node-datum-filter-standard = "4.7.0"
+
+[libraries]
+fastcsv = { module = "de.siegmar:fastcsv", version.ref = "fastcsv" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+
+sn-common = { module = "net.solarnetwork.common:net.solarnetwork.common", version.ref = "sn-common" }
+sn-common-expr-spel = { module = "net.solarnetwork.common:net.solarnetwork.common.expr.spel", version.ref = "sn-common-expr-spel" }
+sn-node = { module = "net.solarnetwork.node:net.solarnetwork.node", version.ref = "sn-node" }
+sn-node-datum-filter-standard = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.standard", version.ref = "sn-node-datum-filter-standard" }

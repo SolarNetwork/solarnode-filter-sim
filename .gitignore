@@ -1,0 +1,17 @@
+.classpath
+.DS_Store
+.gradle
+.idea
+.project
+.settings
+.vscode
+bin
+build
+gradle.properties
+logback.xml
+node_modules
+CLAUDE.md
+PLAN.md
+README-Local.md
+*.jpage
+*.log

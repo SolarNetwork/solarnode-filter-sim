@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link
+			rel="icon"
+			type="image/svg+xml"
+			href="img/solarnetwork-favicon.svg"
+		/>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>SolarNode Filter Simulator</title>
+		<script type="module" src="./ts/main.ts"></script>
+	</head>
+
+	<body>
+		<header
+			class="navbar bg-body-tertiary border-bottom px-3 py-1 flex-nowrap"
+		>
+			<span class="navbar-brand fs-6 mb-0">
+				<i class="bi bi-diagram-3" aria-hidden="true"></i>
+				SolarNode Filter Simulator
+			</span>
+			<span
+				class="navbar-text small text-body-secondary"
+				id="app-version"
+			></span>
+		</header>
+
+		<main class="sim-layout">
+			<aside class="sim-left border-end">
+				<section class="p-3">
+					<label for="input-datum" class="form-label"
+						>Input Datum</label
+					>
+					<textarea
+						id="input-datum"
+						class="form-control font-monospace"
+						rows="10"
+						spellcheck="false"
+						placeholder="A datum JSON object, or array of objects"
+					></textarea>
+					<label for="entry-point" class="form-label mt-3"
+						>Entry Point</label
+					>
+					<select id="entry-point" class="form-select" disabled>
+						<option>Main Filter Chain</option>
+					</select>
+					<div class="d-flex justify-content-between mt-3">
+						<button
+							type="button"
+							class="btn btn-secondary"
+							disabled
+						>
+							<i class="bi bi-download" aria-hidden="true"></i>
+							Export
+						</button>
+						<button type="button" class="btn btn-primary" disabled>
+							<i class="bi bi-play-fill" aria-hidden="true"></i>
+							Run
+						</button>
+					</div>
+				</section>
+				<section class="p-3 border-top">
+					<h2 class="h6">Filters</h2>
+					<p class="small text-body-secondary">
+						The filter palette goes here.
+					</p>
+				</section>
+			</aside>
+
+			<section class="sim-canvas" id="canvas"></section>
+
+			<aside class="sim-right border-start p-3">
+				<p class="text-body-secondary">
+					Select a filter to configure it.
+				</p>
+			</aside>
+		</main>
+	</body>
+</html>

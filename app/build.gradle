@@ -1,0 +1,284 @@
+plugins {
+	id 'application'
+	id 'com.diffplug.spotless' version '8.10.2'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'net.ltgt.errorprone' version '5.1.1'
+	id 'org.graalvm.buildtools.native' version '1.1.8'
+	id 'org.springframework.boot' version '4.1.1'
+}
+
+group = 's10k.node'
+version = '0.1.0'
+
+base {
+	archivesName = 'sn-filter-sim'
+}
+
+
+// pass -PlocalIvy to resolve SolarNetwork bundles from the local Ivy repository (where the
+// SolarNetwork Ant build publishes unreleased bundles) before Maven Central; -PlocalIvyPath
+// can point to a repository other than ~/.ivy2/local
+def localIvy = providers.gradleProperty('localIvy').isPresent()
+
+repositories {
+	if ( localIvy ) {
+		ivy {
+			name = 'localIvy'
+			url = providers.gradleProperty('localIvyPath')
+				.orElse("${System.getProperty('user.home')}/.ivy2/local").get()
+			patternLayout {
+				artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
+				ivy '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
+			}
+			metadataSources {
+				ivyDescriptor()
+				artifact()
+			}
+			content {
+				includeGroupByRegex 'net\\.solarnetwork\\..*'
+			}
+		}
+	}
+    mavenCentral()
+}
+
+/**
+ * Turn the compile and runtime configurations of a SolarNetwork Ivy module into Java library
+ * variants, because the published Ivy descriptors have no "default" configuration for Gradle to
+ * use. Only the module's main jar is included, not its other published artifacts (like the POM).
+ */
+@CacheableRule
+abstract class SolarNetworkIvyVariantRule implements ComponentMetadataRule {
+
+	@Inject
+	abstract ObjectFactory getObjects()
+
+	void execute(ComponentMetadataContext context) {
+		if ( context.getDescriptor(IvyModuleDescriptor) == null ) {
+			return
+		}
+		def id = context.details.id
+		def jar = "${id.name}-${id.version}.jar"
+		[
+			['apiElements', 'compile', Usage.JAVA_API],
+			['runtimeElements', 'runtime', Usage.JAVA_RUNTIME]
+		].each { variantName, ivyConf, usage ->
+			context.details.addVariant(variantName, ivyConf) {
+				attributes {
+					attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+					attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, usage))
+					attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+						objects.named(LibraryElements, LibraryElements.JAR))
+				}
+				withFiles {
+					removeAllFiles()
+					addFile(jar)
+				}
+			}
+		}
+	}
+}
+
+dependencies {
+	errorprone 'com.google.errorprone:error_prone_core:2.50.0'
+	errorprone 'com.uber.nullaway:nullaway:0.13.6'
+
+	if ( localIvy ) {
+		components {
+			all(SolarNetworkIvyVariantRule)
+		}
+	}
+
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+
+	// The SolarNetwork bundles declare dependencies for everything they do in a SolarNode, but the
+	// simulator uses only the filters and supporting services. These excluded dependencies are
+	// not referenced by any class the simulator can reach (checked with a jdeps class-level
+	// closure from the filter, chain, runtime service, SpEL, settings, and Jackson 3 codec
+	// classes). Re-check when adding new SolarNetwork classes or upgrading the bundles.
+	def snExcludes = {
+		exclude group: 'commons-beanutils', module: 'commons-beanutils'
+		exclude group: 'commons-io', module: 'commons-io'
+		exclude group: 'com.fasterxml.jackson.dataformat', module: 'jackson-dataformat-cbor'
+		exclude group: 'net.solarnetwork.common', module: 'net.solarnetwork.common.osgi'
+		exclude group: 'org.apache.commons', module: 'commons-compress'
+		exclude group: 'org.greenbytes.http', module: 'structured-fields'
+		exclude group: 'org.osgi', module: 'org.osgi.namespace.implementation'
+		exclude group: 'org.osgi', module: 'org.osgi.resource'
+		exclude group: 'org.osgi', module: 'org.osgi.service.cm'
+		exclude group: 'org.osgi', module: 'osgi.annotation'
+		exclude group: 'org.springframework', module: 'spring-context-support'
+		exclude group: 'org.springframework', module: 'spring-jdbc'
+		exclude group: 'org.springframework', module: 'spring-messaging'
+		exclude group: 'org.springframework.security', module: 'spring-security-core'
+		exclude group: 'tools.jackson.dataformat', module: 'jackson-dataformat-cbor'
+	}
+	implementation(libs.sn.common, snExcludes)
+	implementation(libs.sn.common.expr.spel, snExcludes)
+	implementation(libs.sn.node, snExcludes)
+	implementation(libs.sn.node.datum.filter.standard, snExcludes)
+
+	// used by the SolarNetwork bundles (which declare older versions) and for settings CSV
+	implementation libs.fastcsv
+
+	// the web UI, packaged as static resources
+	runtimeOnly project(':web')
+
+	testImplementation libs.junit.jupiter
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+application {
+	mainClass = 's10k.node.sim.filter.FilterSimulatorApplication'
+}
+
+springBoot {
+	// generate META-INF/build-info.properties, for the BuildProperties bean (app version);
+	// exclude the build time so the output is reproducible and the task stays up-to-date
+	buildInfo {
+		excludes = ['time']
+		properties {
+			artifact = 'sn-filter-sim'
+			name = 'SolarNode Filter Simulator'
+		}
+	}
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+[
+	compileJava,
+	compileTestJava
+].each() {
+	it.options.release = 25
+	it.options.compilerArgs += [
+		"-Xlint:all",
+		"-Xlint:-options",
+		"-Xlint:-path",
+		"-Xlint:-try"
+	]
+	it.options.encoding = "UTF-8"
+	if (hasProperty('failOnWarnings') && failOnWarnings.toBoolean()) {
+		it.options.compilerArgs += ["-Werror"]
+	}
+	it.options.errorprone.disable("InlineMeSuggester", "MixedMutabilityReturnType")
+}
+
+compileJava {
+	it.options.errorprone.enabled = !(hasProperty('errorProneDisabled') && errorProneDisabled.toBoolean());
+	it.options.errorprone {
+		error("NullAway")
+		option("NullAway:OnlyNullMarked", "true")
+		option("NullAway:JSpecifyMode", "true")
+	}
+}
+
+compileTestJava {
+	options.compilerArgs += [
+		"-Xlint:-serial",
+		"-Xlint:-static"
+	]
+	options.errorprone.disable("BadImport", "CheckReturnValue")
+	it.options.errorprone.enabled = (hasProperty('errorProneEnabledTest') && errorProneEnabledTest.toBoolean());
+	it.options.errorprone {
+		option("NullAway:OnlyNullMarked", "true")
+		option("NullAway:JSpecifyMode", "true")
+	}
+}
+
+jar.manifest {
+	attributes('Implementation-Title': name,
+	'Implementation-Version': version,
+	'Built-By': System.getProperty('user.name'),
+	'Built-JDK': System.getProperty('java.version'))
+}
+
+javadoc.options {
+	encoding = 'UTF-8'
+	use = true
+	source = "25"
+}
+
+tasks.withType(Javadoc) {
+	options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+// At a test failure, log the stack trace to the console so that we don't
+// have to open the HTML in a browser.
+test {
+	testLogging {
+		exceptionFormat = 'full'
+		showExceptions = true
+		showCauses = true
+		showStackTraces = true
+	}
+	maxHeapSize = '1500m'
+}
+
+spotless {
+	java {
+		targetExclude('**/build/generated/**')
+		eclipse()
+			.configFile("${project.rootDir}/config/codeformatter.xml")
+	}
+}
+
+graalvmNative {
+	binaries.main {
+		def allArgs = []
+
+		// NATIVE_BUILD_ARGS=a,b,c ../gradlew nativeCompile
+		providers.environmentVariable('NATIVE_BUILD_ARGS')
+			.orNull?.split(',')?.each { allArgs << it }
+
+		// pass -PnativeBuildArgs=a,b,c
+		providers.gradleProperty('nativeBuildArgs')
+			.orNull?.split(',')?.each { allArgs << it }
+
+		// pass -PnativeBuildArgsFile=dev.args, or default to native-build.args
+		def argsFile = providers.gradleProperty('nativeBuildArgsFile')
+			.map { file(it) }
+			.orElse(file('native-build.args'))
+			.get()
+        
+		if (argsFile.exists()) {
+			allArgs.addAll(
+				argsFile.readLines()
+					.findAll { it && !it.startsWith('#') }
+			)
+		}
+
+		if (allArgs.isEmpty()) {
+			buildArgs.addAll(['--enable-native-access=ALL-UNNAMED', '-O3', '-R:MaxHeapSize=256m'])
+		} else {
+			buildArgs.addAll(allArgs)
+		}
+	}
+	
+	binaries.main {
+		imageName = 'sn-filter-sim'
+	}
+}
+
+tasks.withType(org.springframework.boot.gradle.tasks.aot.ProcessAot).configureEach {
+	args(project.findProperty('aotProcessArgs') ?: '')
+}
+
+compileAotJava {
+	options.errorprone.enabled = false
+}
+
+compileAotTestJava {
+	options.errorprone.enabled = false
+}
+
