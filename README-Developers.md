@@ -60,6 +60,7 @@ records in the `s10k.node.sim.filter.domain` package.
 |:---------|:------------|
 | `GET /api/info` | The application name and version. |
 | `GET /api/filter-types` | The supported filter types, sorted by name. |
+| `POST /api/settings-form` | Get a filter's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. |
 | `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
 
 A minimal simulation request runs one Expression filter on the main chain:
@@ -85,6 +86,24 @@ A minimal simulation request runs one Expression filter on the main chain:
 
 The request can also include `history` datum, a starting `environment` (operational modes and
 Local State CSV), and `options` such as `"detail": "Debug"` for state snapshots.
+
+A settings form request names the filter type and gives its current settings:
+
+```json
+{
+  "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+  "settings": {"uid": "EXP", "expressionConfigsCount": "1", "expressionConfigs[0].name": "kw"}
+}
+```
+
+The response lists the form fields in the order SolarNode shows them. Each field has a `type`
+(such as `Text`, `TextArea`, `Toggle`, `Select`, or `Group`), its setting `key`, a `label`, a
+`description` (HTML), and the current `value`. The response also lists `problems`, such as
+unknown setting keys.
+
+A `Group` with `dynamic` set is a list. To add an item, increase the setting named by its
+`countKey`. To remove the last item, decrease that count and delete the settings whose keys
+start with `key[n]`, where `n` is the new count. Then request the form again.
 
 # Building
 

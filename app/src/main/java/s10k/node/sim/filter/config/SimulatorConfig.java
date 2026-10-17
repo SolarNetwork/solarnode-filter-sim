@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import s10k.node.sim.filter.aot.SimulatorRuntimeHints;
+import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.sim.SimulationEngine;
@@ -72,6 +73,21 @@ public class SimulatorConfig {
 	public SimulationEngine simulationEngine(FilterTypeRegistry registry,
 			SpelExpressionService expressionService) {
 		return new SimulationEngine(registry, expressionService);
+	}
+
+	/**
+	 * The filter settings form service.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param expressionService
+	 *        the expression service
+	 * @return the service
+	 */
+	@Bean
+	public SettingsFormService settingsFormService(FilterTypeRegistry registry,
+			SpelExpressionService expressionService) {
+		return new SettingsFormService(registry, expressionService);
 	}
 
 }

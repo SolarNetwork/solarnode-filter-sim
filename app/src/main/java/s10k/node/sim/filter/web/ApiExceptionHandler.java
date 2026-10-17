@@ -35,7 +35,7 @@ import s10k.node.sim.filter.sim.SimulationException;
 public class ApiExceptionHandler {
 
 	/**
-	 * Handle a simulation request problem.
+	 * Handle an invalid API request.
 	 *
 	 * @param e
 	 *        the exception
@@ -44,7 +44,7 @@ public class ApiExceptionHandler {
 	@ExceptionHandler(SimulationException.class)
 	public ProblemDetail simulationException(SimulationException e) {
 		ProblemDetail result = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
-		result.setTitle("Invalid simulation request");
+		result.setTitle("Invalid request");
 		return result;
 	}
 
