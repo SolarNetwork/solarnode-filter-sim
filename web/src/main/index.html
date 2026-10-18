@@ -279,6 +279,33 @@
 									<code>Modified</code> dates default to the
 									first datum's date.
 								</div>
+								<label
+									for="input-runafter"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Keep Running After the Last Datum</label
+								>
+								<div class="input-group input-group-sm">
+									<input
+										id="input-runafter"
+										class="form-control"
+										type="number"
+										min="0"
+										step="1"
+										placeholder="0"
+									/>
+									<span class="input-group-text"
+										>seconds</span
+									>
+								</div>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="runAfter"
+								></div>
+								<div class="form-text">
+									How long the simulated clock keeps running
+									after the last datum, so scheduled tasks,
+									like the Timeout filter's, can run.
+								</div>
 								<button
 									type="button"
 									class="btn btn-sm btn-outline-secondary mt-2"

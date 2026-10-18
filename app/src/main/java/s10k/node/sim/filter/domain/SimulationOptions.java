@@ -45,12 +45,16 @@ import org.jspecify.annotations.Nullable;
  * @param datumInterval
  *        the time between input datum that have no timestamp, or {@code null}
  *        for {@link #DEFAULT_DATUM_INTERVAL}
+ * @param runAfter
+ *        how long the simulated clock keeps running after the last input datum,
+ *        so that scheduled tasks due by then run, or {@code null} to stop after
+ *        the last datum
  * @author matt
  * @version 1.0
  */
 public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer maxGenerationDepth,
 		@Nullable Long timeoutMs, @Nullable Detail detail, @Nullable Instant startDate,
-		@Nullable Duration datumInterval) {
+		@Nullable Duration datumInterval, @Nullable Duration runAfter) {
 
 	/** The default {@code maxDatum} value. */
 	public static final int DEFAULT_MAX_DATUM = 1000;
@@ -66,7 +70,7 @@ public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer ma
 
 	/** The default options. */
 	public static final SimulationOptions DEFAULTS = new SimulationOptions(null, null, null, null, null,
-			null);
+			null, null);
 
 	/**
 	 * The level of detail to include in a simulation result.
@@ -129,6 +133,16 @@ public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer ma
 	public Duration datumIntervalValue() {
 		return (datumInterval != null && !datumInterval.isNegative() ? datumInterval
 				: DEFAULT_DATUM_INTERVAL);
+	}
+
+	/**
+	 * Get how long the simulated clock keeps running after the last input
+	 * datum.
+	 *
+	 * @return the duration, never negative
+	 */
+	public Duration runAfterValue() {
+		return (runAfter != null && !runAfter.isNegative() ? runAfter : Duration.ZERO);
 	}
 
 }

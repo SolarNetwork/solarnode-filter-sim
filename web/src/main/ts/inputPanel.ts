@@ -3,6 +3,7 @@ import {
 	NODE_METADATA_SERVICE_UID,
 	parseDatumList,
 	parseMetadata,
+	parseRunAfter,
 	type InputError,
 	type InputField,
 	type InputTab,
@@ -25,6 +26,7 @@ const TEXT_INPUTS: Record<Exclude<InputField, "entryPoint">, string> = {
 	unfilteredHistory: "#input-unfiltered",
 	opModes: "#input-opmodes",
 	localState: "#input-localstate",
+	runAfter: "#input-runafter",
 	nodeMetadata: "#input-node-metadata",
 };
 
@@ -35,6 +37,7 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	unfilteredHistory: "history",
 	opModes: "environment",
 	localState: "environment",
+	runAfter: "environment",
 	nodeMetadata: "node-metadata",
 };
 
@@ -47,6 +50,7 @@ const FIELD_CHECKS: Partial<
 	unfilteredHistory: (text) =>
 		parseDatumList(text, "Unfiltered History datum"),
 	nodeMetadata: (text) => parseMetadata(text, "Node metadata"),
+	runAfter: (text) => parseRunAfter(text),
 };
 
 function $<T extends HTMLElement>(selector: string): T {
@@ -179,11 +183,15 @@ export class InputPanel {
 		const el = this.#fieldElement(field);
 		if (el) {
 			el.classList.toggle("is-invalid", !!problem);
-			const feedback = el.parentElement?.querySelector<HTMLElement>(
-				`.invalid-feedback[data-feedback-for="${field}"]`,
-			);
+			const feedback = el
+				.closest(".tab-pane, .sim-metadata-item")
+				?.querySelector<HTMLElement>(
+					`.invalid-feedback[data-feedback-for="${field}"]`,
+				);
 			if (feedback) {
 				feedback.textContent = problem ?? "";
+				// shown even when the input is inside an input group
+				feedback.classList.toggle("d-block", !!problem);
 			}
 		}
 		if (problem) {

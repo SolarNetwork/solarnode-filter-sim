@@ -254,7 +254,7 @@ class App {
 			const result = await simulate({
 				config: this.#ws.toConfig(),
 				...parts,
-				options: debug ? { detail: "Debug" } : null,
+				options: { ...parts.options, detail: debug ? "Debug" : null },
 			});
 			this.#showResult(result, debug, mark);
 		} catch (e) {

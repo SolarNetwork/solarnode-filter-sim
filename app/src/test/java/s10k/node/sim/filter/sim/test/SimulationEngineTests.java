@@ -24,6 +24,8 @@ import static org.assertj.core.api.BDDAssertions.then;
 import static org.assertj.core.api.BDDAssertions.thenThrownBy;
 import static org.assertj.core.api.BDDAssertions.within;
 import static org.assertj.core.groups.Tuple.tuple;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -444,7 +446,7 @@ public class SimulationEngineTests {
 						new FilterConfig("split", StandardFilterTypes.SPLIT, null, split("SPLIT", null),
 								null)),
 				List.of(json(METER_DATUM)), null, null,
-				new SimulationOptions(null, 3, null, null, null, null));
+				new SimulationOptions(null, 3, null, null, null, null, null));
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -555,8 +557,8 @@ public class SimulationEngineTests {
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"), expression("exp", "EXP", "x", "1")),
 				List.of(json(METER_DATUM), json(METER_DATUM.replace("00:00:00Z", "00:01:00Z"))), null,
-				null,
-				new SimulationOptions(null, null, null, SimulationOptions.Detail.Debug, null, null));
+				null, new SimulationOptions(null, null, null, SimulationOptions.Detail.Debug, null, null,
+						null));
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -794,6 +796,84 @@ public class SimulationEngineTests {
 							"More than one metadata service has the Service Name Node Metadata Service, so filters use the first one."),
 					tuple(SimulationMessage.CODE_MISSING_UID,
 							"User Metadata Service 2 has no Service Name, so filters cannot find it."))
+			;
+		// @formatter:on
+	}
+
+	private static FilterConfig timeout(String id, long timeoutMillis) {
+		Map<String, String> s = new LinkedHashMap<>();
+		s.put("uid", "Timeout");
+		s.put("sourceId", "^/meter/1$");
+		s.put("outputSourceId", "/meter/1/timeout");
+		s.put("timeoutMillis", String.valueOf(timeoutMillis));
+		return new FilterConfig(id, StandardFilterTypes.TIMEOUT, null, s, null);
+	}
+
+	private static String meterDatum(String created) {
+		return """
+				{"created":"%s","sourceId":"/meter/1","i":{"watts":1}}""".formatted(created);
+	}
+
+	@Test
+	public void scheduledTask_betweenDatum() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "timeout"), timeout("timeout", 60_000)),
+				meterDatum("2025-10-01 00:00:00Z"), meterDatum("2025-10-01 00:00:30Z"),
+				meterDatum("2025-10-01 00:03:00Z"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("Timeouts fire a minute after the last datum, and again each minute, before the next datum")
+			.extracting(t -> t.input().sourceId(), t -> t.input().timestamp())
+			.containsExactly(
+					tuple("/meter/1", Instant.parse("2025-10-01T00:00:00Z")),
+					tuple("/meter/1", Instant.parse("2025-10-01T00:00:30Z")),
+					tuple("/meter/1/timeout", Instant.parse("2025-10-01T00:01:30Z")),
+					tuple("/meter/1/timeout", Instant.parse("2025-10-01T00:02:30Z")),
+					tuple("/meter/1", Instant.parse("2025-10-01T00:03:00Z")))
+			;
+		then(result.datum().get(2).origin())
+			.as("Timeout datum come from the filter's scheduled task")
+			.returns(DatumOrigin.Type.Scheduled, from(DatumOrigin::type))
+			.returns("timeout", from(DatumOrigin::filterId))
+			;
+		then(result.messages())
+			.as("The next timeout is still waiting")
+			.extracting(SimulationMessage::code, SimulationMessage::filterId)
+			.containsExactly(tuple(SimulationMessage.CODE_PENDING_TASKS, "timeout"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void scheduledTask_runAfter() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "timeout"), timeout("timeout", 60_000)),
+				List.of(json(meterDatum("2025-10-01 00:00:00Z"))), null, null,
+				new SimulationOptions(null, null, null, null, null, null, Duration.ofMinutes(2)));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("Timeouts due by the end of the extra time run after the last datum")
+			.extracting(t -> t.input().sourceId(), t -> t.input().timestamp())
+			.containsExactly(
+					tuple("/meter/1", Instant.parse("2025-10-01T00:00:00Z")),
+					tuple("/meter/1/timeout", Instant.parse("2025-10-01T00:01:00Z")),
+					tuple("/meter/1/timeout", Instant.parse("2025-10-01T00:02:00Z")))
+			;
+		then(result.stats())
+			.as("Timeout datum counted as generated")
+			.returns(2, from(s -> s.generated()))
 			;
 		// @formatter:on
 	}

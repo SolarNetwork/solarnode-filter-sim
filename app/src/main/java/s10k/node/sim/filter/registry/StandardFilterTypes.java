@@ -232,15 +232,12 @@ public final class StandardFilterTypes {
 				_ -> new OperationalModeDatumFilterService(), null, null, Set.of(), null));
 
 		result.add(def(JOIN, "Join Filter", JoinDatumFilterService.class,
-				messageSource(STD + "JoinDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new JoinDatumFilterService(ctx.clock(), ctx.datumQueue()),
-				StandardFilterTypes::startup, StandardFilterTypes::shutdown,
-				EnumSet.of(FilterCapability.GeneratesDatum, FilterCapability.ScheduledTasks),
-				settings -> hasValue(settings, "coalesceTimeoutMillis")
-						? "The Join filter's Coalesce Timeout runs as a scheduled task, which the "
-								+ "simulator does not run yet, so joined datum are only generated "
-								+ "when the Coalesce Threshold is reached."
-						: null));
+				messageSource(STD + "JoinDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE), ctx -> {
+					JoinDatumFilterService f = new JoinDatumFilterService(ctx.clock(), ctx.datumQueue());
+					f.setTaskScheduler(ctx.taskScheduler());
+					return f;
+				}, StandardFilterTypes::startup, StandardFilterTypes::shutdown,
+				EnumSet.of(FilterCapability.GeneratesDatum, FilterCapability.ScheduledTasks), null));
 
 		result.add(def(SPLIT, "Split Filter", SplitDatumFilterService.class,
 				messageSource(STD + "SplitDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE),
@@ -272,11 +269,13 @@ public final class StandardFilterTypes {
 
 		result.add(def(TIMEOUT, "Timeout Filter", TimeoutDatumFilterService.class,
 				messageSource(STD + "TimeoutDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new TimeoutDatumFilterService(ctx.clock(), ctx.datumQueue()),
-				StandardFilterTypes::startup, StandardFilterTypes::shutdown,
-				EnumSet.of(FilterCapability.GeneratesDatum, FilterCapability.ScheduledTasks),
-				_ -> "The Timeout filter generates datum from a scheduled task, which the "
-						+ "simulator does not run yet, so it never generates datum."));
+				ctx -> {
+					TimeoutDatumFilterService f = new TimeoutDatumFilterService(ctx.clock(),
+							ctx.datumQueue());
+					f.setTaskScheduler(ctx.taskScheduler());
+					return f;
+				}, StandardFilterTypes::startup, StandardFilterTypes::shutdown,
+				EnumSet.of(FilterCapability.GeneratesDatum, FilterCapability.ScheduledTasks), null));
 
 		result.add(def(TIMESTAMP, "Timestamp Filter", RoundedTimestampDatumFilterService.class,
 				messageSource(STD + "RoundedTimestampDatumFilterService", BASE_FILTER,

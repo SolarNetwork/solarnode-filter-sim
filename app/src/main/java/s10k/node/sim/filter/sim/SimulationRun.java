@@ -103,6 +103,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	/** A limit on how far back to look in the datum history. */
 	private static final int MAX_HISTORY_OFFSET = 1000;
 
+	/** A limit on the number of scheduled task runs. */
+	private static final int MAX_TASK_RUNS = 10_000;
+
 	private record QueuedDatum(int seq, NodeDatum datum, boolean persist, int depth,
 			DatumOrigin origin) {
 
@@ -126,6 +129,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private final Map<String, DepthLimit> depthLimits = new LinkedHashMap<>(2);
 
 	private @Nullable QueuedDatum current;
+	/** The filter being created or started, for its scheduled tasks. */
+	private @Nullable String creating;
+	/** The scheduled task running, and the datum it generated. */
+	private SimTaskScheduler.@Nullable Task firing;
+	private final List<QueuedDatum> taskGenerated = new ArrayList<>(2);
+	private int taskRuns;
 	private int nextSeq = 1;
 	private int generatedCount;
 	private int outputCount;
@@ -156,6 +165,10 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				expressionService, this, nodeMetadata());
 		registerUserMetadataServices();
 		this.tracer = new FilterTracer(context.opModesService());
+		context.setTaskOwner(() -> {
+			final StepRecord step = tracer.currentStep();
+			return (step != null ? step.filterId : creating);
+		});
 		context.localStateDao().setChangeListener(tracer::localStateChanged);
 		context.instructionService().setListener(tracer::instructionIssued);
 	}
@@ -181,7 +194,28 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 
 		final long deadline = start + TimeUnit.MILLISECONDS.toNanos(options.timeoutMsValue());
 		final int maxDatum = options.maxDatumValue();
-		while ( !queue.isEmpty() ) {
+		final Instant runUntil = runUntil();
+		final SimTaskScheduler scheduler = context.taskScheduler();
+		while ( true ) {
+			// run scheduled tasks due before the next datum, or by the end time
+			final QueuedDatum next = queue.peekFirst();
+			final Instant nextTime = (next != null ? timestamp(next.datum()) : runUntil);
+			final SimTaskScheduler.Task task = scheduler.peek();
+			if ( task != null && nextTime != null
+					&& (next != null ? task.due().isBefore(nextTime) : !task.due().isAfter(nextTime)) ) {
+				if ( taskRuns >= MAX_TASK_RUNS ) {
+					warn(SimulationMessage.CODE_TASK_LIMIT,
+							"Stopped after running %d scheduled tasks, the maximum allowed."
+									.formatted(MAX_TASK_RUNS),
+							null, null);
+					break;
+				}
+				runTask(scheduler, task);
+				continue;
+			}
+			if ( next == null ) {
+				break;
+			}
 			if ( records.size() >= maxDatum ) {
 				warn(SimulationMessage.CODE_DATUM_LIMIT,
 						"Stopped after processing %d datum, the maximum allowed, so %d datum were not processed. Filters that keep generating datum can cause this."
@@ -199,6 +233,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			process(queue.removeFirst(), entry);
 		}
 
+		addPendingTaskMessages(scheduler, filters);
 		shutdown(filters);
 		addDepthLimitMessages();
 
@@ -207,6 +242,64 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		return new SimulationResult(records.stream().map(DatumRecord::toTrace).toList(),
 				List.copyOf(messages), finalState, new SimulationStats(records.size(), generatedCount,
 						outputCount, discardedCount, durationMs));
+	}
+
+	/**
+	 * Get the time the simulation runs until, after the last input datum.
+	 *
+	 * @return the time, or {@code null} to stop after the last datum
+	 */
+	private @Nullable Instant runUntil() {
+		final Duration after = options.runAfterValue();
+		if ( after.isZero() ) {
+			return null;
+		}
+		Instant last = null;
+		for ( NodeDatum d : input ) {
+			final Instant ts = d.getTimestamp();
+			if ( ts != null && (last == null || ts.isAfter(last)) ) {
+				last = ts;
+			}
+		}
+		return (last != null ? last : context.simulatedClock().instant()).plus(after);
+	}
+
+	/**
+	 * Run a scheduled task at its due time. Datum it generates are processed
+	 * next, before datum due after them.
+	 */
+	private void runTask(SimTaskScheduler scheduler, SimTaskScheduler.Task task) {
+		context.simulatedClock().setInstant(task.due());
+		taskRuns++;
+		firing = task;
+		try {
+			scheduler.runNext();
+		} catch ( RuntimeException e ) {
+			warn(SimulationMessage.CODE_FILTER_ERROR, "Error in a scheduled task of the filter %s: %s"
+					.formatted(task.owner(), e.toString()), task.owner(), null);
+		} finally {
+			firing = null;
+		}
+		for ( int i = taskGenerated.size() - 1; i >= 0; i-- ) {
+			queue.addFirst(taskGenerated.get(i));
+		}
+		taskGenerated.clear();
+	}
+
+	private void addPendingTaskMessages(SimTaskScheduler scheduler,
+			Map<String, TracingDatumFilterService> filters) {
+		final Map<String, Instant> next = new LinkedHashMap<>(4);
+		for ( SimTaskScheduler.Task task : scheduler.pending() ) {
+			next.putIfAbsent(task.owner() != null ? task.owner() : "", task.due());
+		}
+		for ( Map.Entry<String, Instant> e : next.entrySet() ) {
+			final String filterId = (e.getKey().isEmpty() ? null : e.getKey());
+			final TracingDatumFilterService filter = (filterId != null ? filters.get(filterId) : null);
+			messages.add(SimulationMessage.info(SimulationMessage.CODE_PENDING_TASKS,
+					"The filter %s has a scheduled task due at %s, after the simulation ended. Keep running after the last datum to let it run."
+							.formatted(filter != null ? label(filter) : "(unknown)", e.getValue()),
+					filterId));
+		}
 	}
 
 	/* === Input === */
@@ -285,6 +378,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 					new UnsupportedDatumFilterService(config.factoryUid(), settings.get(UID_SETTING)),
 					false, tracer);
 		}
+		creating = config.id();
 		final DatumFilterService filter = def.factory().create(context);
 		context.injectServices(filter, def.messageSource());
 		for ( SettingsApplier.Problem p : SettingsApplier.apply(filter, settings) ) {
@@ -299,6 +393,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			}
 		}
 		lifecycle(def.init(), filter, config.id(), "start");
+		creating = null;
 		context.registerService(filter);
 		final String limitation = def.limitations(settings);
 		if ( limitation != null ) {
@@ -694,6 +789,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		if ( depth > options.maxGenerationDepthValue() ) {
 			depthLimitReached(datum, parent, filterId);
 			return false;
+		}
+		final SimTaskScheduler.Task task = firing;
+		if ( task != null && step == null ) {
+			// a scheduled task: processed after the task, before later datum
+			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0,
+					DatumOrigin.scheduled(task.owner()));
+			datumBySeq.put(qd.seq(), qd);
+			taskGenerated.add(qd);
+			generatedCount++;
+			return true;
 		}
 		final QueuedDatum qd = enqueue(datum, persist, depth, DatumOrigin.generated(
 				parent != null ? parent.seq() : null, step != null ? step.id : null, filterId));

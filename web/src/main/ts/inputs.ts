@@ -6,6 +6,7 @@
 import type {
 	SimulationEnvironment,
 	SimulationHistory,
+	SimulationOptions,
 	UserMetadataConfig,
 } from "./model.ts";
 
@@ -38,6 +39,8 @@ export interface InputsState {
 	opModes: string;
 	/** Local State CSV. */
 	localState: string;
+	/** The seconds to keep running after the last datum. */
+	runAfter: string;
 	nodeMetadata: string;
 	userMetadata: UserMetadataInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
@@ -55,6 +58,7 @@ export interface RequestInputs {
 	datum: unknown[];
 	history: SimulationHistory | null;
 	environment: SimulationEnvironment;
+	options: SimulationOptions;
 	entryPoint: string | null;
 }
 
@@ -89,6 +93,7 @@ function emptyState(): InputsState {
 		unfilteredSameAsHistory: true,
 		opModes: "",
 		localState: "",
+		runAfter: "",
 		nodeMetadata: "",
 		userMetadata: [],
 		entryPoint: "",
@@ -153,6 +158,24 @@ export function parseMetadata(text: string, label: string): unknown {
 		throw new Error(`${label} must be a JSON object.`);
 	}
 	return value;
+}
+
+/**
+ * Parse the seconds to keep running after the last datum.
+ *
+ * @param text the seconds
+ * @returns the seconds, or 0 if the text is blank
+ * @throws Error if the text is not a number of seconds
+ */
+export function parseRunAfter(text: string): number {
+	if (!text.trim()) {
+		return 0;
+	}
+	const seconds = Number(text);
+	if (!Number.isFinite(seconds) || seconds < 0) {
+		throw new Error("Enter a number of seconds, like 300 for 5 minutes.");
+	}
+	return seconds;
 }
 
 /**
@@ -352,8 +375,12 @@ export class RunInputs extends EventTarget {
 				),
 			}),
 		);
+		const runAfter = parse("environment", "runAfter", () =>
+			parseRunAfter(s.runAfter),
+		);
 		return {
 			datum,
+			options: { runAfter: runAfter > 0 ? `PT${runAfter}S` : null },
 			history:
 				filtered.length || unfiltered?.length
 					? { filtered, unfiltered }

@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
 import org.springframework.util.AntPathMatcher;
 import s10k.node.sim.filter.registry.FilterContext;
@@ -82,6 +84,8 @@ public final class SimulationContext implements FilterContext {
 	private final SimInstructionService instructionService;
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
+	private final SimTaskScheduler taskScheduler;
+	private @Nullable Supplier<@Nullable String> taskOwner;
 	private final SimMetadataService nodeMetadataService;
 	private final List<Object> services = new ArrayList<>(16);
 	private final StaticOptionalServiceCollection<ExpressionService> expressionServices;
@@ -121,6 +125,10 @@ public final class SimulationContext implements FilterContext {
 		this.instructionService = new SimInstructionService();
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
+		this.taskScheduler = new SimTaskScheduler(clock, () -> {
+			final Supplier<@Nullable String> owner = taskOwner;
+			return (owner != null ? owner.get() : null);
+		});
 		this.nodeMetadataService = new SimMetadataService(SimMetadataService.NODE_METADATA_SERVICE_UID,
 				nodeMetadata);
 		registerService(nodeMetadataService);
@@ -206,6 +214,21 @@ public final class SimulationContext implements FilterContext {
 	@Override
 	public OptionalService<ReactorService> reactorService() {
 		return new StaticOptionalService<>(instructionService);
+	}
+
+	@Override
+	public SimTaskScheduler taskScheduler() {
+		return taskScheduler;
+	}
+
+	/**
+	 * Set what gives the {@code id} of the filter that schedules a task.
+	 *
+	 * @param taskOwner
+	 *        the task owner supplier
+	 */
+	public void setTaskOwner(Supplier<@Nullable String> taskOwner) {
+		this.taskOwner = taskOwner;
 	}
 
 	@Override

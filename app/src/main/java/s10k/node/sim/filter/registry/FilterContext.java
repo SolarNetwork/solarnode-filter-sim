@@ -21,6 +21,7 @@ package s10k.node.sim.filter.registry;
 
 import java.time.Clock;
 import java.util.List;
+import org.springframework.scheduling.TaskScheduler;
 import net.solarnetwork.node.dao.TransientSettingDao;
 import net.solarnetwork.node.reactor.InstructionExecutionService;
 import net.solarnetwork.node.reactor.ReactorService;
@@ -80,6 +81,13 @@ public interface FilterContext {
 	 * @return the service
 	 */
 	OptionalService<ReactorService> reactorService();
+
+	/**
+	 * Get the task scheduler, which runs tasks on the simulated clock.
+	 *
+	 * @return the scheduler
+	 */
+	TaskScheduler taskScheduler();
 
 	/**
 	 * Get the transient setting DAO.

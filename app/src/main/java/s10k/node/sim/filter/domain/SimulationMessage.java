@@ -92,6 +92,12 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	/** Processing stopped because of the timeout. */
 	public static final String CODE_TIMEOUT = "Timeout";
 
+	/** Processing stopped because of the scheduled task limit. */
+	public static final String CODE_TASK_LIMIT = "TaskLimit";
+
+	/** Scheduled tasks still waiting when the simulation ended. */
+	public static final String CODE_PENDING_TASKS = "PendingTasks";
+
 	/** History datum that do not fit in the datum history. */
 	public static final String CODE_HISTORY_OVERFLOW = "HistoryOverflow";
 
