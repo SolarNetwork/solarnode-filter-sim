@@ -27,15 +27,14 @@
 		</header>
 
 		<main class="sim-layout">
-			<aside class="sim-left border-end">
-				<section class="p-3">
+			<aside class="sim-left border-end" id="left-panel">
+				<section class="sim-left-top p-3">
 					<label for="input-datum" class="form-label"
 						>Input Datum</label
 					>
 					<textarea
 						id="input-datum"
-						class="form-control font-monospace"
-						rows="10"
+						class="form-control font-monospace sim-datum-input"
 						spellcheck="false"
 						placeholder="A datum JSON object, or array of objects"
 					></textarea>
@@ -45,36 +44,223 @@
 					<select id="entry-point" class="form-select" disabled>
 						<option>Main Filter Chain</option>
 					</select>
-					<div class="d-flex justify-content-between mt-3">
+					<div class="d-flex gap-2 mt-3">
 						<button
 							type="button"
-							class="btn btn-secondary"
+							class="btn btn-outline-secondary"
+							id="import-button"
+							title="Import a SolarNode settings CSV file"
+						>
+							<i class="bi bi-upload" aria-hidden="true"></i>
+							Import
+						</button>
+						<div class="btn-group">
+							<button
+								type="button"
+								class="btn btn-outline-secondary"
+								id="export-button"
+								title="Export the filters as a SolarNode settings CSV file"
+							>
+								<i
+									class="bi bi-download"
+									aria-hidden="true"
+								></i>
+								Export
+							</button>
+							<button
+								type="button"
+								class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split"
+								data-bs-toggle="dropdown"
+								aria-expanded="false"
+							>
+								<span class="visually-hidden"
+									>Export options</span
+								>
+							</button>
+							<ul class="dropdown-menu">
+								<li>
+									<button
+										type="button"
+										class="dropdown-item"
+										data-export-style="Organized"
+									>
+										Organized, with comments
+									</button>
+								</li>
+								<li>
+									<button
+										type="button"
+										class="dropdown-item"
+										data-export-style="Plain"
+									>
+										Plain, sorted like a SolarNode export
+									</button>
+								</li>
+							</ul>
+						</div>
+						<button
+							type="button"
+							class="btn btn-primary ms-auto"
 							disabled
 						>
-							<i class="bi bi-download" aria-hidden="true"></i>
-							Export
-						</button>
-						<button type="button" class="btn btn-primary" disabled>
 							<i class="bi bi-play-fill" aria-hidden="true"></i>
 							Run
 						</button>
 					</div>
+					<input
+						type="file"
+						id="import-file"
+						accept=".csv,text/csv"
+						hidden
+					/>
 				</section>
-				<section class="p-3 border-top">
+
+				<div
+					class="sim-splitter"
+					id="left-splitter"
+					role="separator"
+					aria-orientation="horizontal"
+					aria-label="Resize the input and filter sections"
+					tabindex="0"
+				>
+					<i class="bi bi-grip-horizontal" aria-hidden="true"></i>
+				</div>
+
+				<section class="sim-palette p-3">
 					<h2 class="h6">Filters</h2>
-					<p class="small text-body-secondary">
-						The filter palette goes here.
-					</p>
+					<div id="palette" class="sim-palette-items"></div>
 				</section>
 			</aside>
 
-			<section class="sim-canvas" id="canvas"></section>
+			<section class="sim-canvas">
+				<div id="canvas"></div>
 
-			<aside class="sim-right border-start p-3">
-				<p class="text-body-secondary">
-					Select a filter to configure it.
-				</p>
-			</aside>
+				<div
+					class="sim-canvas-tools btn-group-vertical shadow-sm"
+					role="toolbar"
+					aria-label="Canvas tools"
+				>
+					<button
+						type="button"
+						class="btn btn-light"
+						id="undo-button"
+						title="Undo (Ctrl+Z)"
+					>
+						<i
+							class="bi bi-arrow-counterclockwise"
+							aria-hidden="true"
+						></i>
+						<span class="visually-hidden">Undo</span>
+					</button>
+					<button
+						type="button"
+						class="btn btn-light"
+						id="redo-button"
+						title="Redo (Ctrl+Shift+Z)"
+					>
+						<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+						<span class="visually-hidden">Redo</span>
+					</button>
+					<button
+						type="button"
+						class="btn btn-light"
+						id="zoom-in-button"
+						title="Zoom in"
+					>
+						<i class="bi bi-zoom-in" aria-hidden="true"></i>
+						<span class="visually-hidden">Zoom in</span>
+					</button>
+					<button
+						type="button"
+						class="btn btn-light"
+						id="zoom-out-button"
+						title="Zoom out"
+					>
+						<i class="bi bi-zoom-out" aria-hidden="true"></i>
+						<span class="visually-hidden">Zoom out</span>
+					</button>
+					<button
+						type="button"
+						class="btn btn-light"
+						id="fit-button"
+						title="Fit the flow chart in view"
+					>
+						<i
+							class="bi bi-arrows-fullscreen"
+							aria-hidden="true"
+						></i>
+						<span class="visually-hidden">Fit in view</span>
+					</button>
+				</div>
+
+				<div id="empty-state" class="sim-empty card shadow-sm" hidden>
+					<div class="card-body">
+						<p class="card-text">
+							Upload node settings CSV to get started, or start by
+							dragging items onto this grid.
+						</p>
+						<div class="input-group">
+							<input
+								type="file"
+								class="form-control"
+								id="empty-file"
+								accept=".csv,text/csv"
+								aria-label="Settings CSV file"
+							/>
+							<button
+								type="button"
+								class="btn btn-primary"
+								id="empty-upload"
+								disabled
+							>
+								Upload Settings
+							</button>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<aside class="sim-right border-start p-3" id="inspector"></aside>
 		</main>
+
+		<div
+			class="modal fade"
+			id="message-dialog"
+			tabindex="-1"
+			aria-labelledby="message-dialog-title"
+			aria-hidden="true"
+		>
+			<div class="modal-dialog modal-lg modal-dialog-scrollable">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h1
+							class="modal-title fs-5"
+							id="message-dialog-title"
+						></h1>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="Close"
+						></button>
+					</div>
+					<div class="modal-body" id="message-dialog-body"></div>
+					<div class="modal-footer">
+						<button
+							type="button"
+							class="btn btn-primary"
+							data-bs-dismiss="modal"
+						>
+							OK
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div
+			class="toast-container position-fixed bottom-0 end-0 p-3"
+			id="toasts"
+		></div>
 	</body>
 </html>

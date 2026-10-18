@@ -7,12 +7,14 @@ export default defineConfig({
 		// the Gradle build packages this into the app as static resources
 		outDir: "../../build/dist",
 		emptyOutDir: true,
+		// the app serves the UI locally, so one bundle with JointJS and Bootstrap is fine
+		chunkSizeWarningLimit: 1024,
 	},
 	server: {
 		port: 5173,
 		strictPort: true,
 		proxy: {
-			// the Spring Boot app, started with `./gradlew :app:bootRun`
+			// the Spring Boot app, started with `./gradlew :solarnode-filter-sim-app:bootRun`
 			"/api": "http://localhost:8080",
 		},
 	},

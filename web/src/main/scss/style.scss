@@ -21,12 +21,276 @@ body {
 	min-height: 0;
 }
 
-.sim-left,
 .sim-right {
 	overflow: auto;
 }
 
+// the left panel: inputs above the palette, with a splitter between them
+.sim-left {
+	display: grid;
+	grid-template-rows:
+		minmax(6rem, var(--sim-split, 45%))
+		auto
+		minmax(6rem, 1fr);
+	min-height: 0;
+	overflow: hidden;
+}
+
+.sim-left-top,
+.sim-palette {
+	overflow: auto;
+	min-height: 0;
+}
+
+.sim-datum-input {
+	min-height: 8rem;
+	resize: vertical;
+}
+
+.sim-splitter {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 0.75rem;
+	cursor: row-resize;
+	color: var(--bs-secondary-color);
+	background-color: var(--bs-tertiary-bg);
+	border-block: 1px solid var(--bs-border-color);
+	touch-action: none;
+	user-select: none;
+
+	&:hover,
+	&:focus-visible,
+	&.is-dragging {
+		color: var(--bs-body-color);
+		background-color: var(--bs-secondary-bg);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--bs-primary);
+		outline-offset: -2px;
+	}
+}
+
+// the filter palette
+.sim-palette-items {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+	gap: 0.5rem;
+}
+
+.sim-palette-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.25rem;
+	border: 0;
+	border-radius: var(--bs-border-radius-lg);
+	background: none;
+	color: inherit;
+	font-size: 0.8rem;
+	line-height: 1.2;
+	text-align: center;
+	cursor: grab;
+
+	&:hover,
+	&:focus-visible {
+		background-color: var(--bs-tertiary-bg);
+	}
+
+	&:active {
+		cursor: grabbing;
+	}
+}
+
+.sim-palette-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 3rem;
+	height: 3rem;
+	border: 2px solid var(--bs-secondary-color);
+	border-radius: 0.6rem;
+	background-color: var(--bs-body-bg);
+	font-size: 1.4rem;
+
+	.sim-palette-item:hover & {
+		border-color: var(--bs-primary);
+		color: var(--bs-primary);
+	}
+}
+
+// the canvas
 .sim-canvas {
 	position: relative;
 	overflow: hidden;
+	background-color: var(--bs-body-bg);
+}
+
+#canvas {
+	position: absolute;
+	inset: 0;
+
+	&.is-panning {
+		cursor: grabbing;
+	}
+}
+
+.sim-canvas-tools {
+	position: absolute;
+	top: 0.75rem;
+	right: 0.75rem;
+	z-index: 2;
+}
+
+.sim-empty {
+	position: absolute;
+	top: 40%;
+	left: 50%;
+	z-index: 1;
+	width: min(30rem, 90%);
+	transform: translate(-50%, -50%);
+	// let palette drops through to the canvas, except on the controls
+	pointer-events: none;
+
+	.input-group {
+		pointer-events: auto;
+	}
+}
+
+// flow chart nodes
+.sim-node {
+	fill: var(--bs-body-bg);
+	stroke: var(--bs-secondary-color);
+	cursor: grab;
+
+	&.is-chain {
+		fill: var(--bs-tertiary-bg);
+	}
+
+	&.is-main {
+		fill: var(--bs-primary-bg-subtle);
+		stroke: var(--bs-primary);
+		cursor: pointer;
+	}
+
+	&.is-unsupported,
+	&.is-external,
+	&.is-loop {
+		fill: var(--bs-secondary-bg);
+		stroke-dasharray: 6 4;
+	}
+
+	&.is-root {
+		stroke: var(--bs-border-color);
+	}
+
+	&.is-problem {
+		stroke: var(--bs-danger);
+		fill: var(--bs-danger-bg-subtle);
+	}
+
+	&.is-selected {
+		stroke: var(--bs-primary);
+		stroke-width: 3px;
+		filter: drop-shadow(0 0 4px rgba(var(--bs-primary-rgb), 0.5));
+	}
+}
+
+.sim-node-icon {
+	fill: var(--bs-body-color);
+	pointer-events: none;
+
+	.is-main ~ & {
+		fill: var(--bs-primary);
+	}
+
+	.is-root ~ &,
+	.is-unsupported ~ &,
+	.is-external ~ & {
+		fill: var(--bs-secondary-color);
+	}
+}
+
+.sim-node-label {
+	fill: var(--bs-body-color);
+	pointer-events: none;
+
+	.is-root ~ & {
+		fill: var(--bs-secondary-color);
+		font-style: italic;
+	}
+
+	.is-selected ~ & {
+		fill: var(--bs-primary-text-emphasis);
+		font-weight: 600;
+	}
+
+	.is-problem ~ & {
+		fill: var(--bs-danger-text-emphasis);
+	}
+}
+
+.sim-end {
+	fill: var(--bs-body-bg);
+	stroke: var(--bs-secondary-color);
+
+	&.is-output {
+		stroke: var(--bs-success);
+	}
+}
+
+.sim-end-dot {
+	fill: var(--bs-secondary-color);
+	pointer-events: none;
+
+	.is-output ~ & {
+		fill: var(--bs-success);
+	}
+}
+
+.sim-end-label {
+	fill: var(--bs-secondary-color);
+	font-size: 12px;
+	pointer-events: none;
+}
+
+.sim-port {
+	fill: var(--bs-body-bg);
+	stroke: var(--bs-secondary-color);
+	stroke-width: 2px;
+
+	&[magnet="true"] {
+		cursor: crosshair;
+
+		&:hover {
+			fill: var(--bs-primary);
+			stroke: var(--bs-primary);
+		}
+	}
+
+	&.available-magnet {
+		fill: var(--bs-success);
+		stroke: var(--bs-success);
+	}
+}
+
+// continuation lines are decoration
+.joint-type-sim-continuation {
+	pointer-events: none;
+}
+
+// the inspector
+.sim-settings-table {
+	table-layout: fixed;
+
+	th {
+		width: 45%;
+	}
+}
+
+.sim-setting-value {
+	white-space: pre-wrap;
+	word-break: break-word;
 }

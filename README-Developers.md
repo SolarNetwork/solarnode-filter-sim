@@ -51,6 +51,20 @@ The UI sources are under `web/src/main`:
 | `scss/`      | Styles. |
 | `img/`       | Images. |
 
+The main TypeScript modules are:
+
+| Module | Contents |
+|:-------|:---------|
+| `main.ts`      | The application: wires the parts together, and handles import, export, and keyboard shortcuts. |
+| `workspace.ts` | The configuration being edited: filters, chains, undo and redo, and saving in the browser. |
+| `layout.ts`    | The automatic layout of the flow chart. |
+| `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
+| `palette.ts`, `inspector.ts`, `dialogs.ts`, `splitter.ts` | The other parts of the page. |
+| `icons.ts`     | The [Bootstrap Icons][bootstrap-icons] of the filter types. |
+| `api.ts`, `model.ts` | The web API client and its types. |
+
+To change a filter's icon, change its entry in `icons.ts` to the name of another Bootstrap icon.
+
 # Web API
 
 The UI talks to the app through a small JSON API. The request and response types are the
@@ -198,5 +212,6 @@ The local Ivy repository defaults to `~/.ivy2/local`. Use `-PlocalIvyPath=/some/
 it.
 
 [bootstrap]: https://getbootstrap.com/
+[bootstrap-icons]: https://icons.getbootstrap.com/
 [jointjs]: https://www.jointjs.com/
 [vite]: https://vite.dev/
