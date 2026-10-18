@@ -12,11 +12,14 @@ const KEY_STEP = 0.05;
  * @param splitter the splitter element
  * @param container the element containing both sections
  * @param storageKey the browser storage key for the split
+ * @param defaultFraction the top section's share of the height when no split
+ *     is saved
  */
 export function initSplitter(
 	splitter: HTMLElement,
 	container: HTMLElement,
 	storageKey: string,
+	defaultFraction = 0.45,
 ): void {
 	const apply = (fraction: number, save: boolean) => {
 		const f = Math.max(MIN_FRACTION, Math.min(MAX_FRACTION, fraction));
@@ -32,7 +35,7 @@ export function initSplitter(
 		return f;
 	};
 
-	let fraction = 0.45;
+	let fraction = defaultFraction;
 	try {
 		const saved = Number(localStorage.getItem(storageKey));
 		if (saved > 0) {

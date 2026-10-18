@@ -17,6 +17,14 @@ export interface InspectorActions {
 	disconnect(node: FilterNode): void;
 	/** Delete the filter. */
 	remove(node: FilterNode): void;
+	/**
+	 * Get the Service Names of the simulated services that match a setting's
+	 * related service filter, for its Choose menu.
+	 *
+	 * @param serviceFilter the OSGi service filter, like
+	 *     `(objectClass=net.solarnetwork.node.service.MetadataService)`
+	 */
+	relatedServices(serviceFilter: string): string[];
 }
 
 /** How long after typing stops, in milliseconds, the settings are checked. */
@@ -567,7 +575,16 @@ export class Inspector {
 		input.addEventListener("input", () =>
 			this.#editValue(filter, field.key!, input.value),
 		);
-		const wrapper = this.#setting(field, filter, input, id);
+		const wrapper =
+			field.relatedServiceFilter && !field.readOnly && !multiline
+				? this.#setting(
+						field,
+						filter,
+						this.#chooser(field, filter, input),
+						id,
+						input,
+					)
+				: this.#setting(field, filter, input, id);
 		if (field.key === UID_SETTING) {
 			this.#uidWarning = element(
 				"div",
@@ -586,6 +603,57 @@ export class Inspector {
 			);
 		}
 		return wrapper;
+	}
+
+	/**
+	 * Add a Choose menu to a text input, which lists the simulated services that
+	 * match the setting's related service filter, like SolarNode's settings page.
+	 */
+	#chooser(
+		field: SettingField,
+		filter: FilterConfig,
+		input: HTMLInputElement | HTMLTextAreaElement,
+	): HTMLElement {
+		const group = element("div", "input-group input-group-sm");
+		const button = element(
+			"button",
+			"btn btn-outline-secondary dropdown-toggle",
+			"Choose",
+		);
+		button.type = "button";
+		button.setAttribute("data-bs-toggle", "dropdown");
+		button.setAttribute("aria-expanded", "false");
+		button.title = "Choose from the simulated services";
+		const menu = element("ul", "dropdown-menu dropdown-menu-end");
+		button.addEventListener("show.bs.dropdown", () => {
+			const names = this.#actions.relatedServices(
+				field.relatedServiceFilter!,
+			);
+			menu.replaceChildren(
+				...(names.length ? names : [null]).map((name) => {
+					const item = element("li");
+					const choice = element(
+						"button",
+						"dropdown-item",
+						name ?? "No matching services",
+					);
+					choice.type = "button";
+					if (name === null) {
+						choice.disabled = true;
+					} else {
+						choice.classList.toggle("active", input.value === name);
+						choice.addEventListener("click", () => {
+							input.value = name;
+							this.#editValue(filter, field.key!, name);
+						});
+					}
+					item.append(choice);
+					return item;
+				}),
+			);
+		});
+		group.append(input, button, menu);
+		return group;
 	}
 
 	#toggle(field: SettingField, filter: FilterConfig): HTMLElement {
@@ -1121,6 +1189,8 @@ export class Inspector {
 			const message = byKey.get(key);
 			control.control.classList.toggle("is-invalid", !!message);
 			control.feedback.textContent = message ?? "";
+			// show feedback for controls wrapped in another element too
+			control.feedback.classList.toggle("d-block", !!message);
 		}
 	}
 }

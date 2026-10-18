@@ -7,6 +7,8 @@ import type {
 	SettingsForm,
 	SettingsImport,
 	SimConfig,
+	SimulationRequest,
+	SimulationResult,
 } from "./model.ts";
 
 /** An error response from the web API. */
@@ -104,4 +106,13 @@ export function getSettingsForm(
 		factoryUid,
 		settings,
 	});
+}
+
+/**
+ * Run a simulation.
+ *
+ * @param req the simulation request
+ */
+export function simulate(req: SimulationRequest): Promise<SimulationResult> {
+	return postJson<SimulationResult>("api/simulate", req);
 }

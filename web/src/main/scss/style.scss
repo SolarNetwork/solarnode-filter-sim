@@ -36,14 +36,48 @@ body {
 	overflow: hidden;
 }
 
-.sim-left-top,
 .sim-palette {
 	overflow: auto;
 	min-height: 0;
 }
 
-.sim-datum-input {
-	min-height: 8rem;
+// the inputs, above the Entry Point and buttons
+.sim-left-top {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.sim-inputs {
+	flex: 1;
+	overflow: auto;
+	min-height: 0;
+}
+
+.sim-input-tabs {
+	flex-wrap: wrap;
+	gap: 0.25rem;
+	font-size: 0.8rem;
+
+	.nav-link {
+		position: relative;
+		padding: 0.2rem 0.5rem;
+	}
+}
+
+.sim-tab-error {
+	position: absolute;
+	top: 0.2rem;
+	right: 0.2rem;
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	background-color: var(--bs-danger);
+}
+
+.sim-json-input {
+	min-height: 5rem;
+	font-size: 0.8rem;
 	resize: vertical;
 }
 
@@ -121,7 +155,21 @@ body {
 	}
 }
 
-// the canvas
+// the canvas, above the execution flow after a run
+.sim-center {
+	display: grid;
+	grid-template-rows: 1fr;
+	min-width: 0;
+	min-height: 0;
+
+	&.has-results {
+		grid-template-rows:
+			minmax(6rem, var(--sim-split, 55%))
+			auto
+			minmax(6rem, 1fr);
+	}
+}
+
 .sim-canvas {
 	position: relative;
 	overflow: hidden;
@@ -191,10 +239,62 @@ body {
 		fill: var(--bs-danger-bg-subtle);
 	}
 
+	&.is-visited {
+		stroke: var(--bs-success);
+		stroke-width: 3px;
+	}
+
+	&.is-dropped {
+		stroke: var(--bs-danger);
+		stroke-width: 3px;
+	}
+
 	&.is-selected {
 		stroke: var(--bs-primary);
 		stroke-width: 3px;
 		filter: drop-shadow(0 0 4px rgba(var(--bs-primary-rgb), 0.5));
+	}
+}
+
+// the run results badges above nodes
+rect.sim-badge {
+	fill: var(--bs-secondary-bg);
+	stroke: var(--bs-border-color);
+
+	&.is-changed {
+		fill: var(--bs-primary-bg-subtle);
+		stroke: var(--bs-primary-border-subtle);
+	}
+
+	&.is-dropped,
+	&.is-error {
+		fill: var(--bs-danger-bg-subtle);
+		stroke: var(--bs-danger-border-subtle);
+	}
+}
+
+text.sim-badge-text {
+	fill: var(--bs-body-color);
+	pointer-events: none;
+
+	&.is-idle {
+		fill: var(--bs-secondary-color);
+	}
+
+	&.is-dropped,
+	&.is-error {
+		fill: var(--bs-danger-text-emphasis);
+	}
+}
+
+rect.sim-badge {
+	pointer-events: none;
+}
+
+#canvas.is-stale {
+	.sim-badge,
+	.sim-badge-text {
+		opacity: 0.45;
 	}
 }
 
@@ -343,4 +443,132 @@ body {
 
 .sim-comment summary {
 	cursor: pointer;
+}
+
+// the execution flow
+.sim-results {
+	overflow: auto;
+	min-height: 0;
+	background-color: var(--bs-body-bg);
+}
+
+.sim-results-header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+}
+
+.sim-datum {
+	scroll-margin-top: 3rem;
+
+	&.is-selected {
+		border-color: var(--bs-success);
+		box-shadow: 0 0 0 1px var(--bs-success);
+	}
+
+	&.is-flashed {
+		animation: sim-flash 1.2s ease-out;
+	}
+}
+
+@keyframes sim-flash {
+	from {
+		box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.6);
+	}
+	to {
+		box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0);
+	}
+}
+
+.sim-datum-header {
+	cursor: pointer;
+
+	&:hover {
+		background-color: var(--bs-secondary-bg);
+	}
+}
+
+.sim-step {
+	margin-left: calc(var(--sim-depth, 0) * 1.25rem);
+	border-left: 2px solid var(--bs-border-color);
+	padding-left: 0.5rem;
+
+	> summary {
+		padding: 0.15rem 0;
+		cursor: pointer;
+		list-style: none;
+
+		&::-webkit-details-marker {
+			display: none;
+		}
+
+		&::before {
+			content: "▸";
+			color: var(--bs-secondary-color);
+		}
+	}
+
+	&[open] > summary::before {
+		content: "▾";
+	}
+}
+
+.sim-step-filter {
+	font-size: inherit;
+	text-decoration: none;
+}
+
+.sim-step-details {
+	padding: 0.25rem 0 0.5rem 1rem;
+}
+
+.sim-samples {
+	align-items: baseline;
+}
+
+.sim-samples-table {
+	font-size: 0.8rem;
+
+	th {
+		font-weight: 600;
+	}
+}
+
+.sim-chip {
+	display: inline-block;
+	max-width: 100%;
+	padding: 0 0.35rem;
+	border: 1px solid var(--bs-border-color);
+	border-radius: var(--bs-border-radius-sm);
+	background-color: var(--bs-tertiary-bg);
+	font-family: var(--bs-font-monospace);
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+
+	&.is-added {
+		background-color: var(--bs-success-bg-subtle);
+		border-color: var(--bs-success-border-subtle);
+	}
+
+	&.is-removed {
+		background-color: var(--bs-danger-bg-subtle);
+		border-color: var(--bs-danger-border-subtle);
+	}
+
+	&.is-changed {
+		background-color: var(--bs-warning-bg-subtle);
+		border-color: var(--bs-warning-border-subtle);
+	}
+
+	&.is-note {
+		border-style: dashed;
+		background: none;
+		color: var(--bs-secondary-color);
+		font-family: inherit;
+	}
+}
+
+.sim-chip-type {
+	margin-right: 0.3rem;
+	color: var(--bs-secondary-color);
 }

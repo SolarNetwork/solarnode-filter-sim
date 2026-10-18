@@ -55,11 +55,14 @@ The main TypeScript modules are:
 
 | Module | Contents |
 |:-------|:---------|
-| `main.ts`      | The application: wires the parts together, and handles import, export, and keyboard shortcuts. |
+| `main.ts`      | The application: wires the parts together, and handles running simulations, import, export, and keyboard shortcuts. |
 | `workspace.ts` | The configuration being edited: filters, chains, undo and redo, and saving in the browser. |
 | `layout.ts`    | The automatic layout of the flow chart. |
 | `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
+| `inputs.ts`    | The run inputs (datum, histories, starting state, and metadata), saved in the browser, which make up a `/api/simulate` request. |
+| `inputPanel.ts` | The input tabs and the Entry Point select. |
+| `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
 | `palette.ts`, `dialogs.ts`, `splitter.ts` | The other parts of the page. |

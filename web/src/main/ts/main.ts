@@ -5,17 +5,22 @@ import {
 	getFilterTypes,
 	getInfo,
 	importSettings,
+	simulate,
 } from "./api.ts";
 import { Canvas } from "./canvas.ts";
 import { showError, showMessages, showToast } from "./dialogs.ts";
+import { InputPanel } from "./inputPanel.ts";
+import { InputError, NODE_METADATA_SERVICE_UID, RunInputs } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
 import type { FilterNode } from "./layout.ts";
 import {
 	EXTERNAL_FACTORY_UID,
 	type ExportStyle,
 	type FilterTypeInfo,
+	type SimulationResult,
 } from "./model.ts";
 import { renderPalette } from "./palette.ts";
+import { filterRunStats, ResultsPanel, type DatumPath } from "./results.ts";
 import { initSplitter } from "./splitter.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -67,15 +72,27 @@ function isTyping(target: EventTarget | null): boolean {
 	);
 }
 
+/** The service filter object class of metadata services. */
+const METADATA_SERVICE_CLASS = "net.solarnetwork.node.service.MetadataService";
+
+/** The service filter object class of datum filters. */
+const FILTER_SERVICE_CLASS = "net.solarnetwork.service.DatumFilterService";
+
 /** The simulator application. */
 class App {
 	readonly #ws: Workspace;
+	readonly #inputs: RunInputs;
 	readonly #canvas: Canvas;
 	readonly #inspector: Inspector;
+	readonly #inputPanel: InputPanel;
+	readonly #results: ResultsPanel;
+	#running = false;
 
 	constructor(types: FilterTypeInfo[]) {
 		const ws = Workspace.load(types);
+		const inputs = RunInputs.load();
 		this.#ws = ws;
+		this.#inputs = inputs;
 		this.#canvas = new Canvas($("#canvas"), ws);
 		this.#inspector = new Inspector($("#inspector"), ws, {
 			disconnect: (node) => {
@@ -84,7 +101,11 @@ class App {
 				}
 			},
 			remove: (node) => ws.remove(node.filterId),
+			relatedServices: (serviceFilter) =>
+				this.#relatedServices(serviceFilter),
 		});
+		this.#inputPanel = new InputPanel(inputs, ws);
+		this.#results = new ResultsPanel($("#results"), ws);
 		renderPalette($("#palette"), types, (type) => {
 			const main = ws.mainChainId;
 			const filter = ws.addFilter(type, {
@@ -97,6 +118,7 @@ class App {
 			$("#left-splitter"),
 			$("#left-panel"),
 			"sn-filter-sim.leftSplit",
+			0.55,
 		);
 
 		this.#canvas.addEventListener("select", (e) =>
@@ -105,7 +127,12 @@ class App {
 		this.#canvas.addEventListener("filedrop", (e) =>
 			this.importFile((e as CustomEvent<File>).detail),
 		);
-		ws.addEventListener("change", () => this.#refreshControls());
+		ws.addEventListener("change", () => {
+			this.#refreshControls();
+			this.#markStale();
+		});
+		inputs.addEventListener("change", () => this.#markStale());
+		this.#bindResults();
 
 		this.#bindControls();
 		this.#refreshControls();
@@ -184,6 +211,124 @@ class App {
 		}
 	}
 
+	/**
+	 * Run the input datum through the filters, and show the result.
+	 */
+	async run(): Promise<void> {
+		if (this.#running) {
+			return;
+		}
+		let parts;
+		try {
+			parts = this.#inputs.toRequest();
+		} catch (e) {
+			if (e instanceof InputError) {
+				this.#inputPanel.showError(e);
+				showToast(e.message);
+				return;
+			}
+			throw e;
+		}
+		this.#setRunning(true);
+		try {
+			const result = await simulate({
+				config: this.#ws.toConfig(),
+				...parts,
+			});
+			this.#showResult(result);
+		} catch (e) {
+			showError("The simulation did not run", e, (id) =>
+				this.#canvas.selectFilter(id),
+			);
+		} finally {
+			this.#setRunning(false);
+		}
+	}
+
+	#setRunning(running: boolean): void {
+		this.#running = running;
+		const button = $<HTMLButtonElement>("#run-button");
+		button.disabled = running;
+		button
+			.querySelector("i")!
+			.classList.replace(
+				running ? "bi-play-fill" : "bi-hourglass-split",
+				running ? "bi-hourglass-split" : "bi-play-fill",
+			);
+	}
+
+	#showResult(result: SimulationResult): void {
+		const center = $("#center-panel");
+		const wasShown = center.classList.contains("has-results");
+		center.classList.add("has-results");
+		$("#center-splitter").hidden = false;
+		$("#results").hidden = false;
+		this.#results.show(result);
+		this.#canvas.setRun({
+			stats: filterRunStats(result),
+			output: result.stats.output,
+		});
+		this.#inputPanel.setFinalState(result.finalState);
+		if (!wasShown) {
+			// the canvas is smaller now
+			this.#canvas.fit();
+		}
+	}
+
+	#closeResults(): void {
+		$("#center-panel").classList.remove("has-results");
+		$("#center-splitter").hidden = true;
+		$("#results").hidden = true;
+		this.#canvas.setRun(null);
+	}
+
+	#markStale(): void {
+		if (this.#results.result) {
+			this.#results.setStale(true);
+			this.#canvas.setStale(true);
+		}
+	}
+
+	#bindResults(): void {
+		const results = this.#results;
+		initSplitter(
+			$("#center-splitter"),
+			$("#center-panel"),
+			"sn-filter-sim.centerSplit",
+			0.55,
+		);
+		results.addEventListener("filter", (e) =>
+			this.#canvas.selectFilter((e as CustomEvent<string>).detail),
+		);
+		results.addEventListener("datum", (e) =>
+			this.#canvas.setPath((e as CustomEvent<DatumPath | null>).detail),
+		);
+		results.addEventListener("usefinalstate", () =>
+			this.#inputPanel.useFinalState(),
+		);
+		results.addEventListener("close", () => this.#closeResults());
+		$("#run-button").addEventListener("click", () => void this.run());
+	}
+
+	/**
+	 * Get the Service Names of the simulated services that match a service
+	 * filter, for a setting's Choose menu.
+	 */
+	#relatedServices(serviceFilter: string): string[] {
+		if (serviceFilter.includes(METADATA_SERVICE_CLASS)) {
+			return [
+				NODE_METADATA_SERVICE_UID,
+				...this.#inputs.userMetadataUids,
+			];
+		}
+		if (serviceFilter.includes(FILTER_SERVICE_CLASS)) {
+			return this.#ws.filters
+				.map((f) => this.#ws.uid(f))
+				.filter((uid): uid is string => !!uid);
+		}
+		return [];
+	}
+
 	#bindControls(): void {
 		const ws = this.#ws;
 		const canvas = this.#canvas;
@@ -233,7 +378,15 @@ class App {
 		$("#fit-button").addEventListener("click", () => canvas.fit());
 
 		document.addEventListener("keydown", (e) => {
-			if (isTyping(e.target) || document.querySelector(".modal.show")) {
+			if (document.querySelector(".modal.show")) {
+				return;
+			}
+			if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+				e.preventDefault();
+				void this.run();
+				return;
+			}
+			if (isTyping(e.target)) {
 				return;
 			}
 			const command = e.ctrlKey || e.metaKey;

@@ -10,6 +10,7 @@ import {
 	type FlowLink,
 } from "./layout.ts";
 import type { FilterConfig } from "./model.ts";
+import type { DatumPath, FilterRunStats } from "./results.ts";
 import type {
 	ChainSlot,
 	Point,
@@ -34,6 +35,14 @@ const WHEEL_LINE = 16;
 
 type DrawnNode = FilterNode | EndNode;
 type DrawnLink = FlowLink | ContinuationLink;
+
+/** The results of a simulation run, which the canvas shows on its nodes. */
+export interface CanvasRun {
+	/** The run statistics, by filter id. */
+	stats: Map<string, FilterRunStats>;
+	/** The number of datum the Datum Queue output. */
+	output: number;
+}
 
 const PORT_MARKUP = [{ tagName: "circle", selector: "portBody" }];
 
@@ -81,6 +90,22 @@ const FilterElement = dia.Element.define(
 				fontSize: 13,
 				textWrap: { width: 132, maxLineCount: 2, ellipsis: true },
 			},
+			badge: {
+				x: "calc(0.5*w)",
+				y: -14,
+				textAnchor: "middle",
+				textVerticalAnchor: "middle",
+				fontSize: 11,
+			},
+			badgeBody: {
+				ref: "badge",
+				x: "calc(x-7)",
+				y: "calc(y-3)",
+				width: "calc(w+14)",
+				height: "calc(h+6)",
+				rx: 8,
+				ry: 8,
+			},
 		},
 		ports: { groups: PORT_GROUPS },
 	},
@@ -89,6 +114,8 @@ const FilterElement = dia.Element.define(
 			{ tagName: "rect", selector: "body" },
 			{ tagName: "text", selector: "icon" },
 			{ tagName: "text", selector: "label" },
+			{ tagName: "rect", selector: "badgeBody" },
+			{ tagName: "text", selector: "badge" },
 		],
 	},
 );
@@ -211,6 +238,8 @@ export class Canvas extends EventTarget {
 	#selected: string | null = null;
 	#selectedFilterId: string | null = null;
 	#flagged = new Set<string>();
+	#run: CanvasRun | null = null;
+	#path: DatumPath | null = null;
 	#dropLink: dia.Link | null = null;
 	#drag: { key: string; start: Point } | null = null;
 	#changes = 0;
@@ -361,6 +390,40 @@ export class Canvas extends EventTarget {
 		this.render();
 	}
 
+	/**
+	 * Show the results of a simulation run on the nodes: how many datum went
+	 * into and out of each filter, and how many the Datum Queue output.
+	 *
+	 * @param run the run results, or `null` to show none
+	 */
+	setRun(run: CanvasRun | null): void {
+		this.#run = run;
+		this.#path = null;
+		this.#el.classList.remove("is-stale");
+		this.render();
+	}
+
+	/**
+	 * Mark the run results as made before the latest changes.
+	 *
+	 * @param stale `true` if the filters or inputs changed since the run
+	 */
+	setStale(stale: boolean): void {
+		this.#el.classList.toggle("is-stale", stale);
+	}
+
+	/**
+	 * Highlight the filters a datum went through.
+	 *
+	 * @param path the datum path, or `null` for none
+	 */
+	setPath(path: DatumPath | null): void {
+		this.#path = path;
+		for (const key of this.#nodes.keys()) {
+			this.#refreshNode(key);
+		}
+	}
+
 	/** Zoom and pan so the whole flow chart is in view. */
 	fit(): void {
 		this.paper.transformToFitContent({
@@ -428,9 +491,44 @@ export class Canvas extends EventTarget {
 					text: filter ? ws.label(filter) : node.filterId,
 					class: "sim-node-label",
 				},
+				...this.#badgeAttrs(node),
 			},
 			sim: node,
 		});
+	}
+
+	/** The run results badge of a node. */
+	#badgeAttrs(node: FilterNode): dia.Cell.Selectors {
+		const stats = this.#run?.stats.get(node.filterId);
+		if (!this.#run || (!stats && node.root)) {
+			return {
+				badge: { text: "", display: "none" },
+				badgeBody: { display: "none" },
+			};
+		}
+		const classes = ["sim-badge"];
+		let text = "0";
+		if (!stats) {
+			classes.push("is-idle");
+		} else {
+			text = `${stats.in} → ${stats.out}`;
+			if (stats.errors) {
+				classes.push("is-error");
+			} else if (stats.dropped) {
+				classes.push("is-dropped");
+			} else if (stats.changed) {
+				classes.push("is-changed");
+			}
+		}
+		const className = classes.join(" ");
+		return {
+			badge: {
+				text,
+				display: "block",
+				class: `${className} sim-badge-text`,
+			},
+			badgeBody: { display: "block", class: className },
+		};
 	}
 
 	#endCell(end: EndNode): dia.Element {
@@ -459,7 +557,11 @@ export class Canvas extends EventTarget {
 				body: { class: end.main ? "sim-end is-output" : "sim-end" },
 				dot: { class: "sim-end-dot" },
 				label: {
-					text: end.main ? "Output" : `End of ${chainLabel}`,
+					text: end.main
+						? this.#run
+							? `Output: ${this.#run.output}`
+							: "Output"
+						: `End of ${chainLabel}`,
 					class: "sim-end-label",
 				},
 			},
@@ -521,6 +623,13 @@ export class Canvas extends EventTarget {
 		) {
 			classes.push("is-problem");
 		}
+		if (this.#path?.visited.has(node.filterId)) {
+			classes.push(
+				this.#path.dropped.has(node.filterId)
+					? "is-dropped"
+					: "is-visited",
+			);
+		}
 		if (node.key === this.#selected) {
 			classes.push("is-selected");
 		}
@@ -559,6 +668,18 @@ export class Canvas extends EventTarget {
 		}
 		if (node.root) {
 			lines.push("Not in a chain, so it never runs.");
+		}
+		if (this.#run) {
+			const s = this.#run.stats.get(node.filterId);
+			lines.push(
+				s
+					? `Last run: ${s.in} datum in, ${s.out} out` +
+							(s.dropped ? `, ${s.dropped} discarded` : "") +
+							(s.changed ? `, ${s.changed} changed` : "") +
+							(s.skipped ? `, ${s.skipped} ignored` : "") +
+							(s.errors ? `, ${s.errors} errors` : "")
+					: "Last run: no datum reached this filter.",
+			);
 		}
 		return lines.join("\n");
 	}

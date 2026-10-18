@@ -28,91 +28,416 @@
 
 		<main class="sim-layout">
 			<aside class="sim-left border-end" id="left-panel">
-				<section class="sim-left-top p-3">
-					<label for="input-datum" class="form-label"
-						>Input Datum</label
-					>
-					<textarea
-						id="input-datum"
-						class="form-control font-monospace sim-datum-input"
-						spellcheck="false"
-						placeholder="A datum JSON object, or array of objects"
-					></textarea>
-					<label for="entry-point" class="form-label mt-3"
-						>Entry Point</label
-					>
-					<select id="entry-point" class="form-select" disabled>
-						<option>Main Filter Chain</option>
-					</select>
-					<div class="d-flex gap-2 mt-3">
-						<button
-							type="button"
-							class="btn btn-outline-secondary"
-							id="import-button"
-							title="Import a SolarNode settings CSV file"
+				<section class="sim-left-top">
+					<div class="sim-inputs p-3">
+						<ul
+							class="nav nav-pills nav-fill sim-input-tabs mb-2"
+							role="tablist"
+							aria-label="Run inputs"
 						>
-							<i class="bi bi-upload" aria-hidden="true"></i>
-							Import
-						</button>
-						<div class="btn-group">
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link active"
+									id="tab-datum-button"
+									data-input-tab="datum"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-datum"
+									type="button"
+									role="tab"
+									aria-controls="tab-datum"
+									aria-selected="true"
+								>
+									Datum
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link"
+									id="tab-history-button"
+									data-input-tab="history"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-history"
+									type="button"
+									role="tab"
+									aria-controls="tab-history"
+									aria-selected="false"
+								>
+									History
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link"
+									id="tab-environment-button"
+									data-input-tab="environment"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-environment"
+									type="button"
+									role="tab"
+									aria-controls="tab-environment"
+									aria-selected="false"
+								>
+									Environment
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link"
+									id="tab-node-metadata-button"
+									data-input-tab="node-metadata"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-node-metadata"
+									type="button"
+									role="tab"
+									aria-controls="tab-node-metadata"
+									aria-selected="false"
+								>
+									Node Metadata
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link"
+									id="tab-user-metadata-button"
+									data-input-tab="user-metadata"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-user-metadata"
+									type="button"
+									role="tab"
+									aria-controls="tab-user-metadata"
+									aria-selected="false"
+								>
+									User Metadata
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
+						</ul>
+						<div class="tab-content">
+							<div
+								class="tab-pane fade show active"
+								id="tab-datum"
+								role="tabpanel"
+								aria-labelledby="tab-datum-button"
+								tabindex="0"
+							>
+								<textarea
+									id="input-datum"
+									class="form-control form-control-sm font-monospace sim-json-input"
+									rows="10"
+									spellcheck="false"
+									aria-label="Input datum JSON"
+									placeholder='{"sourceId": "/meter/1", "i": {"watts": 1234}}'
+								></textarea>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="datum"
+								></div>
+								<div class="form-text">
+									The datum to run through the filters: a JSON
+									object, or an array of objects, in the
+									SolarNode datum format. A datum without a
+									<code>created</code> date gets one, a minute
+									after the datum before it.
+								</div>
+							</div>
+							<div
+								class="tab-pane fade"
+								id="tab-history"
+								role="tabpanel"
+								aria-labelledby="tab-history-button"
+								tabindex="0"
+							>
+								<label
+									for="input-history"
+									class="form-label small fw-semibold mb-1"
+									>History</label
+								>
+								<textarea
+									id="input-history"
+									class="form-control form-control-sm font-monospace sim-json-input"
+									rows="6"
+									spellcheck="false"
+									placeholder='[{"created": "2025-10-01 00:00:00Z", "sourceId": "/meter/1", "i": {"watts": 1200}}]'
+								></textarea>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="history"
+								></div>
+								<div class="form-text">
+									Datum in the node's datum history when the
+									run starts, which expression functions like
+									<code>latest()</code> and
+									<code>offset()</code>
+									read. SolarNode keeps the latest 5 datum of
+									each source.
+								</div>
+								<div class="form-check form-switch mt-3">
+									<input
+										class="form-check-input"
+										type="checkbox"
+										role="switch"
+										id="input-unfiltered-same"
+										checked
+									/>
+									<label
+										class="form-check-label small"
+										for="input-unfiltered-same"
+										>Unfiltered History is the same as
+										History</label
+									>
+								</div>
+								<div
+									id="unfiltered-section"
+									class="mt-2"
+									hidden
+								>
+									<label
+										for="input-unfiltered"
+										class="form-label small fw-semibold mb-1"
+										>Unfiltered History</label
+									>
+									<textarea
+										id="input-unfiltered"
+										class="form-control form-control-sm font-monospace sim-json-input"
+										rows="6"
+										spellcheck="false"
+									></textarea>
+									<div
+										class="invalid-feedback"
+										data-feedback-for="unfilteredHistory"
+									></div>
+									<div class="form-text">
+										Datum from before the filters were
+										applied, which the
+										<code>unfiltered*()</code>
+										functions read.
+									</div>
+								</div>
+							</div>
+							<div
+								class="tab-pane fade"
+								id="tab-environment"
+								role="tabpanel"
+								aria-labelledby="tab-environment-button"
+								tabindex="0"
+							>
+								<label
+									for="input-opmodes"
+									class="form-label small fw-semibold mb-1"
+									>Starting Operational Modes</label
+								>
+								<input
+									id="input-opmodes"
+									class="form-control form-control-sm"
+									spellcheck="false"
+									placeholder="mode-a, mode-b"
+								/>
+								<div class="form-text">
+									The modes active when the run starts,
+									separated by commas.
+								</div>
+								<label
+									for="input-localstate"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Local State</label
+								>
+								<textarea
+									id="input-localstate"
+									class="form-control form-control-sm font-monospace sim-json-input"
+									rows="6"
+									spellcheck="false"
+									placeholder="Key,Created,Modified,Type,Value&#10;counter,,,Int64,0"
+								></textarea>
+								<div class="form-text">
+									Local State CSV, as SolarNode exports it.
+									Blank
+									<code>Created</code> and
+									<code>Modified</code> dates default to the
+									first datum's date.
+								</div>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary mt-2"
+									id="use-final-state"
+									title="Copy the final operational modes and Local State of the last run here"
+									disabled
+								>
+									<i
+										class="bi bi-arrow-repeat"
+										aria-hidden="true"
+									></i>
+									Use the final state of the last run
+								</button>
+							</div>
+							<div
+								class="tab-pane fade"
+								id="tab-node-metadata"
+								role="tabpanel"
+								aria-labelledby="tab-node-metadata-button"
+								tabindex="0"
+							>
+								<textarea
+									id="input-node-metadata"
+									class="form-control form-control-sm font-monospace sim-json-input"
+									rows="10"
+									spellcheck="false"
+									aria-label="Node metadata JSON"
+									placeholder='{"pm": {"tariffs": {"schedule": "Month,Day,Weekday,Time,Rate\nJan-Dec,,,,0.25"}}}'
+								></textarea>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="nodeMetadata"
+								></div>
+								<div class="form-text">
+									The node's metadata, which the
+									<b>Node Metadata Service</b> provides: a
+									JSON object with <code>m</code>,
+									<code>pm</code>, and
+									<code>t</code> properties. Expressions read
+									it with functions like
+									<code>metadataAtPath('/pm/…')</code>.
+								</div>
+							</div>
+							<div
+								class="tab-pane fade"
+								id="tab-user-metadata"
+								role="tabpanel"
+								aria-labelledby="tab-user-metadata-button"
+								tabindex="0"
+							>
+								<p class="form-text mt-0">
+									User Metadata Services provide metadata from
+									the SolarNetwork user account. Filters find
+									one by its Service Name, like the Tariff
+									filter's Metadata Service setting.
+								</p>
+								<div id="user-metadata-list"></div>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary"
+									id="add-user-metadata"
+								>
+									<i
+										class="bi bi-plus-lg"
+										aria-hidden="true"
+									></i>
+									Add a User Metadata Service
+								</button>
+							</div>
+						</div>
+					</div>
+					<div class="sim-inputs-actions border-top px-3 py-2">
+						<label
+							for="entry-point"
+							class="form-label small fw-semibold mb-1"
+							>Entry Point</label
+						>
+						<select
+							id="entry-point"
+							class="form-select form-select-sm"
+							title="The filter the simulated Datum Queue applies to each datum"
+						>
+							<option>Main Filter Chain</option>
+						</select>
+						<div class="d-flex gap-2 mt-2">
 							<button
 								type="button"
 								class="btn btn-outline-secondary"
-								id="export-button"
-								title="Export the filters as a SolarNode settings CSV file"
+								id="import-button"
+								title="Import a SolarNode settings CSV file"
 							>
-								<i
-									class="bi bi-download"
-									aria-hidden="true"
-								></i>
-								Export
+								<i class="bi bi-upload" aria-hidden="true"></i>
+								Import
 							</button>
+							<div class="btn-group">
+								<button
+									type="button"
+									class="btn btn-outline-secondary"
+									id="export-button"
+									title="Export the filters as a SolarNode settings CSV file"
+								>
+									<i
+										class="bi bi-download"
+										aria-hidden="true"
+									></i>
+									Export
+								</button>
+								<button
+									type="button"
+									class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split"
+									data-bs-toggle="dropdown"
+									aria-expanded="false"
+								>
+									<span class="visually-hidden"
+										>Export options</span
+									>
+								</button>
+								<ul class="dropdown-menu">
+									<li>
+										<button
+											type="button"
+											class="dropdown-item"
+											data-export-style="Organized"
+										>
+											Organized, with comments
+										</button>
+									</li>
+									<li>
+										<button
+											type="button"
+											class="dropdown-item"
+											data-export-style="Plain"
+										>
+											Plain, sorted like a SolarNode
+											export
+										</button>
+									</li>
+								</ul>
+							</div>
 							<button
 								type="button"
-								class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split"
-								data-bs-toggle="dropdown"
-								aria-expanded="false"
+								class="btn btn-primary ms-auto"
+								id="run-button"
+								title="Run the input datum through the filters (Ctrl+Enter)"
 							>
-								<span class="visually-hidden"
-									>Export options</span
-								>
+								<i
+									class="bi bi-play-fill"
+									aria-hidden="true"
+								></i>
+								Run
 							</button>
-							<ul class="dropdown-menu">
-								<li>
-									<button
-										type="button"
-										class="dropdown-item"
-										data-export-style="Organized"
-									>
-										Organized, with comments
-									</button>
-								</li>
-								<li>
-									<button
-										type="button"
-										class="dropdown-item"
-										data-export-style="Plain"
-									>
-										Plain, sorted like a SolarNode export
-									</button>
-								</li>
-							</ul>
 						</div>
-						<button
-							type="button"
-							class="btn btn-primary ms-auto"
-							disabled
-						>
-							<i class="bi bi-play-fill" aria-hidden="true"></i>
-							Run
-						</button>
+						<input
+							type="file"
+							id="import-file"
+							accept=".csv,text/csv"
+							hidden
+						/>
 					</div>
-					<input
-						type="file"
-						id="import-file"
-						accept=".csv,text/csv"
-						hidden
-					/>
 				</section>
 
 				<div
@@ -132,93 +457,121 @@
 				</section>
 			</aside>
 
-			<section class="sim-canvas">
-				<div id="canvas"></div>
+			<div class="sim-center" id="center-panel">
+				<section class="sim-canvas">
+					<div id="canvas"></div>
 
-				<div
-					class="sim-canvas-tools btn-group-vertical shadow-sm"
-					role="toolbar"
-					aria-label="Canvas tools"
-				>
-					<button
-						type="button"
-						class="btn btn-light"
-						id="undo-button"
-						title="Undo (Ctrl+Z)"
+					<div
+						class="sim-canvas-tools btn-group-vertical shadow-sm"
+						role="toolbar"
+						aria-label="Canvas tools"
 					>
-						<i
-							class="bi bi-arrow-counterclockwise"
-							aria-hidden="true"
-						></i>
-						<span class="visually-hidden">Undo</span>
-					</button>
-					<button
-						type="button"
-						class="btn btn-light"
-						id="redo-button"
-						title="Redo (Ctrl+Shift+Z)"
-					>
-						<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
-						<span class="visually-hidden">Redo</span>
-					</button>
-					<button
-						type="button"
-						class="btn btn-light"
-						id="zoom-in-button"
-						title="Zoom in"
-					>
-						<i class="bi bi-zoom-in" aria-hidden="true"></i>
-						<span class="visually-hidden">Zoom in</span>
-					</button>
-					<button
-						type="button"
-						class="btn btn-light"
-						id="zoom-out-button"
-						title="Zoom out"
-					>
-						<i class="bi bi-zoom-out" aria-hidden="true"></i>
-						<span class="visually-hidden">Zoom out</span>
-					</button>
-					<button
-						type="button"
-						class="btn btn-light"
-						id="fit-button"
-						title="Fit the flow chart in view"
-					>
-						<i
-							class="bi bi-arrows-fullscreen"
-							aria-hidden="true"
-						></i>
-						<span class="visually-hidden">Fit in view</span>
-					</button>
-				</div>
+						<button
+							type="button"
+							class="btn btn-light"
+							id="undo-button"
+							title="Undo (Ctrl+Z)"
+						>
+							<i
+								class="bi bi-arrow-counterclockwise"
+								aria-hidden="true"
+							></i>
+							<span class="visually-hidden">Undo</span>
+						</button>
+						<button
+							type="button"
+							class="btn btn-light"
+							id="redo-button"
+							title="Redo (Ctrl+Shift+Z)"
+						>
+							<i
+								class="bi bi-arrow-clockwise"
+								aria-hidden="true"
+							></i>
+							<span class="visually-hidden">Redo</span>
+						</button>
+						<button
+							type="button"
+							class="btn btn-light"
+							id="zoom-in-button"
+							title="Zoom in"
+						>
+							<i class="bi bi-zoom-in" aria-hidden="true"></i>
+							<span class="visually-hidden">Zoom in</span>
+						</button>
+						<button
+							type="button"
+							class="btn btn-light"
+							id="zoom-out-button"
+							title="Zoom out"
+						>
+							<i class="bi bi-zoom-out" aria-hidden="true"></i>
+							<span class="visually-hidden">Zoom out</span>
+						</button>
+						<button
+							type="button"
+							class="btn btn-light"
+							id="fit-button"
+							title="Fit the flow chart in view"
+						>
+							<i
+								class="bi bi-arrows-fullscreen"
+								aria-hidden="true"
+							></i>
+							<span class="visually-hidden">Fit in view</span>
+						</button>
+					</div>
 
-				<div id="empty-state" class="sim-empty card shadow-sm" hidden>
-					<div class="card-body">
-						<p class="card-text">
-							Upload node settings CSV to get started, or start by
-							dragging items onto this grid.
-						</p>
-						<div class="input-group">
-							<input
-								type="file"
-								class="form-control"
-								id="empty-file"
-								accept=".csv,text/csv"
-								aria-label="Settings CSV file"
-							/>
-							<button
-								type="button"
-								class="btn btn-primary"
-								id="empty-upload"
-								disabled
-							>
-								Upload Settings
-							</button>
+					<div
+						id="empty-state"
+						class="sim-empty card shadow-sm"
+						hidden
+					>
+						<div class="card-body">
+							<p class="card-text">
+								Upload node settings CSV to get started, or
+								start by dragging items onto this grid.
+							</p>
+							<div class="input-group">
+								<input
+									type="file"
+									class="form-control"
+									id="empty-file"
+									accept=".csv,text/csv"
+									aria-label="Settings CSV file"
+								/>
+								<button
+									type="button"
+									class="btn btn-primary"
+									id="empty-upload"
+									disabled
+								>
+									Upload Settings
+								</button>
+							</div>
 						</div>
 					</div>
+				</section>
+
+				<div
+					class="sim-splitter"
+					id="center-splitter"
+					role="separator"
+					aria-orientation="horizontal"
+					aria-label="Resize the canvas and execution flow sections"
+					tabindex="0"
+					hidden
+				>
+					<i class="bi bi-grip-horizontal" aria-hidden="true"></i>
 				</div>
-			</section>
+
+				<section
+					class="sim-results"
+					id="results"
+					aria-label="Execution flow"
+					hidden
+				></section>
+			</div>
 
 			<aside class="sim-right border-start p-3" id="inspector"></aside>
 		</main>

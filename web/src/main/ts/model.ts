@@ -164,3 +164,178 @@ export interface SettingsForm {
 	/** How the simulation of the filter differs from SolarNode. */
 	limitation?: string;
 }
+
+/* === Simulation === */
+
+/** A simulated User Metadata Service. */
+export interface UserMetadataConfig {
+	/** The Service Name, which filters use to find the service. */
+	uid?: string | null;
+	/** The metadata, as a SolarNetwork metadata JSON object. */
+	metadata?: unknown;
+}
+
+/** The starting state of the simulated node. */
+export interface SimulationEnvironment {
+	/** The active operational modes. */
+	opModes?: string[] | null;
+	/** Local State, in the SolarNode Local State CSV format. */
+	localStateCsv?: string | null;
+	/** The metadata of the Node Metadata Service. */
+	nodeMetadata?: unknown;
+	userMetadata?: UserMetadataConfig[] | null;
+}
+
+/** Datum to pre-load into the datum histories. */
+export interface SimulationHistory {
+	filtered?: unknown[] | null;
+	/** The unfiltered history, or `null` to use the same datum as `filtered`. */
+	unfiltered?: unknown[] | null;
+}
+
+/** The level of detail of a simulation result. */
+export type SimulationDetail = "Summary" | "Debug";
+
+/** Simulation options. */
+export interface SimulationOptions {
+	maxDatum?: number | null;
+	maxGenerationDepth?: number | null;
+	timeoutMs?: number | null;
+	detail?: SimulationDetail | null;
+}
+
+/** A request to run a simulation. */
+export interface SimulationRequest {
+	config: SimConfig;
+	/** The `id` of the filter to apply, or `null` for the Main chain. */
+	entryPoint?: string | null;
+	/** The input datum, as SolarNode datum JSON objects. */
+	datum?: unknown[] | null;
+	history?: SimulationHistory | null;
+	environment?: SimulationEnvironment | null;
+	options?: SimulationOptions | null;
+}
+
+/** Datum sample properties, in the SolarNode datum JSON style. */
+export interface SamplesInfo {
+	i?: Record<string, unknown>;
+	a?: Record<string, unknown>;
+	s?: Record<string, unknown>;
+	t?: string[];
+}
+
+/** A snapshot of a datum. */
+export interface DatumInfo {
+	sourceId?: string;
+	timestamp?: string;
+	locationId?: number;
+	samples: SamplesInfo;
+}
+
+/** Where a processed datum came from. */
+export interface DatumOrigin {
+	type: "Input" | "Generated";
+	/** For an input datum, its index in the request. */
+	index?: number;
+	/** For a generated datum, the datum being processed when it was generated. */
+	parentSeq?: number;
+	stepId?: number;
+	/** For a generated datum, the filter that generated it. */
+	filterId?: string;
+}
+
+/** The outcome of a filter step. */
+export type FilterStepStatus =
+	"Changed" | "Unchanged" | "Dropped" | "Skipped" | "Error" | "Unsupported";
+
+/** A change to the active operational modes. */
+export interface OpModeChange {
+	enabled?: string[];
+	disabled?: string[];
+}
+
+/** A change to one Local State entry. */
+export interface LocalStateChange {
+	key: string;
+	/** The type, or missing if the entry was deleted. */
+	type?: string;
+	value?: unknown;
+	previousValue?: unknown;
+}
+
+/** An instruction issued by a filter. */
+export interface InstructionInfo {
+	topic: string;
+	parameters?: Record<string, string>;
+	state?: string;
+}
+
+/** One filter invocation while processing a datum. */
+export interface FilterStep {
+	id: number;
+	filterId: string;
+	uid?: string;
+	factoryUid: string;
+	/** The chain nesting depth, from 0 for the entry filter. */
+	depth?: number;
+	status: FilterStepStatus;
+	input?: SamplesInfo;
+	/** The samples the filter returned, for a `Changed` step only. */
+	output?: SamplesInfo;
+	outputTimestamp?: string;
+	parameters?: Record<string, unknown>;
+	opModes?: OpModeChange;
+	localState?: LocalStateChange[];
+	/** The sequence numbers of datum the filter generated. */
+	generated?: number[];
+	instructions?: InstructionInfo[];
+	error?: string;
+	durationMicros?: number;
+}
+
+/** The trace of one datum through the Datum Queue. */
+export interface DatumTrace {
+	seq: number;
+	origin: DatumOrigin;
+	input: DatumInfo;
+	/** `false` if the datum is not persisted after filtering. */
+	persist?: boolean;
+	steps?: FilterStep[];
+	/** The datum after the filters, or missing if they discarded it. */
+	output?: DatumInfo;
+	error?: string;
+}
+
+/** A Local State entry. */
+export interface LocalStateInfo {
+	key: string;
+	type: string;
+	value?: unknown;
+	created?: string;
+	modified?: string;
+}
+
+/** The state of the simulated node. */
+export interface SimulationState {
+	opModes?: string[];
+	localState?: LocalStateInfo[];
+	/** The Local State, in the SolarNode Local State CSV format. */
+	localStateCsv?: string;
+}
+
+/** Simulation statistics. */
+export interface SimulationStats {
+	processed: number;
+	generated: number;
+	output: number;
+	discarded: number;
+	durationMs: number;
+}
+
+/** The result of a simulation. */
+export interface SimulationResult {
+	datum: DatumTrace[];
+	messages: SimulationMessage[];
+	finalState: SimulationState;
+	stats: SimulationStats;
+}
