@@ -5,3 +5,6 @@ plugins {
 rootProject.name = 'solarnode-filter-sim'
 include('app')
 include('web')
+
+project(':app').name = 'solarnode-filter-sim-app'
+project(':web').name = 'solarnode-filter-sim-web'

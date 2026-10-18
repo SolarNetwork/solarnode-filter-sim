@@ -20,10 +20,17 @@
 package s10k.node.sim.filter.sim;
 
 import java.io.Serial;
+import java.util.List;
+import s10k.node.sim.filter.domain.SimulationMessage;
 
 /**
- * A problem with a simulation request that prevents the simulation from
- * running, such as invalid datum JSON.
+ * A problem with a request that prevents it from being handled, such as invalid
+ * datum JSON for a simulation.
+ *
+ * <p>
+ * The exception can list the individual problems, for example every filter
+ * instance ID that prevents a settings export.
+ * </p>
  *
  * @author matt
  * @version 1.0
@@ -33,6 +40,9 @@ public class SimulationException extends RuntimeException {
 	@Serial
 	private static final long serialVersionUID = -1186421547226001537L;
 
+	/** The problems. */
+	private final transient List<SimulationMessage> problems;
+
 	/**
 	 * Constructor.
 	 *
@@ -41,6 +51,20 @@ public class SimulationException extends RuntimeException {
 	 */
 	public SimulationException(String message) {
 		super(message);
+		this.problems = List.of();
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param message
+	 *        the message
+	 * @param problems
+	 *        the individual problems
+	 */
+	public SimulationException(String message, List<SimulationMessage> problems) {
+		super(message);
+		this.problems = List.copyOf(problems);
 	}
 
 	/**
@@ -53,6 +77,16 @@ public class SimulationException extends RuntimeException {
 	 */
 	public SimulationException(String message, Throwable cause) {
 		super(message, cause);
+		this.problems = List.of();
+	}
+
+	/**
+	 * Get the individual problems.
+	 *
+	 * @return the problems, never {@code null}
+	 */
+	public List<SimulationMessage> problems() {
+		return problems;
 	}
 
 }

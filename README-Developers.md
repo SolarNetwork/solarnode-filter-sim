@@ -4,10 +4,10 @@ This document has information for developers of the SolarNode Filter Simulator.
 
 # Project layout
 
-| Directory | Gradle project | Contents |
-|:----------|:---------------|:---------|
-| `app`     | `:app`         | The Spring Boot application, which runs the SolarNode filters and provides the web API. |
-| `web`     | `:web`         | The web UI: a [Vite][vite] project using TypeScript, [Bootstrap][bootstrap], and [JointJS][jointjs]. The Gradle build packages it into a jar under `static/`, which Spring Boot serves. |
+| Directory | Gradle project              | Contents |
+|:----------|:----------------------------|:---------|
+| `app`     | `:solarnode-filter-sim-app` | The Spring Boot application, which runs the SolarNode filters and provides the web API. |
+| `web`     | `:solarnode-filter-sim-web` | The web UI: a [Vite][vite] project using TypeScript, [Bootstrap][bootstrap], and [JointJS][jointjs]. The Gradle build packages it into a jar under `static/`, which Spring Boot serves. |
 
 # Requirements
 
@@ -19,7 +19,7 @@ This document has information for developers of the SolarNode Filter Simulator.
 # Running the app
 
 ```sh
-./gradlew :app:bootRun
+./gradlew :solarnode-filter-sim-app:bootRun
 ```
 
 Then visit <http://localhost:8080/>.
@@ -31,7 +31,7 @@ restarting the app. Run the app and the Vite server side by side:
 
 ```sh
 # terminal 1: the app, which provides the /api endpoints
-./gradlew :app:bootRun --console=plain
+./gradlew :solarnode-filter-sim-app:bootRun --console=plain
 
 # terminal 2: the Vite development server
 cd web
@@ -61,6 +61,8 @@ records in the `s10k.node.sim.filter.domain` package.
 | `GET /api/info` | The application name and version. |
 | `GET /api/filter-types` | The supported filter types, sorted by name. |
 | `POST /api/settings-form` | Get a filter's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. |
+| `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out. |
+| `POST /api/settings/export` | Export a configuration as a settings CSV file: a `SettingsExportRequest` in, a `SettingsExport` out. |
 | `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
 
 A minimal simulation request runs one Expression filter on the main chain:
@@ -105,6 +107,27 @@ A `Group` with `dynamic` set is a list. To add an item, increase the setting nam
 `countKey`. To remove the last item, decrease that count and delete the settings whose keys
 start with `key[n]`, where `n` is the new count. Then request the form again.
 
+## Settings CSV files
+
+The import reads a settings CSV file the way SolarNode does (Core Settings Support 4.2.1), and
+returns the filter configuration, `messages` about settings a node would skip or that the
+simulator changed, and the `ignored` components that are not filters. Comment lines are kept
+with the filter they introduce.
+
+```sh
+curl -H 'Content-Type: text/csv' --data-binary @settings.csv http://localhost:8080/api/settings/import
+```
+
+A chain member that is not in the file becomes an "external" filter, with the factory UID
+`external` and only a `uid` setting. Datum pass through it unchanged, and an export writes only
+the chain's reference to its Service Name, so a partial file keeps its chain intact.
+
+The export takes `{"config": …, "style": "Organized"}` and returns `{"csv": …, "messages": […]}`.
+The `Organized` style writes the Datum Queue and the Main chain first, then the other filters
+in execution order, each with its comments or a generated banner. The `Plain` style sorts the
+rows like a SolarNode export. A configuration with instance IDs that SolarNode does not allow
+gets a `400` response whose `problems` array lists each one.
+
 # Building
 
 ```sh
@@ -120,7 +143,7 @@ runnable jar is `app/build/libs/app-<version>.jar`.
 The native executable needs GraalVM for JDK 25. Point `GRAALVM_HOME` at it, for example:
 
 ```sh
-GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :app:nativeCompile
+GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeCompile
 ```
 
 The executable is `app/build/native/nativeCompile/sn-filter-sim`.
@@ -139,7 +162,7 @@ For example, for a faster development build:
 
 ```sh
 NATIVE_BUILD_ARGS=--enable-native-access=ALL-UNNAMED,-Ob GRAALVM_HOME=/opt/graalvm-jdk@25 \
-  ./gradlew :app:nativeCompile
+  ./gradlew :solarnode-filter-sim-app:nativeCompile
 ```
 
 # Code style
@@ -168,7 +191,7 @@ Ivy repository with `ant publish` in the bundle's directory (in the `solarnetwor
 `-PlocalIvy` to Gradle:
 
 ```sh
-./gradlew -PlocalIvy :app:bootRun
+./gradlew -PlocalIvy :solarnode-filter-sim-app:bootRun
 ```
 
 The local Ivy repository defaults to `~/.ivy2/local`. Use `-PlocalIvyPath=/some/path` to change

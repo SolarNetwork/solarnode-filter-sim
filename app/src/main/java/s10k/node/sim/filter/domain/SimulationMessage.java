@@ -23,8 +23,8 @@ import org.jspecify.annotations.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * A message about a simulation, such as a configuration problem or a limit that
- * was reached.
+ * A message about a simulation or a settings CSV import or export, such as a
+ * configuration problem or a limit that was reached.
  *
  * @param level
  *        the message level
@@ -87,6 +87,52 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	/** A history datum that is newer than the first input datum. */
 	public static final String CODE_HISTORY_AFTER_INPUT = "HistoryAfterInput";
 
+	/** A settings CSV row that SolarNode cannot read. */
+	public static final String CODE_CSV_FORMAT = "CsvFormat";
+
+	/** A settings CSV file whose first line is not the header. */
+	public static final String CODE_CSV_HEADER = "CsvHeader";
+
+	/** A setting that SolarNode skips when it imports a settings CSV file. */
+	public static final String CODE_SETTING_SKIPPED = "SettingSkipped";
+
+	/** Setting flags, which the simulator does not keep. */
+	public static final String CODE_SETTING_FLAGS = "SettingFlags";
+
+	/** A filter instance ID that SolarNode does not allow. */
+	public static final String CODE_INVALID_INSTANCE_ID = "InvalidInstanceId";
+
+	/** More than one instance of a filter type with the same instance ID. */
+	public static final String CODE_DUPLICATE_INSTANCE_ID = "DuplicateInstanceId";
+
+	/**
+	 * A filter instance ID that SolarNode releases before 4.2.1 do not import.
+	 */
+	public static final String CODE_LEGACY_INSTANCE_ID = "LegacyInstanceId";
+
+	/** A filter instance ID assigned on export. */
+	public static final String CODE_INSTANCE_ID_ASSIGNED = "InstanceIdAssigned";
+
+	/** Filter settings without a {@code .FACTORY} row for their instance. */
+	public static final String CODE_MISSING_FACTORY = "MissingFactory";
+
+	/**
+	 * A filter that a chain refers to by Service Name, without its settings.
+	 */
+	public static final String CODE_EXTERNAL_FILTER = "ExternalFilter";
+
+	/** A problem with the Datum Queue's filter, the Main chain. */
+	public static final String CODE_MAIN_CHAIN = "MainChain";
+
+	/** A global datum filter, which the simulator does not support. */
+	public static final String CODE_GLOBAL_FILTER = "GlobalFilter";
+
+	/** A transient setting, which SolarNode does not save. */
+	public static final String CODE_TRANSIENT_SETTING = "TransientSetting";
+
+	/** A filter configuration that cannot be exported. */
+	public static final String CODE_INVALID_CONFIG = "InvalidConfig";
+
 	/**
 	 * Message levels.
 	 */
@@ -97,6 +143,9 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 
 		/** A warning. */
 		Warning,
+
+		/** An error, which stopped the request. */
+		Error,
 
 	}
 
@@ -116,6 +165,36 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	public static SimulationMessage warning(String code, String message, @Nullable String filterId,
 			@Nullable Integer datumSeq) {
 		return new SimulationMessage(Level.Warning, code, message, filterId, datumSeq);
+	}
+
+	/**
+	 * Create an information message.
+	 *
+	 * @param code
+	 *        the code
+	 * @param message
+	 *        the message
+	 * @param filterId
+	 *        the filter configuration {@code id}, or {@code null}
+	 * @return the message
+	 */
+	public static SimulationMessage info(String code, String message, @Nullable String filterId) {
+		return new SimulationMessage(Level.Info, code, message, filterId, null);
+	}
+
+	/**
+	 * Create an error message.
+	 *
+	 * @param code
+	 *        the code
+	 * @param message
+	 *        the message
+	 * @param filterId
+	 *        the filter configuration {@code id}, or {@code null}
+	 * @return the message
+	 */
+	public static SimulationMessage error(String code, String message, @Nullable String filterId) {
+		return new SimulationMessage(Level.Error, code, message, filterId, null);
 	}
 
 }

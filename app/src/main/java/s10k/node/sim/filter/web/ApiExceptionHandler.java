@@ -37,6 +37,11 @@ public class ApiExceptionHandler {
 	/**
 	 * Handle an invalid API request.
 	 *
+	 * <p>
+	 * When the exception lists individual problems, they are included as a
+	 * {@code problems} array of messages.
+	 * </p>
+	 *
 	 * @param e
 	 *        the exception
 	 * @return the problem details, with a {@code 400} status
@@ -45,6 +50,9 @@ public class ApiExceptionHandler {
 	public ProblemDetail simulationException(SimulationException e) {
 		ProblemDetail result = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
 		result.setTitle("Invalid request");
+		if ( !e.problems().isEmpty() ) {
+			result.setProperty("problems", e.problems());
+		}
 		return result;
 	}
 

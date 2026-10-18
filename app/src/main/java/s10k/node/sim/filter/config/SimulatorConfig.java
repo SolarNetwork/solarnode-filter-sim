@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import s10k.node.sim.filter.aot.SimulatorRuntimeHints;
+import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
@@ -88,6 +89,21 @@ public class SimulatorConfig {
 	public SettingsFormService settingsFormService(FilterTypeRegistry registry,
 			SpelExpressionService expressionService) {
 		return new SettingsFormService(registry, expressionService);
+	}
+
+	/**
+	 * The settings CSV import and export service.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param settingsFormService
+	 *        the settings form service
+	 * @return the service
+	 */
+	@Bean
+	public SettingsCsvService settingsCsvService(FilterTypeRegistry registry,
+			SettingsFormService settingsFormService) {
+		return new SettingsCsvService(registry, settingsFormService);
 	}
 
 }

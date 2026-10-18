@@ -1,0 +1,39 @@
+key,type,value,flags,modified,note
+
+#############
+# Datum Queue
+#############
+
+net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - Main,,,
+
+#####################
+# Filter Chain - Main
+#####################
+
+net.solarnetwork.node.datum.xform.user.Main,uid,Chain - Main,,,
+net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,1,,,
+net.solarnetwork.node.datum.xform.user.Main,transformUids[0],Expr - Inverter,,,
+net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,
+
+##################################
+# Expression Filter - Inverter
+##################################
+
+net.solarnetwork.node.datum.samplefilter.expression.INV,uid,Expr - Inverter,,,
+net.solarnetwork.node.datum.samplefilter.expression.INV,sourceId,/INV/,,,
+net.solarnetwork.node.datum.samplefilter.expression.INV,expressionConfigsCount,1,,,
+net.solarnetwork.node.datum.samplefilter.expression.INV,expressionConfigs[0].name,opState,,,
+net.solarnetwork.node.datum.samplefilter.expression.INV,expressionConfigs[0].datumPropertyTypeKey,s,,,
+net.solarnetwork.node.datum.samplefilter.expression.INV,expressionConfigs[0].expression,"has('operatingStatus')
+? (
+          operatingStatus == 6 ? 1
+        : operatingStatus == 25 || operatingStatus == 8 ? 4
+        : operatingStatus == 9 || operatingStatus == 10 || operatingStatus == 15 || operatingStatus == 24 || operatingStatus == 26 || operatingStatus == 31 || operatingStatus == 35 || operatingStatus == 51 || operatingStatus == 53 || operatingStatus == 101 ? 5
+        : operatingStatus == 2 ? 3
+        : operatingStatus == 5 ? 2
+        : operatingStatus == 7 ? 7
+        : 0
+)
+: 0",,,
+net.solarnetwork.node.datum.samplefilter.expression.INV,expressionConfigs[0].expressionServiceId,net.solarnetwork.common.expr.spel.SpelExpressionService,,,
+net.solarnetwork.node.datum.samplefilter.expression.FACTORY,INV,INV,,,

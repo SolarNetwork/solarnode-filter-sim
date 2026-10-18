@@ -453,6 +453,37 @@ public class SimulationEngineTests {
 	}
 
 	@Test
+	public void externalFilter() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "ext", "exp"),
+						new FilterConfig("ext", FilterConfig.EXTERNAL_FACTORY_UID, null,
+								Map.of("uid", "Elsewhere"), null),
+						expression("exp", "EXP", "x", "1")),
+				METER_DATUM);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("External filter reported")
+			.extracting(SimulationMessage::code, SimulationMessage::filterId)
+			.containsExactly(tuple(SimulationMessage.CODE_EXTERNAL_FILTER, "ext"))
+			;
+		then(result.datum().getFirst().steps())
+			.as("External filter passed the datum through, and the chain continued")
+			.extracting(FilterStep::filterId, FilterStep::status)
+			.containsExactly(
+					tuple("main", Status.Changed),
+					tuple("ext", Status.Unsupported),
+					tuple("exp", Status.Changed))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void unknownSetting() {
 		// GIVEN
 		Map<String, String> settings = expressions("EXP", "x", "1");

@@ -122,7 +122,7 @@ dependencies {
 	implementation libs.fastcsv
 
 	// the web UI, packaged as static resources
-	runtimeOnly project(':web')
+	runtimeOnly project(':solarnode-filter-sim-web')
 
 	testImplementation libs.junit.jupiter
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'

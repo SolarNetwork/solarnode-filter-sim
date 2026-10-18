@@ -1,0 +1,28 @@
+key,type,value,flags,modified,note
+# Settings from a test node
+net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - Main
+net.solarnetwork.node.runtime.dq,queueDelayMs,500
+solarnode.settings.lastBackupDate,,2025-10-01
+#
+# Main chain
+#
+net.solarnetwork.node.datum.xform.user.Main,uid,Chain - Main
+net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,3
+net.solarnetwork.node.datum.xform.user.Main,transformUids[0],Throttle
+net.solarnetwork.node.datum.xform.user.Main,transformUids[1],Somewhere Else
+net.solarnetwork.node.datum.xform.user.Main,transformUids[2],Tariffs
+net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main
+# Throttle
+net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle,,,Limit everything
+net.solarnetwork.node.datum.samplefilter.limiter.1,frequencySeconds,30,1
+#net.solarnetwork.node.datum.samplefilter.limiter.1,sourceId,/meter/
+net.solarnetwork.node.datum.filter.tariff.FACTORY,T1,T1
+net.solarnetwork.node.datum.filter.tariff.T1,uid,Tariffs
+net.solarnetwork.node.datum.filter.tariff.T1,tariffs,"a,b"
+net.solarnetwork.node.datum.samplefilter.simple.FACTORY,1,1
+net.solarnetwork.node.datum.samplefilter.simple.1,uid,Global
+net.solarnetwork.node.datum.modbus.FACTORY,1,1
+net.solarnetwork.node.datum.modbus.1,uid,Meter
+net.solarnetwork.node.datum.samplefilter.expression.FACTORY,Bad:Name,Bad:Name
+net.solarnetwork.node.datum.samplefilter.expression.Bad:Name,uid,Bad
+,orphan,value

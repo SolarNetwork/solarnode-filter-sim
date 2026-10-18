@@ -31,10 +31,28 @@ import org.jspecify.annotations.Nullable;
  * @param mainChainId
  *        the {@code id} of the filter the Datum Queue applies (normally the
  *        main filter chain), or {@code null} if none
+ * @param datumQueueComment
+ *        the comment lines that introduce the Datum Queue setting in a settings
+ *        CSV file, each a {@code #} comment or a blank row, separated by line
+ *        feeds, or {@code null}
  * @author matt
  * @version 1.0
  */
-public record SimConfig(@Nullable List<FilterConfig> filters, @Nullable String mainChainId) {
+public record SimConfig(@Nullable List<FilterConfig> filters, @Nullable String mainChainId,
+		@Nullable String datumQueueComment) {
+
+	/**
+	 * Constructor, without a Datum Queue comment.
+	 *
+	 * @param filters
+	 *        the filter configurations
+	 * @param mainChainId
+	 *        the {@code id} of the filter the Datum Queue applies, or
+	 *        {@code null} if none
+	 */
+	public SimConfig(@Nullable List<FilterConfig> filters, @Nullable String mainChainId) {
+		this(filters, mainChainId, null);
+	}
 
 	/**
 	 * Get the filters, never {@code null}.

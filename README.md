@@ -23,7 +23,7 @@ The simulator is a single application that serves its web UI over HTTP, by defau
 To run from source with Java 25:
 
 ```sh
-./gradlew :app:bootRun
+./gradlew :solarnode-filter-sim-app:bootRun
 ```
 
 To run the native executable (see [README-Developers.md](README-Developers.md) for how to build

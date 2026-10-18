@@ -115,6 +115,24 @@ public final class StandardFilterTypes {
 	/** The Instructor Datum Filter factory UID. */
 	public static final String INSTRUCTOR = "net.solarnetwork.node.datum.filter.instructor";
 
+	/**
+	 * The SolarNode user datum filters from other bundles, which the simulator
+	 * does not support, as factory UIDs and titles: the Tariff, PVLib, and
+	 * Metric Harvester filters.
+	 */
+	public static final Map<String, String> UNSUPPORTED = Map.of(
+			"net.solarnetwork.node.datum.filter.tariff", "Time-based Tariff Datum Filter",
+			"net.solarnetwork.node.datum.filter.pvlib.poa", "POA Irradiance Calculator (pvlib)",
+			"net.solarnetwork.node.metrics.service.harvester", "Metric Harvester");
+
+	/**
+	 * The factory UIDs of the global datum filters in the standard bundle,
+	 * which the simulator does not support: the global Property and Throttle
+	 * filters.
+	 */
+	public static final Set<String> GLOBAL = Set.of("net.solarnetwork.node.datum.samplefilter.simple",
+			"net.solarnetwork.node.datum.samplefilter.throttle");
+
 	private static final String BASE_FILTER = "net.solarnetwork.node.service.support.BaseDatumFilterSupport";
 	private static final String BASIC_IDENTIFIABLE = "net.solarnetwork.service.support.BasicIdentifiable";
 	private static final String EXPRESSION_CONFIG = "net.solarnetwork.node.service.support.ExpressionConfig";

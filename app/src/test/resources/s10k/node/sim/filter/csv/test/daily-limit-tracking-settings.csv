@@ -1,0 +1,33 @@
+key,type,value,flags,modified,note
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigsCount,2,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigs[0].expression,"changeLocalState('day-timestamp', epochSecs(startOfDay()))",,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigs[0].expressionServiceId,net.solarnetwork.common.expr.spel.SpelExpressionService,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigs[0].name,day_changed,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigs[1].expression,"day_changed || !hasLocalState('wh-startofday')
+? saveLocalState('wh-startofday', wattHours)
+: localState('wh-startofday', wattHours)",,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigs[1].expressionServiceId,net.solarnetwork.common.expr.spel.SpelExpressionService,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,expressionConfigs[1].name,wattHours_startOfDay,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,sourceId,^/meter/1$,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.DayLimit,uid,PEX - Day Period,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.FACTORY,DayLimit,DayLimit,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.FACTORY,OverLimit,OverLimit,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,expressionConfigsCount,1,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,expressionConfigs[0].datumPropertyTypeKey,a,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,expressionConfigs[0].expression,"has('wattHours_startOfDay') && (currInput - wattHours_startOfDay - 1000) > 0
+? prevReading + ((currInput - wattHours_startOfDay - 1000) - max(0, prevInput - wattHours_startOfDay - 1000))
+: prevReading",,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,expressionConfigs[0].expressionServiceId,net.solarnetwork.common.expr.spel.SpelExpressionService,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,expressionConfigs[0].name,wh_overLimit,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,sourceId,^/meter/1$,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,uid,VM - Day Over Limit,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,virtualMeterConfigsCount,1,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,virtualMeterConfigs[0].name,wattHours,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,virtualMeterConfigs[0].propertyTypeKey,a,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,virtualMeterConfigs[0].readingPropertyName,wh_overLimit,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,2,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUids[0],PEX - Day Period,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUids[1],VM - Day Over Limit,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,uid,Chain - Main,,2025-04-01 00:00:00,
+net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - Main,,2025-04-01 00:00:00,

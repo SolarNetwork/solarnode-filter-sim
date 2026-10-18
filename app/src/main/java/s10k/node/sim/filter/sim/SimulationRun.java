@@ -266,10 +266,17 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final FilterTypeDefinition def = registry.definition(config.factoryUid());
 		final Map<String, String> settings = filterSettings(config, def);
 		if ( def == null ) {
-			warn(SimulationMessage.CODE_UNSUPPORTED_FILTER,
-					"The filter type %s is not supported, so datum pass through the filter %s unchanged."
-							.formatted(config.factoryUid(), label(config.id(), settings)),
-					config.id(), null);
+			if ( config.isExternal() ) {
+				warn(SimulationMessage.CODE_EXTERNAL_FILTER,
+						"The settings of the filter %s are not part of the configuration, so datum pass through it unchanged."
+								.formatted(label(config.id(), settings)),
+						config.id(), null);
+			} else {
+				warn(SimulationMessage.CODE_UNSUPPORTED_FILTER,
+						"The filter type %s is not supported, so datum pass through the filter %s unchanged."
+								.formatted(config.factoryUid(), label(config.id(), settings)),
+						config.id(), null);
+			}
 			return new TracingDatumFilterService(config.id(), config.factoryUid(),
 					new UnsupportedDatumFilterService(config.factoryUid(), settings.get(UID_SETTING)),
 					false, tracer);

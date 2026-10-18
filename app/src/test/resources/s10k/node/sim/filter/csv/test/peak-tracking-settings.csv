@@ -1,0 +1,30 @@
+key,type,value,flags,modified,note
+net.solarnetwork.node.datum.filter.std.param.15Min,expressionConfigsCount,1,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.15Min,expressionConfigs[0].expression,"changeLocalState('p15min-timestamp', epochSecs(dateFloor(timestamp(), 'PT15M')))",,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.15Min,expressionConfigs[0].expressionServiceId,net.solarnetwork.common.expr.spel.SpelExpressionService,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.15Min,expressionConfigs[0].name,p15min_changed,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.15Min,sourceId,/meter/,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.15Min,uid,PEX - 15min Period,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.filter.std.param.FACTORY,15Min,15Min,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.downsample.FACTORY,Meters,Meters,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.downsample.Meters,sampleDurationSecs,300,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.downsample.Meters,sourceId,/meter/,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.downsample.Meters,uid,DWS - Meter,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.FACTORY,Peak Power,Peak Power,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.Peak Power,expressionConfigsCount,1,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.Peak Power,expressionConfigs[0].expression,"has('watts') && has('p15min_changed') && p15min_changed
+? saveLocalState('p15min-mtr1-watts-max', watts)
+: has('watts') && has('p15min_changed')
+? saveLocalState('p15min-mtr1-watts-max', max(watts, localState('p15min-mtr1-watts-max', watts)))
+: null",,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.Peak Power,expressionConfigs[0].expressionServiceId,net.solarnetwork.common.expr.spel.SpelExpressionService,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.Peak Power,expressionConfigs[0].name,wattsMax_p15,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.Peak Power,sourceId,^/meter/1$,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.samplefilter.expression.Peak Power,uid,EXP - 15min Peak,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,3,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUids[0],PEX - 15min Period,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUids[1],EXP - 15min Peak,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,transformUids[2],DWS - Meter,,2025-04-01 00:00:00,
+net.solarnetwork.node.datum.xform.user.Main,uid,Chain - Main,,2025-04-01 00:00:00,
+net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - Main,,2025-04-01 00:00:00,
