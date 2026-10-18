@@ -623,7 +623,9 @@ export class Canvas extends EventTarget {
 		) {
 			classes.push("is-problem");
 		}
-		if (this.#path?.visited.has(node.filterId)) {
+		if (this.#path?.current === node.filterId) {
+			classes.push("is-current");
+		} else if (this.#path?.visited.has(node.filterId)) {
 			classes.push(
 				this.#path.dropped.has(node.filterId)
 					? "is-dropped"

@@ -1,3 +1,13 @@
+import {
+	closestPosition,
+	cursorBounds,
+	debugPositions,
+	debugState,
+	DebugView,
+	moveCursor,
+	type DebugMove,
+	type DebugPosition,
+} from "./debug.ts";
 import { filterIcon } from "./icons.ts";
 import type {
 	DatumInfo,
@@ -5,11 +15,22 @@ import type {
 	FilterStep,
 	FilterStepStatus,
 	MessageLevel,
-	SamplesInfo,
 	SimulationMessage,
 	SimulationResult,
 	SimulationState,
 } from "./model.ts";
+import {
+	diffSamples,
+	element,
+	formatDuration,
+	formatTimestamp,
+	formatValue,
+	SAMPLE_TYPES,
+	samplesLine,
+	sameValue,
+	TYPE_NAMES,
+	type SampleType,
+} from "./view.ts";
 import type { Workspace } from "./workspace.ts";
 
 /** The run statistics of one filter, for the canvas. */
@@ -30,19 +51,25 @@ export interface DatumPath {
 	visited: Set<string>;
 	/** The ids of the filters that discarded the datum. */
 	dropped: Set<string>;
+	/** In debug mode, the id of the filter at the cursor. */
+	current?: string;
 }
 
-/** The sample property types, in display order. */
-const SAMPLE_TYPES = ["i", "a", "s"] as const;
+/** A debug cursor position that stays meaningful across re-runs. */
+export interface DebugMark {
+	/** The datum sequence number. */
+	seq: number;
+	stepIndex: number;
+}
 
-type SampleType = (typeof SAMPLE_TYPES)[number];
-
-const TYPE_NAMES: Record<SampleType | "t", string> = {
-	i: "Instantaneous",
-	a: "Accumulating",
-	s: "Status",
-	t: "Tags",
-};
+/** The state of debug mode. */
+interface DebugSession {
+	positions: DebugPosition[];
+	pos: DebugPosition;
+	view: DebugView;
+	label: HTMLElement;
+	buttons: Map<DebugMove, HTMLButtonElement>;
+}
 
 const STATUS_CLASSES: Record<FilterStepStatus, string> = {
 	Changed: "text-bg-primary",
@@ -69,105 +96,6 @@ const LEVEL_CLASSES: Record<MessageLevel, string> = {
 	Warning: "text-bg-warning",
 	Error: "text-bg-danger",
 };
-
-/** A change to one datum property. */
-interface PropertyChange {
-	type: SampleType | "t";
-	key: string;
-	kind: "added" | "removed" | "changed";
-	from?: unknown;
-	to?: unknown;
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-	tag: K,
-	className?: string,
-	text?: string,
-): HTMLElementTagNameMap[K] {
-	const el = document.createElement(tag);
-	if (className) {
-		el.className = className;
-	}
-	if (text !== undefined) {
-		el.textContent = text;
-	}
-	return el;
-}
-
-/** Format a property value for display. */
-function formatValue(value: unknown): string {
-	if (value === null || value === undefined) {
-		return "null";
-	}
-	if (typeof value === "object") {
-		return JSON.stringify(value);
-	}
-	return String(value);
-}
-
-/** Format a timestamp like `2025-10-01 12:00:00Z`. */
-function formatTimestamp(ts: string | undefined): string {
-	return ts ? ts.replace("T", " ") : "";
-}
-
-function formatDuration(micros: number | undefined): string {
-	if (micros === undefined) {
-		return "";
-	}
-	return micros < 1000
-		? `${micros} µs`
-		: `${(micros / 1000).toFixed(micros < 10_000 ? 2 : 1)} ms`;
-}
-
-function sameValue(a: unknown, b: unknown): boolean {
-	return a === b || JSON.stringify(a) === JSON.stringify(b);
-}
-
-/**
- * Get the property changes between two sets of samples.
- *
- * @param from the samples before
- * @param to the samples after
- * @returns the changes
- */
-function diffSamples(from: SamplesInfo, to: SamplesInfo): PropertyChange[] {
-	const changes: PropertyChange[] = [];
-	for (const type of SAMPLE_TYPES) {
-		const a = from[type] ?? {};
-		const b = to[type] ?? {};
-		for (const [key, value] of Object.entries(b)) {
-			if (!(key in a)) {
-				changes.push({ type, key, kind: "added", to: value });
-			} else if (!sameValue(a[key], value)) {
-				changes.push({
-					type,
-					key,
-					kind: "changed",
-					from: a[key],
-					to: value,
-				});
-			}
-		}
-		for (const [key, value] of Object.entries(a)) {
-			if (!(key in b)) {
-				changes.push({ type, key, kind: "removed", from: value });
-			}
-		}
-	}
-	const tagsFrom = new Set(from.t ?? []);
-	const tagsTo = new Set(to.t ?? []);
-	for (const tag of tagsTo) {
-		if (!tagsFrom.has(tag)) {
-			changes.push({ type: "t", key: tag, kind: "added" });
-		}
-	}
-	for (const tag of tagsFrom) {
-		if (!tagsTo.has(tag)) {
-			changes.push({ type: "t", key: tag, kind: "removed" });
-		}
-	}
-	return changes;
-}
 
 /**
  * Get the run statistics of each filter.
@@ -238,7 +166,12 @@ export function datumPath(trace: DatumTrace): DatumPath {
  * - `datum`, with a {@link DatumPath} detail, or `null`, to highlight the
  *   filters a datum went through;
  * - `usefinalstate`, to use the final state as the next starting state;
- * - `close`, to close the panel.
+ * - `close`, to close the panel;
+ * - `stop`, to stop debug mode.
+ *
+ * In debug mode, the panel steps through the result one filter at a time,
+ * and shows the simulated node's state after each step. It emits `datum`
+ * events with the path so far, and the filter at the cursor.
  */
 export class ResultsPanel extends EventTarget {
 	readonly #el: HTMLElement;
@@ -246,6 +179,7 @@ export class ResultsPanel extends EventTarget {
 	#result: SimulationResult | null = null;
 	#selectedSeq: number | null = null;
 	#stale?: HTMLElement;
+	#debug: DebugSession | null = null;
 
 	/**
 	 * Constructor.
@@ -270,6 +204,93 @@ export class ResultsPanel extends EventTarget {
 	 * @param result the result
 	 */
 	show(result: SimulationResult): void {
+		this.#debug = null;
+		this.#el.classList.remove("is-debug");
+		this.#el.replaceChildren(this.#header(result), this.#body(result));
+		this.#el.scrollTop = 0;
+	}
+
+	/** Stop showing a result. */
+	clear(): void {
+		this.#debug = null;
+		this.#result = null;
+		this.#el.classList.remove("is-debug");
+		this.#el.replaceChildren();
+	}
+
+	/** `true` in debug mode. */
+	get debugging(): boolean {
+		return this.#debug !== null;
+	}
+
+	/** The debug cursor position, or `null` if not in debug mode. */
+	get debugMark(): DebugMark | null {
+		const d = this.#debug;
+		const result = this.#result;
+		if (!d || !result) {
+			return null;
+		}
+		return {
+			seq: result.datum[d.pos.traceIndex].seq,
+			stepIndex: d.pos.stepIndex,
+		};
+	}
+
+	/**
+	 * Show a simulation result in debug mode.
+	 *
+	 * @param result the result, with debug detail
+	 * @param mark the position to start at, like the position in the previous
+	 *     result when re-running, or `null` to start at the first filter
+	 */
+	showDebug(result: SimulationResult, mark: DebugMark | null): void {
+		const positions = debugPositions(result);
+		const pos =
+			(mark &&
+				closestPosition(positions, result, mark.seq, mark.stepIndex)) ||
+			positions[0];
+		if (!pos) {
+			this.show(result);
+			return;
+		}
+		const header = this.#debugHeader();
+		const stateEl = element("div", "sim-debug-state border-start");
+		this.#debug = {
+			positions,
+			pos,
+			view: new DebugView(stateEl),
+			label: header.label,
+			buttons: header.buttons,
+		};
+		const layout = element("div", "sim-debug");
+		layout.append(this.#body(result), stateEl);
+		this.#el.classList.add("is-debug");
+		this.#el.replaceChildren(header.el, layout);
+		this.#applyCursor();
+	}
+
+	/**
+	 * Move the debug cursor.
+	 *
+	 * @param move how to move
+	 */
+	move(move: DebugMove): void {
+		const d = this.#debug;
+		if (d) {
+			this.#moveTo(moveCursor(d.positions, d.pos, move));
+		}
+	}
+
+	#moveTo(pos: DebugPosition): void {
+		const d = this.#debug;
+		if (!d) {
+			return;
+		}
+		d.pos = pos;
+		this.#applyCursor();
+	}
+
+	#body(result: SimulationResult): HTMLElement {
 		this.#result = result;
 		this.#selectedSeq = null;
 		const body = element("div", "sim-results-body p-3");
@@ -285,8 +306,7 @@ export class ResultsPanel extends EventTarget {
 			body.append(this.#datum(trace));
 		}
 		body.append(this.#finalState(result.finalState));
-		this.#el.replaceChildren(this.#header(result), body);
-		this.#el.scrollTop = 0;
+		return body;
 	}
 
 	/**
@@ -338,6 +358,144 @@ export class ResultsPanel extends EventTarget {
 		);
 		header.append(title, summary, this.#stale, close);
 		return header;
+	}
+
+	#debugHeader(): {
+		el: HTMLElement;
+		label: HTMLElement;
+		buttons: Map<DebugMove, HTMLButtonElement>;
+	} {
+		const header = element(
+			"header",
+			"sim-results-header d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom bg-body-tertiary",
+		);
+		header.append(element("h2", "h6 mb-0 text-nowrap", "Debug"));
+		const group = element("div", "btn-group btn-group-sm");
+		group.setAttribute("role", "group");
+		group.setAttribute("aria-label", "Debug controls");
+		const buttons = new Map<DebugMove, HTMLButtonElement>();
+		for (const [move, icon, title] of [
+			["restart", "skip-backward-fill", "Restart"],
+			["back", "skip-start-fill", "Step Back (Shift+F10)"],
+			["continue", "play-fill", "Continue to the next filter (F10)"],
+			["nextDatum", "skip-forward-fill", "Next Datum"],
+			["end", "skip-end-fill", "Run to End"],
+		] as const) {
+			const button = element("button", "btn btn-outline-secondary");
+			button.type = "button";
+			button.title = title;
+			button.setAttribute("aria-label", title);
+			const glyph = element("i", `bi bi-${icon}`);
+			glyph.setAttribute("aria-hidden", "true");
+			button.append(glyph);
+			button.addEventListener("click", () => this.move(move));
+			buttons.set(move, button);
+			group.append(button);
+		}
+		const stop = element("button", "btn btn-sm btn-outline-danger", "Stop");
+		stop.type = "button";
+		stop.title = "Stop debugging, and show the whole execution flow";
+		stop.addEventListener("click", () =>
+			this.dispatchEvent(new Event("stop")),
+		);
+		const label = element(
+			"span",
+			"small text-body-secondary text-truncate",
+		);
+		this.#stale = element(
+			"span",
+			"badge text-bg-warning text-nowrap",
+			"Changed since this run",
+		);
+		this.#stale.hidden = true;
+		const close = element("button", "btn-close ms-auto");
+		close.type = "button";
+		close.title = "Close the execution flow";
+		close.setAttribute("aria-label", close.title);
+		close.addEventListener("click", () =>
+			this.dispatchEvent(new Event("close")),
+		);
+		header.append(group, stop, label, this.#stale, close);
+		return { el: header, label, buttons };
+	}
+
+	/** Show the debug cursor: the flow up to it, and the state after it. */
+	#applyCursor(): void {
+		const d = this.#debug;
+		const result = this.#result;
+		if (!d || !result) {
+			return;
+		}
+		const { traceIndex, stepIndex } = d.pos;
+		const trace = result.datum[traceIndex];
+		const last = cursorBounds(d.positions, d.pos);
+		let current: HTMLElement | null = null;
+		this.#el
+			.querySelectorAll<HTMLElement>(".sim-datum")
+			.forEach((section) => {
+				const ti = Number(section.dataset.trace);
+				section.hidden = ti > traceIndex;
+				section.classList.toggle("is-current", ti === traceIndex);
+				section
+					.querySelectorAll<HTMLElement>(".sim-step")
+					.forEach((stepEl) => {
+						const si = Number(stepEl.dataset.step);
+						const pending = ti === traceIndex && si > stepIndex;
+						stepEl.classList.toggle("is-pending", pending);
+						const isCurrent = ti === traceIndex && si === stepIndex;
+						stepEl.classList.toggle("is-current", isCurrent);
+						if (isCurrent) {
+							current = stepEl;
+						}
+					});
+				const atEnd =
+					ti < traceIndex ||
+					stepIndex >= (result.datum[ti].steps?.length ?? 0) - 1;
+				section
+					.querySelectorAll<HTMLElement>(
+						".sim-output-line, .sim-datum-result",
+					)
+					.forEach((el) => el.classList.toggle("is-pending", !atEnd));
+			});
+		this.#el
+			.querySelectorAll<HTMLElement>(".sim-final-state")
+			.forEach((el) => (el.hidden = !last.last));
+		(
+			current ?? this.#el.querySelector(".sim-datum.is-current")
+		)?.scrollIntoView({ block: "nearest" });
+
+		const step = trace.steps?.[stepIndex];
+		const stepCount = trace.steps?.length ?? 0;
+		d.label.textContent =
+			`Datum #${trace.seq} (${traceIndex + 1} of ${result.datum.length})` +
+			(step
+				? ` · filter ${stepIndex + 1} of ${stepCount}: ${this.#filterLabel(step.filterId, step.uid)}`
+				: " · no filters");
+		d.buttons.get("restart")!.disabled = last.first;
+		d.buttons.get("back")!.disabled = last.first;
+		d.buttons.get("continue")!.disabled = last.last;
+		d.buttons.get("nextDatum")!.disabled =
+			traceIndex >= result.datum.length - 1;
+		d.buttons.get("end")!.disabled = last.last;
+
+		d.view.show(debugState(result, d.pos), result, (id) =>
+			this.#filterLabel(id),
+		);
+
+		const path: DatumPath = {
+			visited: new Set(),
+			dropped: new Set(),
+			current: step?.filterId,
+		};
+		for (const s of (trace.steps ?? []).slice(0, stepIndex + 1)) {
+			path.visited.add(s.filterId);
+			if (s.status === "Dropped") {
+				path.dropped.add(s.filterId);
+			}
+		}
+		this.dispatchEvent(
+			new CustomEvent<DatumPath | null>("datum", { detail: path }),
+		);
 	}
 
 	#messages(messages: SimulationMessage[]): HTMLElement {
@@ -400,6 +558,7 @@ export class ResultsPanel extends EventTarget {
 	#datum(trace: DatumTrace): HTMLElement {
 		const section = element("section", "card mb-3 sim-datum");
 		section.id = `sim-datum-${trace.seq}`;
+		section.dataset.trace = String(this.#result?.datum.indexOf(trace) ?? 0);
 
 		const header = element(
 			"header",
@@ -434,7 +593,7 @@ export class ResultsPanel extends EventTarget {
 							: "Output",
 					)
 				: element("span", "badge text-bg-secondary", "Discarded");
-		result.classList.add("ms-auto");
+		result.classList.add("ms-auto", "sim-datum-result");
 		header.append(
 			element("span", "badge text-bg-dark", `#${trace.seq}`),
 			element(
@@ -450,7 +609,18 @@ export class ResultsPanel extends EventTarget {
 			origin,
 			result,
 		);
-		const toggle = () => this.#selectDatum(trace, section, header);
+		const toggle = () => {
+			const d = this.#debug;
+			if (d) {
+				const ti = Number(section.dataset.trace);
+				const first = d.positions.find((p) => p.traceIndex === ti);
+				if (first) {
+					this.#moveTo(first);
+				}
+			} else {
+				this.#selectDatum(trace, section, header);
+			}
+		};
 		header.addEventListener("click", toggle);
 		header.addEventListener("keydown", (e) => {
 			if (e.key === "Enter" || e.key === " ") {
@@ -460,11 +630,24 @@ export class ResultsPanel extends EventTarget {
 		});
 
 		const body = element("div", "card-body p-2");
-		body.append(this.#samplesLine("In", trace.input.samples));
+		body.append(samplesLine("In", trace.input.samples));
 		const steps = element("div", "sim-steps my-1");
-		for (const step of trace.steps ?? []) {
-			steps.append(this.#step(step));
-		}
+		(trace.steps ?? []).forEach((step, i) => {
+			const el = this.#step(step);
+			el.dataset.step = String(i);
+			el.querySelector("summary")!.addEventListener("click", (e) => {
+				const d = this.#debug;
+				if (d) {
+					// in debug mode, a click moves the cursor to the step
+					e.preventDefault();
+					this.#moveTo({
+						traceIndex: Number(section.dataset.trace),
+						stepIndex: i,
+					});
+				}
+			});
+			steps.append(el);
+		});
 		if (!trace.steps?.length) {
 			steps.append(
 				element(
@@ -492,41 +675,10 @@ export class ResultsPanel extends EventTarget {
 	}
 
 	#outputLine(output: DatumInfo): HTMLElement {
-		const line = this.#samplesLine("Out", output.samples);
+		const line = samplesLine("Out", output.samples);
+		line.classList.add("sim-output-line");
 		if (output.timestamp) {
 			line.title = `Timestamp: ${formatTimestamp(output.timestamp)}`;
-		}
-		return line;
-	}
-
-	/** A line of a datum's properties, grouped by type. */
-	#samplesLine(label: string, samples: SamplesInfo): HTMLElement {
-		const line = element("div", "small sim-samples d-flex flex-wrap gap-1");
-		line.append(element("span", "fw-semibold me-1", label));
-		let empty = true;
-		for (const type of SAMPLE_TYPES) {
-			for (const [key, value] of Object.entries(samples[type] ?? {})) {
-				const chip = element("span", "sim-chip");
-				chip.title = `${TYPE_NAMES[type]} property ${key}`;
-				chip.append(
-					element("span", "sim-chip-type", type),
-					`${key} = ${formatValue(value)}`,
-				);
-				line.append(chip);
-				empty = false;
-			}
-		}
-		for (const tag of samples.t ?? []) {
-			const chip = element("span", "sim-chip");
-			chip.title = `Tag ${tag}`;
-			chip.append(element("span", "sim-chip-type", "t"), tag);
-			line.append(chip);
-			empty = false;
-		}
-		if (empty) {
-			line.append(
-				element("span", "text-body-secondary", "no properties"),
-			);
 		}
 		return line;
 	}
@@ -557,7 +709,16 @@ export class ResultsPanel extends EventTarget {
 		const section = this.#el.querySelector<HTMLElement>(
 			`#sim-datum-${seq}`,
 		);
-		if (section) {
+		const d = this.#debug;
+		if (section && d && section.hidden) {
+			// debug mode hides the datum after the cursor, so move the cursor to it
+			const ti = Number(section.dataset.trace);
+			const first = d.positions.find((p) => p.traceIndex === ti);
+			if (first) {
+				this.#moveTo(first);
+			}
+		}
+		if (section && !section.hidden) {
 			section.scrollIntoView({ behavior: "smooth", block: "start" });
 			section.classList.remove("is-flashed");
 			void section.offsetWidth;

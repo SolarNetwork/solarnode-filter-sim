@@ -304,6 +304,8 @@ export interface DatumTrace {
 	/** The datum after the filters, or missing if they discarded it. */
 	output?: DatumInfo;
 	error?: string;
+	/** The node state when the datum started processing, for debug results. */
+	startState?: SimulationState;
 }
 
 /** A Local State entry. */
@@ -321,6 +323,12 @@ export interface SimulationState {
 	localState?: LocalStateInfo[];
 	/** The Local State, in the SolarNode Local State CSV format. */
 	localStateCsv?: string;
+	/** The datum history, by source ID, newest first. */
+	history?: Record<string, DatumInfo[]>;
+	/** The unfiltered datum history, by source ID, newest first. */
+	unfilteredHistory?: Record<string, DatumInfo[]>;
+	/** The sequence numbers of datum waiting in the Datum Queue. */
+	queue?: number[];
 }
 
 /** Simulation statistics. */

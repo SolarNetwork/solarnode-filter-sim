@@ -572,3 +572,57 @@ rect.sim-badge {
 	margin-right: 0.3rem;
 	color: var(--bs-secondary-color);
 }
+
+// debug mode: the flow up to the cursor, next to the state after it
+.sim-results.is-debug {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.sim-debug {
+	flex: 1;
+	display: grid;
+	grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
+	min-height: 0;
+
+	> .sim-results-body,
+	> .sim-debug-state {
+		overflow: auto;
+		min-height: 0;
+	}
+}
+
+.sim-debug-tabs {
+	flex-wrap: wrap;
+	padding: 0.5rem 0.5rem 0;
+	font-size: 0.8rem;
+
+	.nav-link {
+		padding: 0.25rem 0.5rem;
+	}
+}
+
+.sim-datum.is-current {
+	border-color: var(--bs-primary);
+}
+
+.sim-step.is-current > summary {
+	border-radius: var(--bs-border-radius-sm);
+	background-color: var(--bs-primary-bg-subtle);
+}
+
+.sim-step.is-pending,
+.sim-output-line.is-pending {
+	opacity: 0.35;
+}
+
+.sim-node.is-current {
+	fill: var(--bs-warning-bg-subtle);
+	stroke: var(--bs-warning);
+	stroke-width: 4px;
+}
+
+.sim-datum-result.is-pending {
+	visibility: hidden;
+}

@@ -20,7 +20,12 @@ import {
 	type SimulationResult,
 } from "./model.ts";
 import { renderPalette } from "./palette.ts";
-import { filterRunStats, ResultsPanel, type DatumPath } from "./results.ts";
+import {
+	filterRunStats,
+	ResultsPanel,
+	type DatumPath,
+	type DebugMark,
+} from "./results.ts";
 import { initSplitter } from "./splitter.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -75,6 +80,9 @@ function isTyping(target: EventTarget | null): boolean {
 /** The service filter object class of metadata services. */
 const METADATA_SERVICE_CLASS = "net.solarnetwork.node.service.MetadataService";
 
+/** How long after a change, in milliseconds, debug mode runs again. */
+const DEBUG_RERUN_DELAY = 600;
+
 /** The service filter object class of datum filters. */
 const FILTER_SERVICE_CLASS = "net.solarnetwork.service.DatumFilterService";
 
@@ -87,6 +95,7 @@ class App {
 	readonly #inputPanel: InputPanel;
 	readonly #results: ResultsPanel;
 	#running = false;
+	#rerunTimer?: number;
 
 	constructor(types: FilterTypeInfo[]) {
 		const ws = Workspace.load(types);
@@ -129,9 +138,9 @@ class App {
 		);
 		ws.addEventListener("change", () => {
 			this.#refreshControls();
-			this.#markStale();
+			this.#changed();
 		});
-		inputs.addEventListener("change", () => this.#markStale());
+		inputs.addEventListener("change", () => this.#changed());
 		this.#bindResults();
 
 		this.#bindControls();
@@ -213,42 +222,77 @@ class App {
 
 	/**
 	 * Run the input datum through the filters, and show the result.
+	 *
+	 * @param debug `true` to step through the result in debug mode
+	 * @param auto `true` for a re-run after a change in debug mode, which keeps
+	 *     the debug position and does not interrupt with dialogs
 	 */
-	async run(): Promise<void> {
+	async run(debug = false, auto = false): Promise<void> {
 		if (this.#running) {
+			if (auto) {
+				this.#scheduleRerun();
+			}
 			return;
 		}
+		window.clearTimeout(this.#rerunTimer);
 		let parts;
 		try {
 			parts = this.#inputs.toRequest();
 		} catch (e) {
 			if (e instanceof InputError) {
-				this.#inputPanel.showError(e);
-				showToast(e.message);
+				if (!auto) {
+					this.#inputPanel.showError(e);
+					showToast(e.message);
+				}
 				return;
 			}
 			throw e;
 		}
+		const mark = auto ? this.#results.debugMark : null;
 		this.#setRunning(true);
 		try {
 			const result = await simulate({
 				config: this.#ws.toConfig(),
 				...parts,
+				options: debug ? { detail: "Debug" } : null,
 			});
-			this.#showResult(result);
+			this.#showResult(result, debug, mark);
 		} catch (e) {
-			showError("The simulation did not run", e, (id) =>
-				this.#canvas.selectFilter(id),
-			);
+			if (auto) {
+				showToast(
+					`The simulation did not run: ${e instanceof Error ? e.message : e}`,
+				);
+			} else {
+				showError("The simulation did not run", e, (id) =>
+					this.#canvas.selectFilter(id),
+				);
+			}
 		} finally {
 			this.#setRunning(false);
 		}
+	}
+
+	/** Handle a workspace or input change. */
+	#changed(): void {
+		this.#markStale();
+		if (this.#results.debugging) {
+			this.#scheduleRerun();
+		}
+	}
+
+	#scheduleRerun(): void {
+		window.clearTimeout(this.#rerunTimer);
+		this.#rerunTimer = window.setTimeout(
+			() => void this.run(true, true),
+			DEBUG_RERUN_DELAY,
+		);
 	}
 
 	#setRunning(running: boolean): void {
 		this.#running = running;
 		const button = $<HTMLButtonElement>("#run-button");
 		button.disabled = running;
+		$<HTMLButtonElement>("#debug-button").disabled = running;
 		button
 			.querySelector("i")!
 			.classList.replace(
@@ -257,17 +301,26 @@ class App {
 			);
 	}
 
-	#showResult(result: SimulationResult): void {
+	#showResult(
+		result: SimulationResult,
+		debug: boolean,
+		mark: DebugMark | null,
+	): void {
 		const center = $("#center-panel");
 		const wasShown = center.classList.contains("has-results");
 		center.classList.add("has-results");
 		$("#center-splitter").hidden = false;
 		$("#results").hidden = false;
-		this.#results.show(result);
+		// the canvas first, as debug mode then highlights the cursor on it
 		this.#canvas.setRun({
 			stats: filterRunStats(result),
 			output: result.stats.output,
 		});
+		if (debug) {
+			this.#results.showDebug(result, mark);
+		} else {
+			this.#results.show(result);
+		}
 		this.#inputPanel.setFinalState(result.finalState);
 		if (!wasShown) {
 			// the canvas is smaller now
@@ -275,7 +328,18 @@ class App {
 		}
 	}
 
+	#stopDebug(): void {
+		window.clearTimeout(this.#rerunTimer);
+		const result = this.#results.result;
+		if (result) {
+			this.#results.show(result);
+		}
+		this.#canvas.setPath(null);
+	}
+
 	#closeResults(): void {
+		window.clearTimeout(this.#rerunTimer);
+		this.#results.clear();
 		$("#center-panel").classList.remove("has-results");
 		$("#center-splitter").hidden = true;
 		$("#results").hidden = true;
@@ -307,7 +371,9 @@ class App {
 			this.#inputPanel.useFinalState(),
 		);
 		results.addEventListener("close", () => this.#closeResults());
+		results.addEventListener("stop", () => this.#stopDebug());
 		$("#run-button").addEventListener("click", () => void this.run());
+		$("#debug-button").addEventListener("click", () => void this.run(true));
 	}
 
 	/**
@@ -384,6 +450,11 @@ class App {
 			if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
 				e.preventDefault();
 				void this.run();
+				return;
+			}
+			if (e.key === "F10" && this.#results.debugging) {
+				e.preventDefault();
+				this.#results.move(e.shiftKey ? "back" : "continue");
 				return;
 			}
 			if (isTyping(e.target)) {
