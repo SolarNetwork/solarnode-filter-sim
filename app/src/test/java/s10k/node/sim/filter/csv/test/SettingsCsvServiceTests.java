@@ -270,7 +270,7 @@ public class SettingsCsvServiceTests {
 		// THEN
 		// @formatter:off
 		final String throttle = StandardFilterTypes.THROTTLE + ".1";
-		final String tariff = "net.solarnetwork.node.datum.filter.tariff.T1";
+		final String pvlib = "net.solarnetwork.node.datum.filter.pvlib.poa.P1";
 		final String bad = StandardFilterTypes.EXPRESSION + ".Bad:Name";
 		final String external = FilterConfig.EXTERNAL_FACTORY_UID + ":Somewhere Else";
 		then(result.config().filtersOrEmpty())
@@ -279,13 +279,13 @@ public class SettingsCsvServiceTests {
 			.containsExactly(
 					tuple(MAIN_ID, StandardFilterTypes.CHAIN),
 					tuple(throttle, StandardFilterTypes.THROTTLE),
-					tuple(tariff, "net.solarnetwork.node.datum.filter.tariff"),
+					tuple(pvlib, "net.solarnetwork.node.datum.filter.pvlib.poa"),
 					tuple(bad, StandardFilterTypes.EXPRESSION),
 					tuple(external, FilterConfig.EXTERNAL_FACTORY_UID))
 			;
 		then(filter(result.config(), MAIN_ID))
 			.as("Chain keeps the filter that is not in the file, as an external filter")
-			.returns(List.of(throttle, external, tariff), from(FilterConfig::filterIds))
+			.returns(List.of(throttle, external, pvlib), from(FilterConfig::filterIds))
 			.returns("#\n# Main chain\n#", from(FilterConfig::comment))
 			;
 		then(filter(result.config(), external).settings())
@@ -302,9 +302,9 @@ public class SettingsCsvServiceTests {
 			.returns("# Throttle\n#net.solarnetwork.node.datum.samplefilter.limiter.1,sourceId,/meter/",
 					from(FilterConfig::comment))
 			;
-		then(filter(result.config(), tariff).settings())
+		then(filter(result.config(), pvlib).settings())
 			.as("Unsupported filter settings kept")
-			.isEqualTo(Map.of("uid", "Tariffs", "tariffs", "a,b"))
+			.isEqualTo(Map.of("uid", "POA", "parameters", "a,b"))
 			;
 		then(result.config())
 			.as("Datum Queue comment and filter")
@@ -318,7 +318,7 @@ public class SettingsCsvServiceTests {
 					tuple(SimulationMessage.CODE_SETTING_SKIPPED, null),
 					tuple(SimulationMessage.CODE_MISSING_FACTORY, throttle),
 					tuple(SimulationMessage.CODE_SETTING_FLAGS, throttle),
-					tuple(SimulationMessage.CODE_UNSUPPORTED_FILTER, tariff),
+					tuple(SimulationMessage.CODE_UNSUPPORTED_FILTER, pvlib),
 					tuple(SimulationMessage.CODE_INVALID_INSTANCE_ID, bad),
 					tuple(SimulationMessage.CODE_EXTERNAL_FILTER, external),
 					tuple(SimulationMessage.CODE_GLOBAL_FILTER, null))
@@ -358,7 +358,7 @@ public class SettingsCsvServiceTests {
 			.as("FACTORY row added")
 			.contains("net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,\r\n")
 			.as("Unsupported filter settings as they are")
-			.contains("net.solarnetwork.node.datum.filter.tariff.T1,tariffs,\"a,b\",,,\r\n")
+			.contains("net.solarnetwork.node.datum.filter.pvlib.poa.P1,parameters,\"a,b\",,,\r\n")
 			.as("Comments kept, and ignored components left out")
 			.contains("#net.solarnetwork.node.datum.samplefilter.limiter.1,sourceId,/meter/\r\n")
 			.doesNotContain("modbus", "queueDelayMs", "solarnode.settings")

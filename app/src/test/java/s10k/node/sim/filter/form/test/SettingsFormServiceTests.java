@@ -322,7 +322,7 @@ public class SettingsFormServiceTests {
 	public void unsupportedFilterType() {
 		// THEN
 		// @formatter:off
-		thenThrownBy(() -> form("net.solarnetwork.node.datum.filter.tariff"))
+		thenThrownBy(() -> form("net.solarnetwork.node.datum.filter.pvlib.poa"))
 			.as("Unsupported filter type")
 			.isInstanceOf(SimulationException.class)
 			.hasMessageContaining("not supported")

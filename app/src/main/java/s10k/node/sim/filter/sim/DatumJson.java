@@ -20,10 +20,14 @@
 package s10k.node.sim.filter.sim;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import net.solarnetwork.codec.jackson.JsonUtils;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamples;
+import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.domain.datum.ObjectDatumKind;
 import net.solarnetwork.node.domain.datum.NodeDatum;
 import net.solarnetwork.node.domain.datum.SimpleDatum;
@@ -32,13 +36,14 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Datum JSON support, using the SolarNetwork datum JSON codec.
+ * Datum and metadata JSON support, using the SolarNetwork datum JSON codec.
  *
  * <p>
- * Both the "direct" style, like
+ * Both the "direct" style of datum, like
  * {@code {"created":"2025-10-01 00:00:00Z","sourceId":"/meter/1","i":{"watts":1}}},
  * and the "nested" style, with properties in a {@code samples} object, are
- * supported.
+ * supported. Metadata uses the SolarNetwork metadata format,
+ * {@code {"m":{…},"pm":{…},"t":[…]}}.
  * </p>
  *
  * @author matt
@@ -48,6 +53,9 @@ public final class DatumJson {
 
 	private static final JsonMapper MAPPER = JsonUtils.JSON_OBJECT_MAPPER.rebuild()
 			.addModule(JsonUtils.DATUM_MODULE).build();
+
+	/** The metadata JSON properties. */
+	private static final Set<String> METADATA_PROPERTIES = Set.of("m", "pm", "t");
 
 	private DatumJson() {
 		// not available
@@ -102,6 +110,56 @@ public final class DatumJson {
 			return SimpleDatum.locationDatum(locationId, datum.getSourceId(), ts, samples);
 		}
 		return SimpleDatum.nodeDatum(datum.getSourceId(), ts, samples);
+	}
+
+	/**
+	 * Parse metadata.
+	 *
+	 * <p>
+	 * Like SolarNode, this uses the SolarNetwork metadata JSON codec, which
+	 * ignores other properties and values of the wrong type.
+	 * </p>
+	 *
+	 * @param json
+	 *        the metadata JSON, or {@code null} for no metadata
+	 * @param label
+	 *        a description of the metadata for error messages, like
+	 *        {@code "Node metadata"}
+	 * @return the metadata
+	 * @throws SimulationException
+	 *         if the JSON is not an object
+	 */
+	public static GeneralDatumMetadata metadata(@Nullable JsonNode json, String label) {
+		if ( json == null || json.isNull() || json.isMissingNode() ) {
+			return new GeneralDatumMetadata();
+		}
+		if ( !json.isObject() ) {
+			throw new SimulationException(label + " is not a JSON object.");
+		}
+		final GeneralDatumMetadata meta;
+		try {
+			meta = MAPPER.treeToValue(json, GeneralDatumMetadata.class);
+		} catch ( JacksonException e ) {
+			throw new SimulationException(label + " is not valid metadata: " + e.getOriginalMessage(),
+					e);
+		}
+		return (meta != null ? meta : new GeneralDatumMetadata());
+	}
+
+	/**
+	 * Get the properties of metadata JSON that are not metadata properties,
+	 * which SolarNode ignores.
+	 *
+	 * @param json
+	 *        the metadata JSON
+	 * @return the property names
+	 */
+	public static List<String> ignoredMetadataProperties(@Nullable JsonNode json) {
+		if ( json == null || !json.isObject() ) {
+			return List.of();
+		}
+		return json.properties().stream().map(Map.Entry::getKey)
+				.filter(name -> !METADATA_PROPERTIES.contains(name)).toList();
 	}
 
 }

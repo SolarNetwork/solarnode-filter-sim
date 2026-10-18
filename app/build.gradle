@@ -117,6 +117,7 @@ dependencies {
 	implementation(libs.sn.common.expr.spel, snExcludes)
 	implementation(libs.sn.node, snExcludes)
 	implementation(libs.sn.node.datum.filter.standard, snExcludes)
+	implementation(libs.sn.node.datum.filter.tariff, snExcludes)
 
 	// used by the SolarNetwork bundles (which declare older versions) and for settings CSV
 	implementation libs.fastcsv

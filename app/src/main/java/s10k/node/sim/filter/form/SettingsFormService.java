@@ -34,6 +34,7 @@ import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.settings.SettingsApplier;
 import s10k.node.sim.filter.sim.SimulationContext;
 import s10k.node.sim.filter.sim.SimulationException;
+import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.domain.datum.NodeDatum;
 import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.service.ExpressionService;
@@ -94,7 +95,7 @@ public class SettingsFormService {
 		final Map<String, String> settings = settings(request.settingsOrEmpty());
 
 		final SimulationContext context = new SimulationContext(Instant.now(), expressionService,
-				SettingsFormService::rejectDatum);
+				SettingsFormService::rejectDatum, new GeneralDatumMetadata());
 		final DatumFilterService filter = def.factory().create(context);
 		context.injectServices(filter, def.messageSource());
 		final List<SettingProblem> problems = SettingsApplier.apply(filter, settings).stream()

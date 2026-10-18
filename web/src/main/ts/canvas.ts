@@ -29,6 +29,9 @@ const DROP_DISTANCE = 18;
 /** How far a filter in a chain must be dragged to remove it from the chain. */
 const DETACH_DISTANCE = 60;
 
+/** The pixels in a line, for mouse wheel steps given in lines. */
+const WHEEL_LINE = 16;
+
 type DrawnNode = FilterNode | EndNode;
 type DrawnLink = FlowLink | ContinuationLink;
 
@@ -694,8 +697,8 @@ export class Canvas extends EventTarget {
 	}
 
 	/**
-	 * Handle the mouse wheel: zoom with Ctrl or Cmd (or a pinch gesture), and
-	 * otherwise pan.
+	 * Handle the mouse wheel: zoom with Ctrl or Cmd (or a pinch gesture), pan
+	 * sideways with Shift, and otherwise pan.
 	 */
 	#wheel(evt: dia.Event, x: number, y: number): void {
 		const e = evt.originalEvent as WheelEvent | undefined;
@@ -703,15 +706,29 @@ export class Canvas extends EventTarget {
 			return;
 		}
 		evt.preventDefault();
+		// some browsers report mouse wheel steps in lines or pages, not pixels
+		const unit =
+			e.deltaMode === WheelEvent.DOM_DELTA_LINE
+				? WHEEL_LINE
+				: e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+					? this.#el.clientHeight
+					: 1;
+		let dx = e.deltaX * unit;
+		let dy = e.deltaY * unit;
 		if (e.ctrlKey || e.metaKey) {
-			this.#zoomAt(this.paper.scale().sx * Math.exp(-e.deltaY * 0.01), {
+			this.#zoomAt(this.paper.scale().sx * Math.exp(-dy * 0.01), {
 				x,
 				y,
 			});
-		} else {
-			const { tx, ty } = this.paper.translate();
-			this.paper.translate(tx - e.deltaX, ty - e.deltaY);
+			return;
 		}
+		if (e.shiftKey && dx === 0) {
+			// Shift scrolls sideways, which some browsers leave to the page to do
+			dx = dy;
+			dy = 0;
+		}
+		const { tx, ty } = this.paper.translate();
+		this.paper.translate(tx - dx, ty - dy);
 	}
 
 	#zoomAt(scale: number, point: Point): void {

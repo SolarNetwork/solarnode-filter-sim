@@ -65,7 +65,11 @@ function iconButton(
 	return button;
 }
 
-/** A small icon-only button for a setting's tools. */
+/**
+ * A small icon-only button for a setting's tools. Like SolarNode's help and
+ * note buttons, it is left out of the tab order, so tabbing moves between
+ * fields.
+ */
 function toolButton(
 	title: string,
 	icon: string,
@@ -74,6 +78,7 @@ function toolButton(
 	const button = iconButton("", icon, "btn-link sim-tool", onClick);
 	button.title = title;
 	button.setAttribute("aria-label", title);
+	button.tabIndex = -1;
 	return button;
 }
 

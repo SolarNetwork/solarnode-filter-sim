@@ -21,6 +21,7 @@ package s10k.node.sim.filter.domain;
 
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.JsonNode;
 
 /**
  * The starting state of the simulated node.
@@ -33,9 +34,16 @@ import org.jspecify.annotations.Nullable;
  *        State CSV format ({@code Key,Created,Modified,Type,Value}); blank
  *        {@code Created} and {@code Modified} values default to the time of the
  *        first input datum
+ * @param nodeMetadata
+ *        the node's metadata, which the Node Metadata Service provides, as a
+ *        JSON object in the SolarNetwork metadata format
+ *        ({@code {"m":{…},"pm":{…},"t":[…]}}), or {@code null} for none
+ * @param userMetadata
+ *        the User Metadata Services, or {@code null} for none
  * @author matt
  * @version 1.0
  */
-public record SimulationEnvironment(@Nullable List<String> opModes, @Nullable String localStateCsv) {
+public record SimulationEnvironment(@Nullable List<String> opModes, @Nullable String localStateCsv,
+		@Nullable JsonNode nodeMetadata, @Nullable List<UserMetadataConfig> userMetadata) {
 
 }

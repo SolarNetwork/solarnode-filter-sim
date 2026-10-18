@@ -20,6 +20,7 @@
 package s10k.node.sim.filter.registry;
 
 import static s10k.node.sim.filter.registry.MessageSources.messageSource;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
+import net.solarnetwork.domain.tariff.TemporalTariffEvaluator;
 import net.solarnetwork.node.datum.filter.control.ControlUpdaterDatumFilterService;
 import net.solarnetwork.node.datum.filter.expr.ExpressionDatumFilterService;
 import net.solarnetwork.node.datum.filter.instr.InstructorDatumFilterService;
@@ -44,7 +46,9 @@ import net.solarnetwork.node.datum.filter.std.ThrottlingDatumFilterService;
 import net.solarnetwork.node.datum.filter.std.TimeoutDatumFilterService;
 import net.solarnetwork.node.datum.filter.std.UnchangedDatumFilterService;
 import net.solarnetwork.node.datum.filter.std.UnchangedPropertyDatumFilterService;
+import net.solarnetwork.node.datum.filter.tariff.TariffDatumFilterService;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterDatumFilterService;
+import net.solarnetwork.node.service.MetadataService;
 import net.solarnetwork.node.service.support.DatumFilterChainService;
 import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.service.ServiceLifecycleObserver;
@@ -53,7 +57,8 @@ import s10k.node.sim.filter.domain.FilterCapability;
 /**
  * The user datum filters from the SolarNode
  * {@code net.solarnetwork.node.datum.filter.standard} bundle, plus the filter
- * chain from the core {@code net.solarnetwork.node} bundle.
+ * chain from the core {@code net.solarnetwork.node} bundle and the Tariff
+ * filter from the {@code net.solarnetwork.node.datum.filter.tariff} bundle.
  *
  * <p>
  * Each definition is a port of the filter's wiring in its bundle's
@@ -115,13 +120,15 @@ public final class StandardFilterTypes {
 	/** The Instructor Datum Filter factory UID. */
 	public static final String INSTRUCTOR = "net.solarnetwork.node.datum.filter.instructor";
 
+	/** The Time-based Tariff Datum Filter factory UID. */
+	public static final String TARIFF = "net.solarnetwork.node.datum.filter.tariff";
+
 	/**
 	 * The SolarNode user datum filters from other bundles, which the simulator
-	 * does not support, as factory UIDs and titles: the Tariff, PVLib, and
-	 * Metric Harvester filters.
+	 * does not support, as factory UIDs and titles: the PVLib and Metric
+	 * Harvester filters.
 	 */
 	public static final Map<String, String> UNSUPPORTED = Map.of(
-			"net.solarnetwork.node.datum.filter.tariff", "Time-based Tariff Datum Filter",
 			"net.solarnetwork.node.datum.filter.pvlib.poa", "POA Irradiance Calculator (pvlib)",
 			"net.solarnetwork.node.metrics.service.harvester", "Metric Harvester");
 
@@ -287,7 +294,24 @@ public final class StandardFilterTypes {
 						ctx.instructionExecutionService()),
 				null, null, EnumSet.of(FilterCapability.Instructions), null));
 
+		// the 4.1.1 blueprint, which also injects the opModesService
+		result.add(def(TARIFF, "Time-based Tariff Filter", TariffDatumFilterService.class,
+				messageSource("net.solarnetwork.node.datum.filter.tariff.TariffDatumFilterService",
+						BASE_FILTER, "net.solarnetwork.node.service.support.TariffScheduleUtils",
+						BASIC_IDENTIFIABLE),
+				ctx -> new TariffDatumFilterService(ctx.serviceTracker(MetadataService.class, false),
+						ctx.serviceTracker(TemporalTariffEvaluator.class, false)),
+				null, null, Set.of(), _ -> tariffTimeZoneLimitation())
+						.withCheck(new TariffScheduleCheck()));
+
 		return result;
+	}
+
+	private static String tariffTimeZoneLimitation() {
+		return ("The Tariff filter matches datum dates to its schedule in the node's time zone. "
+				+ "The simulator uses its own time zone instead, which is %s. To simulate a node "
+				+ "in another time zone, start the simulator with the TZ environment variable "
+				+ "set to that zone.").formatted(ZoneId.systemDefault().getId());
 	}
 
 	private static FilterTypeDefinition def(String factoryUid, String displayName,
@@ -296,7 +320,7 @@ public final class StandardFilterTypes {
 			@Nullable Consumer<DatumFilterService> destroy, Set<FilterCapability> capabilities,
 			@Nullable Function<Map<String, String>, @Nullable String> limitations) {
 		return new FilterTypeDefinition(factoryUid, displayName, filterClass, messageSource, factory,
-				init, destroy, capabilities, limitations);
+				init, destroy, capabilities, limitations, null);
 	}
 
 	private static boolean hasValue(Map<String, String> settings, String key) {

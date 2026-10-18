@@ -32,6 +32,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,6 +46,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamplesOperations;
+import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.domain.LocalState;
 import net.solarnetwork.node.domain.datum.NodeDatum;
 import net.solarnetwork.node.runtime.DatumHistory;
@@ -69,6 +71,7 @@ import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.domain.SimulationState;
 import s10k.node.sim.filter.domain.SimulationStats;
+import s10k.node.sim.filter.domain.UserMetadataConfig;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.settings.SettingsApplier;
@@ -138,7 +141,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 * @param request
 	 *        the request
 	 * @throws SimulationException
-	 *         if the request input datum are not valid
+	 *         if the request input datum or metadata are not valid
 	 */
 	SimulationRun(FilterTypeRegistry registry, ExpressionService expressionService,
 			SimulationRequest request) {
@@ -150,7 +153,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final NodeDatum first = (input.isEmpty() ? null : input.getFirst());
 		final Instant firstDate = (first != null ? first.getTimestamp() : null);
 		this.context = new SimulationContext(firstDate != null ? firstDate : defaultStartDate(),
-				expressionService, this);
+				expressionService, this, nodeMetadata());
+		registerUserMetadataServices();
 		this.tracer = new FilterTracer(context.opModesService());
 		context.localStateDao().setChangeListener(tracer::localStateChanged);
 		context.instructionService().setListener(tracer::instructionIssued);
@@ -295,9 +299,14 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			}
 		}
 		lifecycle(def.init(), filter, config.id(), "start");
+		context.registerService(filter);
 		final String limitation = def.limitations(settings);
 		if ( limitation != null ) {
 			warn(SimulationMessage.CODE_FILTER_LIMITATION, limitation, config.id(), null);
+		}
+		final String problem = def.check(filter, context);
+		if ( problem != null ) {
+			warn(SimulationMessage.CODE_FILTER_PROBLEM, problem, config.id(), null);
 		}
 		return new TracingDatumFilterService(config.id(), config.factoryUid(), filter, def.isChain(),
 				tracer);
@@ -460,6 +469,63 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private static String label(TracingDatumFilterService filter) {
 		String uid = filter.getUid();
 		return (uid != null && !uid.isBlank() ? uid : filter.filterId());
+	}
+
+	/* === Metadata === */
+
+	private GeneralDatumMetadata nodeMetadata() {
+		final SimulationEnvironment env = request.environment();
+		final JsonNode json = (env != null ? env.nodeMetadata() : null);
+		final String label = "Node metadata";
+		final GeneralDatumMetadata meta = DatumJson.metadata(json, label);
+		ignoredMetadata(json, label);
+		return meta;
+	}
+
+	private void registerUserMetadataServices() {
+		final SimulationEnvironment env = request.environment();
+		final List<UserMetadataConfig> configs = (env != null ? env.userMetadata() : null);
+		if ( configs == null ) {
+			return;
+		}
+		final Set<String> uids = new HashSet<>(4);
+		uids.add(SimMetadataService.NODE_METADATA_SERVICE_UID);
+		for ( int i = 0; i < configs.size(); i++ ) {
+			final UserMetadataConfig config = configs.get(i);
+			if ( config == null ) {
+				continue;
+			}
+			final String name = config.uid();
+			final String uid = (name != null && !name.isBlank() ? name : null);
+			final String label = "User metadata "
+					+ (uid != null ? "\"" + uid + "\"" : String.valueOf(i + 1));
+			final GeneralDatumMetadata meta = DatumJson.metadata(config.metadata(), label);
+			ignoredMetadata(config.metadata(), label);
+			if ( uid == null ) {
+				warn(SimulationMessage.CODE_MISSING_UID,
+						"User Metadata Service %d has no Service Name, so filters cannot find it."
+								.formatted(i + 1),
+						null, null);
+			} else if ( !uids.add(uid) ) {
+				warn(SimulationMessage.CODE_DUPLICATE_UID,
+						"More than one metadata service has the Service Name %s, so filters use the first one."
+								.formatted(uid),
+						null, null);
+			}
+			context.registerService(new SimMetadataService(uid, meta));
+		}
+	}
+
+	private void ignoredMetadata(@Nullable JsonNode json, String label) {
+		final List<String> ignored = DatumJson.ignoredMetadataProperties(json);
+		if ( ignored.isEmpty() ) {
+			return;
+		}
+		warn(SimulationMessage.CODE_IGNORED_METADATA,
+				"%s has the %s %s, which SolarNode ignores. Metadata has only m, pm, and t properties."
+						.formatted(label, ignored.size() == 1 ? "property" : "properties",
+								String.join(", ", ignored)),
+				null, null);
 	}
 
 	/* === Starting state === */

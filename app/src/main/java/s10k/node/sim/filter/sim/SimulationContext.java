@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.springframework.context.MessageSource;
 import org.springframework.util.AntPathMatcher;
 import s10k.node.sim.filter.registry.FilterContext;
+import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.dao.DefaultTransientSettingDao;
 import net.solarnetwork.node.dao.TransientSettingDao;
 import net.solarnetwork.node.reactor.InstructionExecutionService;
@@ -42,6 +43,7 @@ import net.solarnetwork.node.service.support.BaseIdentifiable;
 import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.service.ExpressionService;
 import net.solarnetwork.service.OptionalService;
+import net.solarnetwork.service.OptionalService.OptionalFilterableService;
 import net.solarnetwork.service.StaticOptionalService;
 import net.solarnetwork.service.StaticOptionalServiceCollection;
 import net.solarnetwork.service.support.BasicIdentifiable;
@@ -53,7 +55,13 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  * SolarNode's own implementations are used where they work outside of OSGi: the
  * datum service (datum history), the operational modes service, and the
  * transient setting DAO. In-memory implementations replace the services that
- * need a database or hardware.
+ * need a database, hardware, or SolarNetwork.
+ * </p>
+ *
+ * <p>
+ * The context also has a simple service registry, in place of the OSGi one. It
+ * holds the metadata services, starting with the Node Metadata Service, and the
+ * filters. {@link SimServiceTracker} finds services in it.
  * </p>
  *
  * @author matt
@@ -74,8 +82,10 @@ public final class SimulationContext implements FilterContext {
 	private final SimInstructionService instructionService;
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
+	private final SimMetadataService nodeMetadataService;
+	private final List<Object> services = new ArrayList<>(16);
 	private final StaticOptionalServiceCollection<ExpressionService> expressionServices;
-	private final StaticOptionalServiceCollection<TariffScheduleProvider> tariffScheduleProviders;
+	private final SimServiceTracker<TariffScheduleProvider> tariffScheduleProviders;
 	private final List<DatumFilterService> filterServices = new ArrayList<>(16);
 
 	/**
@@ -87,9 +97,11 @@ public final class SimulationContext implements FilterContext {
 	 *        the expression service
 	 * @param datumSink
 	 *        the sink for datum that filters offer to the Datum Queue
+	 * @param nodeMetadata
+	 *        the metadata of the Node Metadata Service
 	 */
 	public SimulationContext(Instant startDate, ExpressionService expressionService,
-			SimulatedDatumQueue.Sink datumSink) {
+			SimulatedDatumQueue.Sink datumSink, GeneralDatumMetadata nodeMetadata) {
 		super();
 		this.clock = new SimulatedClock(startDate);
 		this.localStateDao = new SimLocalStateDao(clock);
@@ -109,8 +121,23 @@ public final class SimulationContext implements FilterContext {
 		this.instructionService = new SimInstructionService();
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
+		this.nodeMetadataService = new SimMetadataService(SimMetadataService.NODE_METADATA_SERVICE_UID,
+				nodeMetadata);
+		registerService(nodeMetadataService);
 		this.expressionServices = new StaticOptionalServiceCollection<>(List.of(expressionService));
-		this.tariffScheduleProviders = new StaticOptionalServiceCollection<>(List.of());
+		this.tariffScheduleProviders = new SimServiceTracker<>(TariffScheduleProvider.class, services,
+				true);
+	}
+
+	/**
+	 * Register a service, like a SolarNode component that publishes itself as
+	 * an OSGi service.
+	 *
+	 * @param service
+	 *        the service
+	 */
+	public void registerService(Object service) {
+		services.add(service);
 	}
 
 	/**
@@ -128,6 +155,8 @@ public final class SimulationContext implements FilterContext {
 		if ( filter instanceof BaseIdentifiable f ) {
 			f.setExpressionServices(expressionServices);
 			f.setLocalStateDao(new StaticOptionalService<>(localStateDao));
+			// the standard filters' (function=node) MetadataService, for expressions
+			f.setMetadataService(new StaticOptionalService<>(nodeMetadataService));
 		}
 		if ( filter instanceof BaseDatumFilterSupport f ) {
 			f.setDatumService(new StaticOptionalService<>(datumService));
@@ -187,6 +216,21 @@ public final class SimulationContext implements FilterContext {
 	@Override
 	public List<DatumFilterService> filterServices() {
 		return filterServices;
+	}
+
+	@Override
+	public <T> List<T> services(Class<T> serviceClass) {
+		final List<T> result = new ArrayList<>(4);
+		for ( T service : new SimServiceTracker<>(serviceClass, services, true).services() ) {
+			result.add(service);
+		}
+		return result;
+	}
+
+	@Override
+	public <T> OptionalFilterableService<T> serviceTracker(Class<T> serviceClass,
+			boolean ignoreEmptyPropertyFilterValues) {
+		return new SimServiceTracker<>(serviceClass, services, ignoreEmptyPropertyFilterValues);
 	}
 
 	/**

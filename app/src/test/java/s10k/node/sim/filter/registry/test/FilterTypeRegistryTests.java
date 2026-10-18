@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
+import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.settings.SettingSpecifierProvider;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
@@ -53,8 +54,8 @@ public class FilterTypeRegistryTests {
 		// THEN
 		// @formatter:off
 		then(types)
-			.as("All standard user filters and the filter chain are supported")
-			.hasSize(16)
+			.as("All standard user filters, the filter chain, and the Tariff filter are supported")
+			.hasSize(17)
 			.allSatisfy(t -> {
 				then(t.name())
 					.as("Name from message source %s", t.factoryUid())
@@ -78,7 +79,7 @@ public class FilterTypeRegistryTests {
 		// GIVEN
 		FilterTypeRegistry registry = new FilterTypeRegistry(StandardFilterTypes.definitions());
 		SimulationContext context = new SimulationContext(Instant.now(), new SpelExpressionService(),
-				(_, _) -> true);
+				(_, _) -> true, new GeneralDatumMetadata());
 
 		for ( FilterTypeDefinition def : registry.definitions() ) {
 			// WHEN

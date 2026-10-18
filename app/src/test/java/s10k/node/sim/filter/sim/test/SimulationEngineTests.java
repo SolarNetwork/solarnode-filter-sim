@@ -43,6 +43,7 @@ import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationOptions;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
+import s10k.node.sim.filter.domain.UserMetadataConfig;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.sim.SimulationEngine;
@@ -50,6 +51,8 @@ import s10k.node.sim.filter.sim.SimulationException;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Test cases for the {@link SimulationEngine} class.
@@ -67,6 +70,20 @@ public class SimulationEngineTests {
 			{"created":"2025-10-01 00:00:00Z","sourceId":"/meter/1",
 			"i":{"voltage_a":220,"voltage_b":222,"voltage_c":225,"watts":123.456},
 			"a":{"wattHours":98765432}}""";
+
+	/** A tariff schedule with a rate for each half of the year. */
+	private static final String HALF_YEAR_SCHEDULE = """
+			Month,Day,Weekday,Time,Rate
+			Jan-Jun,,,,0.10
+			Jul-Dec,,,,0.20
+			""";
+
+	// the middle of the day in the middle of each month, so the month is the same in every time zone
+	private static final String MARCH_DATUM = """
+			{"created":"2025-03-15 12:00:00Z","sourceId":"/meter/1","i":{"watts":100}}""";
+
+	private static final String SEPTEMBER_DATUM = """
+			{"created":"2025-09-15 12:00:00Z","sourceId":"/meter/1","i":{"watts":100}}""";
 
 	private SimulationEngine engine;
 
@@ -130,6 +147,31 @@ public class SimulationEngineTests {
 
 	private static Number number(Object o) {
 		return (Number) o;
+	}
+
+	private static FilterConfig tariff(String id, String uid, String metadataServiceUid) {
+		Map<String, String> s = new LinkedHashMap<>();
+		s.put("uid", uid);
+		if ( metadataServiceUid != null ) {
+			s.put("metadataServiceUid", metadataServiceUid);
+		}
+		return new FilterConfig(id, StandardFilterTypes.TARIFF, null, s, null);
+	}
+
+	private static ObjectNode tariffMetadata(String schedule) {
+		ObjectNode meta = JSON.createObjectNode();
+		meta.putObject("pm").putObject("tariffs").put("schedule", schedule);
+		return meta;
+	}
+
+	private static SimulationEnvironment metadataEnvironment(JsonNode nodeMetadata,
+			UserMetadataConfig... userMetadata) {
+		return new SimulationEnvironment(null, null, nodeMetadata,
+				userMetadata.length > 0 ? List.of(userMetadata) : null);
+	}
+
+	private static Object rate(DatumTrace trace) {
+		return trace.output().samples().i().get("rate");
 	}
 
 	@Test
@@ -216,7 +258,7 @@ public class SimulationEngineTests {
 		SimulationEnvironment env = new SimulationEnvironment(null, """
 				Key,Created,Modified,Type,Value
 				counter,,,Int64,41
-				""");
+				""", null, null);
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						expression("exp", "EXP", "count",
@@ -266,7 +308,8 @@ public class SimulationEngineTests {
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
-				List.of(json(METER_DATUM)), null, new SimulationEnvironment(List.of(), null), null);
+				List.of(json(METER_DATUM)), null, new SimulationEnvironment(List.of(), null, null, null),
+				null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -296,8 +339,8 @@ public class SimulationEngineTests {
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
-				List.of(json(METER_DATUM)), null, new SimulationEnvironment(List.of(" BOOST "), null),
-				null);
+				List.of(json(METER_DATUM)), null,
+				new SimulationEnvironment(List.of(" BOOST "), null, null, null), null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -427,9 +470,9 @@ public class SimulationEngineTests {
 	@Test
 	public void unsupportedFilter() {
 		// GIVEN
-		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "tariff"),
-				new FilterConfig("tariff", "net.solarnetwork.node.datum.filter.tariff", null,
-						Map.of("uid", "Tariff"), null)),
+		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "poa"),
+				new FilterConfig("poa", "net.solarnetwork.node.datum.filter.pvlib.poa", null,
+						Map.of("uid", "POA"), null)),
 				METER_DATUM);
 
 		// WHEN
@@ -447,7 +490,7 @@ public class SimulationEngineTests {
 			.extracting(FilterStep::filterId, FilterStep::status)
 			.containsExactly(
 					tuple("main", Status.Unchanged),
-					tuple("tariff", Status.Unsupported))
+					tuple("poa", Status.Unsupported))
 			;
 		// @formatter:on
 	}
@@ -529,6 +572,228 @@ public class SimulationEngineTests {
 		then(result.datum().get(1).startState().history())
 			.as("Second datum starts with the first datum output in the history")
 			.containsOnlyKeys("/meter/1")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void tariff_nodeMetadata() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "tariff"), tariff("tariff", "Tariff", null)),
+				List.of(json(MARCH_DATUM), json(SEPTEMBER_DATUM)), null,
+				metadataEnvironment(tariffMetadata(HALF_YEAR_SCHEDULE)), null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("Only the time zone limitation reported")
+			.extracting(SimulationMessage::code, SimulationMessage::filterId)
+			.containsExactly(tuple(SimulationMessage.CODE_FILTER_LIMITATION, "tariff"))
+			;
+		then(result.datum())
+			.as("Rate for each datum's month added, from the Node Metadata Service schedule")
+			.extracting(t -> number(rate(t)).doubleValue())
+			.containsExactly(0.10, 0.20)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void tariff_userMetadata() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "tariff"), tariff("tariff", "Tariff", "Tariffs")),
+				List.of(json(MARCH_DATUM), json(SEPTEMBER_DATUM)), null,
+				metadataEnvironment(tariffMetadata("Month,Day,Weekday,Time,Rate\n,,,,0.99"),
+						new UserMetadataConfig("Tariffs", tariffMetadata(HALF_YEAR_SCHEDULE))),
+				null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("No problem reported")
+			.extracting(SimulationMessage::code)
+			.doesNotContain(SimulationMessage.CODE_FILTER_PROBLEM)
+			;
+		then(result.datum())
+			.as("Rate added from the schedule of the User Metadata Service with the Service Name")
+			.extracting(t -> number(rate(t)).doubleValue())
+			.containsExactly(0.10, 0.20)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void tariff_unknownMetadataService() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "tariff"), tariff("tariff", "Tariff", "Tarifs")),
+				List.of(json(MARCH_DATUM)), null, metadataEnvironment(null,
+						new UserMetadataConfig("Tariffs", tariffMetadata(HALF_YEAR_SCHEDULE))),
+				null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("Missing schedule reported")
+			.filteredOn(m -> SimulationMessage.CODE_FILTER_PROBLEM.equals(m.code()))
+			.singleElement()
+			.returns("tariff", from(SimulationMessage::filterId))
+			.extracting(SimulationMessage::message)
+			.asString()
+			.as("Message names the Service Name and the metadata services")
+			.contains("\"Tarifs\"", "Node Metadata Service, Tariffs")
+			;
+		then(result.datum().getFirst().steps())
+			.as("Filter changed nothing")
+			.extracting(FilterStep::filterId, FilterStep::status)
+			.containsExactly(
+					tuple("main", Status.Unchanged),
+					tuple("tariff", Status.Unchanged))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void tariff_scheduleArray() {
+		// GIVEN
+		ObjectNode meta = JSON.createObjectNode();
+		ArrayNode schedule = meta.putObject("pm").putObject("tariffs").putArray("schedule");
+		schedule.addArray().add("Month").add("Day").add("Weekday").add("Time").add("Rate");
+		schedule.addArray().add("Jan-Jun").addNull().add("").add("").add(0.10);
+		schedule.addArray().add("Jul-Dec").add("").addNull().addNull().add("0.20");
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "tariff"), tariff("tariff", "Tariff", null)),
+				List.of(json(MARCH_DATUM), json(SEPTEMBER_DATUM)), null, metadataEnvironment(meta),
+				null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("No problem reported")
+			.extracting(SimulationMessage::code)
+			.doesNotContain(SimulationMessage.CODE_FILTER_PROBLEM)
+			;
+		then(result.datum())
+			.as("Rate added from a schedule stored as a JSON array of arrays")
+			.extracting(t -> number(rate(t)).doubleValue())
+			.containsExactly(0.10, 0.20)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void tariff_scheduleObject() {
+		// GIVEN
+		ObjectNode meta = JSON.createObjectNode();
+		meta.putObject("pm").putObject("tariffs").putObject("schedule").put("Rate", 0.10);
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "tariff"), tariff("tariff", "Tariff", null)),
+				List.of(json(MARCH_DATUM)), null, metadataEnvironment(meta), null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("Schedule that is not CSV text or an array of arrays reported")
+			.filteredOn(m -> SimulationMessage.CODE_FILTER_PROBLEM.equals(m.code()))
+			.singleElement()
+			.extracting(SimulationMessage::message)
+			.asString()
+			.contains("/pm/tariffs/schedule", "Node Metadata Service", "JSON object")
+			;
+		then(result.datum().getFirst().output().samples().i())
+			.as("No rate added")
+			.doesNotContainKey("rate")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void expression_metadata() {
+		// GIVEN
+		ObjectNode meta = tariffMetadata("Month,Day,Weekday,Time,Rate\n,,,,0.15");
+		((ObjectNode) meta.get("pm")).putObject("site").put("factor", 2.5);
+		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "exp"),
+				expression("exp", "EXP", "scaled", "metadataAtPath('/pm/site/factor') * watts", "price",
+						"tariffSchedule('Tariff').resolveTariff(now(), null).rates['rate'].amount"),
+				tariff("tariff", "Tariff", null)), List.of(json(METER_DATUM)), null,
+				metadataEnvironment(meta), null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum().getFirst().output().samples().i())
+			.as("Node metadata available to expressions")
+			.hasEntrySatisfying("scaled", v -> then(number(v).doubleValue())
+					.isCloseTo(308.64, within(0.001)))
+			.as("Tariff schedules available to expressions, from filters not in any chain")
+			.hasEntrySatisfying("price", v -> then(number(v).doubleValue())
+					.isEqualTo(0.15))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void metadata_invalid() {
+		// GIVEN
+		SimulationRequest req = request(List.of(chain("main", "Chain - Main")),
+				List.of(json(METER_DATUM)), null, metadataEnvironment(json("\"schedule\"")), null);
+
+		// THEN
+		// @formatter:off
+		thenThrownBy(() -> engine.simulate(req))
+			.as("Metadata must be an object")
+			.isInstanceOf(SimulationException.class)
+			.hasMessage("Node metadata is not a JSON object.")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void metadata_messages() {
+		// GIVEN
+		ObjectNode meta = JSON.createObjectNode();
+		meta.put("nodeId", 123);
+		meta.putObject("m").put("name", "Test");
+		SimulationRequest req = request(List.of(chain("main", "Chain - Main")),
+				List.of(json(METER_DATUM)), null,
+				metadataEnvironment(meta, new UserMetadataConfig("Node Metadata Service", null),
+						new UserMetadataConfig(" ", null)),
+				null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("Ignored property, duplicate Service Name, and missing Service Name reported")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(
+					tuple(SimulationMessage.CODE_IGNORED_METADATA,
+							"Node metadata has the property nodeId, which SolarNode ignores. Metadata has only m, pm, and t properties."),
+					tuple(SimulationMessage.CODE_DUPLICATE_UID,
+							"More than one metadata service has the Service Name Node Metadata Service, so filters use the first one."),
+					tuple(SimulationMessage.CODE_MISSING_UID,
+							"User Metadata Service 2 has no Service Name, so filters cannot find it."))
 			;
 		// @formatter:on
 	}

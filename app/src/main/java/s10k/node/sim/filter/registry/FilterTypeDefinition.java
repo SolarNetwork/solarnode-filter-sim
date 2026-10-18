@@ -66,6 +66,9 @@ import net.solarnetwork.service.DatumFilterService;
  *        differ from SolarNode for a given set of settings, or {@code null} if
  *        there are no differences; or {@code null} if the filter has no known
  *        limitations
+ * @param check
+ *        a check for configuration problems that stop the filter from working,
+ *        or {@code null}
  * @author matt
  * @version 1.0
  */
@@ -73,7 +76,8 @@ public record FilterTypeDefinition(String factoryUid, String displayName,
 		Class<? extends DatumFilterService> filterClass, MessageSource messageSource,
 		FilterFactory factory, @Nullable Consumer<DatumFilterService> init,
 		@Nullable Consumer<DatumFilterService> destroy, Set<FilterCapability> capabilities,
-		@Nullable Function<Map<String, String>, @Nullable String> limitations) {
+		@Nullable Function<Map<String, String>, @Nullable String> limitations,
+		@Nullable FilterCheck check) {
 
 	/** The factory UID of a SolarNode user filter chain. */
 	public static final String CHAIN_FACTORY_UID = "net.solarnetwork.node.datum.xform.user";
@@ -111,6 +115,32 @@ public record FilterTypeDefinition(String factoryUid, String displayName,
 	 */
 	public @Nullable String limitations(Map<String, String> settings) {
 		return (limitations != null ? limitations.apply(settings) : null);
+	}
+
+	/**
+	 * Check a filter for a configuration problem that stops it from working.
+	 *
+	 * @param filter
+	 *        the filter, after its settings have been applied and it has been
+	 *        started
+	 * @param context
+	 *        the simulated services
+	 * @return a description of the problem, or {@code null} if there is none
+	 */
+	public @Nullable String check(DatumFilterService filter, FilterContext context) {
+		return (check != null ? check.check(filter, context) : null);
+	}
+
+	/**
+	 * Copy this definition, with a check.
+	 *
+	 * @param check
+	 *        the check
+	 * @return the new definition
+	 */
+	public FilterTypeDefinition withCheck(FilterCheck check) {
+		return new FilterTypeDefinition(factoryUid, displayName, filterClass, messageSource, factory,
+				init, destroy, capabilities, limitations, check);
 	}
 
 }

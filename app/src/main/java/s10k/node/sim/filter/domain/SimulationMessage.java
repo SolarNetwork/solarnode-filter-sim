@@ -54,10 +54,15 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	/** A setting value the filter could not accept. */
 	public static final String CODE_INVALID_SETTING = "InvalidSetting";
 
-	/** More than one filter with the same Service Name. */
+	/**
+	 * More than one filter, or metadata service, with the same Service Name.
+	 */
 	public static final String CODE_DUPLICATE_UID = "DuplicateUid";
 
-	/** A chain member without a Service Name, which a chain cannot refer to. */
+	/**
+	 * A chain member or metadata service without a Service Name, which other
+	 * components cannot refer to.
+	 */
 	public static final String CODE_MISSING_UID = "MissingUid";
 
 	/** A chain member that does not exist. */
@@ -71,6 +76,12 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 
 	/** An error starting or stopping a filter. */
 	public static final String CODE_FILTER_ERROR = "FilterError";
+
+	/**
+	 * A configuration problem that stops a filter from working, which SolarNode
+	 * only reports in its log.
+	 */
+	public static final String CODE_FILTER_PROBLEM = "FilterProblem";
 
 	/** A generated datum discarded because of the generation depth limit. */
 	public static final String CODE_GENERATION_DEPTH_LIMIT = "GenerationDepthLimit";
@@ -86,6 +97,9 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 
 	/** A history datum that is newer than the first input datum. */
 	public static final String CODE_HISTORY_AFTER_INPUT = "HistoryAfterInput";
+
+	/** Metadata JSON properties that SolarNode ignores. */
+	public static final String CODE_IGNORED_METADATA = "IgnoredMetadata";
 
 	/** A settings CSV row that SolarNode cannot read. */
 	public static final String CODE_CSV_FORMAT = "CsvFormat";

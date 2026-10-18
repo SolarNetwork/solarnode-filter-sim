@@ -103,8 +103,19 @@ A minimal simulation request runs one Expression filter on the main chain:
 }
 ```
 
-The request can also include `history` datum, a starting `environment` (operational modes and
-Local State CSV), and `options` such as `"detail": "Debug"` for state snapshots.
+The request can also include `history` datum, a starting `environment`, and `options` such as
+`"detail": "Debug"` for state snapshots. The environment holds the starting operational modes and
+Local State CSV, plus the metadata that metadata services provide. The Node Metadata Service
+always exists, with `nodeMetadata` (or no metadata), and `userMetadata` adds User Metadata
+Services. A Tariff filter finds its service by the Service Name in its Metadata Service setting:
+
+```json
+"environment": {
+  "nodeMetadata": {"pm": {"site": {"factor": 2.5}}},
+  "userMetadata": [{"uid": "Tariffs", "metadata": {"pm": {"tariffs": {
+    "schedule": "Month,Day,Weekday,Time,Rate\nJan-Jun,,,,0.10\nJul-Dec,,,,0.20"}}}}]
+}
+```
 
 A settings form request names the filter type and gives its current settings:
 

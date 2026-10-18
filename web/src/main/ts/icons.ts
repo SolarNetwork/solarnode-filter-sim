@@ -24,6 +24,7 @@ const FILTER_ICONS: Record<string, string> = {
 	"net.solarnetwork.node.datum.filter.std.timeout": "alarm",
 	"net.solarnetwork.node.datum.filter.std.timestamp": "clock",
 	"net.solarnetwork.node.datum.filter.instructor": "send",
+	"net.solarnetwork.node.datum.filter.tariff": "cash-coin",
 	[EXTERNAL_FACTORY_UID]: "box-arrow-up-right",
 };
 
