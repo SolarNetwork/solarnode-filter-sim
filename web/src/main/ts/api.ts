@@ -4,6 +4,7 @@ import type {
 	FilterTypeInfo,
 	ProblemDetail,
 	SettingsExport,
+	SettingsForm,
 	SettingsImport,
 	SimConfig,
 } from "./model.ts";
@@ -87,4 +88,20 @@ export function exportSettings(
 	style: ExportStyle,
 ): Promise<SettingsExport> {
 	return postJson<SettingsExport>("api/settings/export", { config, style });
+}
+
+/**
+ * Get the settings form of a filter.
+ *
+ * @param factoryUid the filter type
+ * @param settings the filter settings
+ */
+export function getSettingsForm(
+	factoryUid: string,
+	settings: Record<string, string>,
+): Promise<SettingsForm> {
+	return postJson<SettingsForm>("api/settings-form", {
+		factoryUid,
+		settings,
+	});
 }

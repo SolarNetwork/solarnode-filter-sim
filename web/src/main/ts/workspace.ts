@@ -1,3 +1,4 @@
+import { instanceIdProblem } from "./instanceIds.ts";
 import {
 	CHAIN_FACTORY_UID,
 	EXTERNAL_FACTORY_UID,
@@ -42,7 +43,12 @@ export interface WorkspaceState {
 export interface WorkspaceChange {
 	/** What changed, for example "Add filter". */
 	label: string;
+	/** `false` if the change cannot affect the flow chart, such as a note. */
+	drawing: boolean;
 }
+
+/** Setting changes: a value to set, or `null` to remove the setting. */
+export type SettingChanges = Record<string, string | null>;
 
 const STORAGE_KEY = "sn-filter-sim.workspace";
 const MAX_UNDO = 100;
@@ -50,6 +56,9 @@ const SAVE_DELAY = 300;
 const MAIN_INSTANCE_KEY = "Main";
 const MAIN_UID = "Chain - Main";
 const NEW_ID_PREFIX = "filter-";
+
+/** How long, in milliseconds, edits of the same field merge into one undo step. */
+const MERGE_TIME = 2000;
 
 /**
  * Get a short name for a filter type, for new Service Names.
@@ -77,6 +86,8 @@ export class Workspace extends EventTarget {
 	readonly #undo: string[] = [];
 	readonly #redo: string[] = [];
 	#saveTimer?: number;
+	#mergeKey?: string;
+	#mergeTime = 0;
 
 	/**
 	 * Constructor.
@@ -254,6 +265,57 @@ export class Workspace extends EventTarget {
 		const type = this.type(filter.factoryUid);
 		const name = type ? shortTypeName(type) : filter.factoryUid;
 		return filter.instanceKey ? `${name} ${filter.instanceKey}` : name;
+	}
+
+	/**
+	 * Check a filter's instance ID: SolarNode's rules, and unique among the
+	 * filters of the same type.
+	 *
+	 * @param filter the filter
+	 * @returns the problem, or `undefined` if the instance ID is fine
+	 */
+	instanceKeyProblem(filter: FilterConfig): string | undefined {
+		if (this.isExternal(filter)) {
+			return undefined;
+		}
+		const key = filter.instanceKey;
+		if (key === null || key === undefined) {
+			// one is assigned on export
+			return undefined;
+		}
+		const problem = instanceIdProblem(key);
+		if (problem) {
+			return problem;
+		}
+		const same = this.#state.filters.find(
+			(f) =>
+				f.id !== filter.id &&
+				f.factoryUid === filter.factoryUid &&
+				f.instanceKey === key,
+		);
+		return same
+			? `${this.label(same)} has the same instance ID, and instance IDs must be unique for each filter type.`
+			: undefined;
+	}
+
+	/**
+	 * Check a filter's Service Name.
+	 *
+	 * @param filter the filter
+	 * @returns a warning, or `undefined` if the Service Name is fine
+	 */
+	uidWarning(filter: FilterConfig): string | undefined {
+		const uid = this.uid(filter);
+		if (!uid) {
+			return "A chain can only use a filter that has a Service Name.";
+		}
+		const others = this.#state.filters.filter(
+			(f) => f.id !== filter.id && this.uid(f) === uid,
+		);
+		if (others.length === 0) {
+			return undefined;
+		}
+		return `${others.length === 1 ? "Another filter has" : `${others.length} other filters have`} this Service Name, so chains use only the first filter with it.`;
 	}
 
 	/**
@@ -453,6 +515,105 @@ export class Workspace extends EventTarget {
 	}
 
 	/**
+	 * Change a filter's settings.
+	 *
+	 * Removing a setting removes its note too.
+	 *
+	 * @param filterId the filter id
+	 * @param changes the changes
+	 * @param mergeKey a key that merges the change into the previous undo step
+	 *     if that had the same key and was recent, for typing
+	 */
+	updateSettings(
+		filterId: string,
+		changes: SettingChanges,
+		mergeKey?: string,
+	): void {
+		if (!this.filter(filterId)) {
+			return;
+		}
+		const drawing = UID_SETTING in changes;
+		this.#commit(
+			"Edit settings",
+			(s) => {
+				const f = s.filters.find((f) => f.id === filterId)!;
+				const settings = { ...(f.settings ?? {}) };
+				const notes = { ...(f.notes ?? {}) };
+				for (const [key, value] of Object.entries(changes)) {
+					if (value === null) {
+						delete settings[key];
+						delete notes[key];
+					} else {
+						settings[key] = value;
+					}
+				}
+				f.settings = settings;
+				f.notes = Object.keys(notes).length > 0 ? notes : null;
+				if (f.id === s.mainChainId) {
+					s.implicitMain = false;
+				}
+			},
+			mergeKey,
+			drawing,
+		);
+	}
+
+	/**
+	 * Change a filter's instance ID.
+	 *
+	 * @param filterId the filter id
+	 * @param instanceKey the instance ID
+	 * @param mergeKey a key that merges the change into the previous undo step
+	 */
+	setInstanceKey(
+		filterId: string,
+		instanceKey: string,
+		mergeKey?: string,
+	): void {
+		this.#update(filterId, "Edit instance ID", mergeKey, true, (f) => {
+			f.instanceKey = instanceKey;
+		});
+	}
+
+	/**
+	 * Change a filter's comment.
+	 *
+	 * @param filterId the filter id
+	 * @param comment the comment, or an empty string for none
+	 * @param mergeKey a key that merges the change into the previous undo step
+	 */
+	setComment(filterId: string, comment: string, mergeKey?: string): void {
+		this.#update(filterId, "Edit comment", mergeKey, false, (f) => {
+			f.comment = comment.trim() ? comment : null;
+		});
+	}
+
+	/**
+	 * Change the note of a setting.
+	 *
+	 * @param filterId the filter id
+	 * @param key the setting key
+	 * @param note the note, or an empty string for none
+	 * @param mergeKey a key that merges the change into the previous undo step
+	 */
+	setNote(
+		filterId: string,
+		key: string,
+		note: string,
+		mergeKey?: string,
+	): void {
+		this.#update(filterId, "Edit note", mergeKey, false, (f) => {
+			const notes = { ...(f.notes ?? {}) };
+			if (note.trim()) {
+				notes[key] = note;
+			} else {
+				delete notes[key];
+			}
+			f.notes = Object.keys(notes).length > 0 ? notes : null;
+		});
+	}
+
+	/**
 	 * Set the canvas position of a filter that is not in a chain.
 	 *
 	 * @param filterId the filter id
@@ -511,6 +672,7 @@ export class Workspace extends EventTarget {
 	/** Undo the last change. */
 	undo(): void {
 		const previous = this.#undo.pop();
+		this.#mergeKey = undefined;
 		if (previous) {
 			this.#redo.push(JSON.stringify(this.#state));
 			this.#state = JSON.parse(previous) as WorkspaceState;
@@ -521,6 +683,7 @@ export class Workspace extends EventTarget {
 	/** Redo the last undone change. */
 	redo(): void {
 		const next = this.#redo.pop();
+		this.#mergeKey = undefined;
 		if (next) {
 			this.#undo.push(JSON.stringify(this.#state));
 			this.#state = JSON.parse(next) as WorkspaceState;
@@ -608,21 +771,55 @@ export class Workspace extends EventTarget {
 		}
 	}
 
-	#commit(label: string, change: (state: WorkspaceState) => void): void {
-		this.#undo.push(JSON.stringify(this.#state));
-		if (this.#undo.length > MAX_UNDO) {
-			this.#undo.shift();
+	#update(
+		filterId: string,
+		label: string,
+		mergeKey: string | undefined,
+		drawing: boolean,
+		change: (filter: FilterConfig) => void,
+	): void {
+		if (!this.filter(filterId)) {
+			return;
 		}
+		this.#commit(
+			label,
+			(s) => change(s.filters.find((f) => f.id === filterId)!),
+			mergeKey,
+			drawing,
+		);
+	}
+
+	#commit(
+		label: string,
+		change: (state: WorkspaceState) => void,
+		mergeKey?: string,
+		drawing = true,
+	): void {
+		const now = Date.now();
+		const merge =
+			mergeKey !== undefined &&
+			mergeKey === this.#mergeKey &&
+			now - this.#mergeTime < MERGE_TIME;
+		if (!merge) {
+			this.#undo.push(JSON.stringify(this.#state));
+			if (this.#undo.length > MAX_UNDO) {
+				this.#undo.shift();
+			}
+		}
+		this.#mergeKey = mergeKey;
+		this.#mergeTime = now;
 		this.#redo.length = 0;
 		const next = structuredClone(this.#state);
 		change(next);
 		this.#state = next;
-		this.#changed(label);
+		this.#changed(label, drawing);
 	}
 
-	#changed(label: string): void {
+	#changed(label: string, drawing = true): void {
 		this.dispatchEvent(
-			new CustomEvent<WorkspaceChange>("change", { detail: { label } }),
+			new CustomEvent<WorkspaceChange>("change", {
+				detail: { label, drawing },
+			}),
 		);
 		window.clearTimeout(this.#saveTimer);
 		this.#saveTimer = window.setTimeout(() => this.#save(), SAVE_DELAY);

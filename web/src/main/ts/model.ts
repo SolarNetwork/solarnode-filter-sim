@@ -98,3 +98,69 @@ export interface ProblemDetail {
 	status?: number;
 	problems?: SimulationMessage[];
 }
+
+/** A settings form field type. */
+export type SettingFieldType =
+	| "Title"
+	| "Text"
+	| "TextArea"
+	| "Cron"
+	| "Toggle"
+	| "Slider"
+	| "Radio"
+	| "Select"
+	| "Group";
+
+/** A choice of a select or radio group setting. */
+export interface SettingOption {
+	value: string;
+	label: string;
+	/** The description, as HTML. */
+	description?: string;
+}
+
+/**
+ * A settings form field. Components that do not apply to the type are
+ * missing or `false`.
+ */
+export interface SettingField {
+	type: SettingFieldType;
+	key?: string;
+	label?: string;
+	/** The description, as HTML. */
+	description?: string;
+	/** The current value: the setting's value, or else its default value. */
+	value?: string;
+	defaultValue?: string;
+	transient: boolean;
+	readOnly: boolean;
+	markup: boolean;
+	secure: boolean;
+	relatedServiceFilter?: string;
+	options?: SettingOption[];
+	trueValue?: string;
+	falseValue?: string;
+	min?: number;
+	max?: number;
+	step?: number;
+	dynamic: boolean;
+	/** For a dynamic list, the key of the setting with its number of items. */
+	countKey?: string;
+	fields?: SettingField[];
+}
+
+/** A problem applying a setting. */
+export interface SettingProblem {
+	key: string;
+	code: string;
+	message: string;
+}
+
+/** A filter's settings form. */
+export interface SettingsForm {
+	factoryUid: string;
+	fields: SettingField[];
+	problems: SettingProblem[];
+	/** How the simulation of the filter differs from SolarNode. */
+	limitation?: string;
+}

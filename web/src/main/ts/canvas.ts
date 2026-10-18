@@ -10,7 +10,12 @@ import {
 	type FlowLink,
 } from "./layout.ts";
 import type { FilterConfig } from "./model.ts";
-import type { ChainSlot, Point, Workspace } from "./workspace.ts";
+import type {
+	ChainSlot,
+	Point,
+	Workspace,
+	WorkspaceChange,
+} from "./workspace.ts";
 
 /** The drag and drop data type of a filter type from the palette. */
 export const FILTER_TYPE_MIME = "application/x-sn-filter-type";
@@ -256,9 +261,12 @@ export class Canvas extends EventTarget {
 		});
 		this.#bindPaperEvents();
 		this.#bindDropEvents();
-		ws.addEventListener("change", () => {
+		ws.addEventListener("change", (e) => {
 			this.#changes++;
-			this.render();
+			this.#flagged.clear();
+			if ((e as CustomEvent<WorkspaceChange>).detail.drawing) {
+				this.render();
+			}
 		});
 		this.render();
 	}
@@ -504,7 +512,10 @@ export class Canvas extends EventTarget {
 		if (node.loop) {
 			classes.push("is-loop");
 		}
-		if (this.#flagged.has(node.filterId)) {
+		if (
+			this.#flagged.has(node.filterId) ||
+			(filter && ws.instanceKeyProblem(filter))
+		) {
 			classes.push("is-problem");
 		}
 		if (node.key === this.#selected) {
@@ -530,6 +541,10 @@ export class Canvas extends EventTarget {
 		];
 		if (filter.instanceKey) {
 			lines.push(`Instance ID: ${filter.instanceKey}`);
+		}
+		const problem = ws.instanceKeyProblem(filter);
+		if (problem) {
+			lines.push(`Instance ID problem: ${problem}`);
 		}
 		if (!type) {
 			lines.push("Datum pass through it unchanged.");

@@ -59,7 +59,10 @@ The main TypeScript modules are:
 | `workspace.ts` | The configuration being edited: filters, chains, undo and redo, and saving in the browser. |
 | `layout.ts`    | The automatic layout of the flow chart. |
 | `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
-| `palette.ts`, `inspector.ts`, `dialogs.ts`, `splitter.ts` | The other parts of the page. |
+| `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
+| `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
+| `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
+| `palette.ts`, `dialogs.ts`, `splitter.ts` | The other parts of the page. |
 | `icons.ts`     | The [Bootstrap Icons][bootstrap-icons] of the filter types. |
 | `api.ts`, `model.ts` | The web API client and its types. |
 
