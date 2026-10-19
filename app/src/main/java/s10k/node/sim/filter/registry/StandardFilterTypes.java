@@ -206,13 +206,7 @@ public final class StandardFilterTypes {
 
 		result.add(def(DOWNSAMPLE, "Downsampler Datum Filter", DownsampleDatumFilterService.class,
 				messageSource(STD + "DownsampleDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new DownsampleDatumFilterService(ctx.clock()), null, null, Set.of(),
-				settings -> hasValue(settings, "sampleDurationSecs")
-						? "Downsampling by Sample Duration follows the system clock in this version "
-								+ "of SolarNode, not datum timestamps, so samples are not grouped "
-								+ "the way they would be on a node. Downsampling by Sample Count "
-								+ "is not affected."
-						: null));
+				ctx -> new DownsampleDatumFilterService(ctx.clock()), null, null, Set.of(), null));
 
 		result.add(def(VIRTUAL_METER, "Virtual Meter Filter", VirtualMeterDatumFilterService.class,
 				messageSource("net.solarnetwork.node.datum.filter.virt.VirtualMeterDatumFilterService",
@@ -229,7 +223,7 @@ public final class StandardFilterTypes {
 				messageSource(
 						"net.solarnetwork.node.datum.filter.opmode.OperationalModeDatumFilterService",
 						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
-				_ -> new OperationalModeDatumFilterService(), null, null, Set.of(), null));
+				ctx -> new OperationalModeDatumFilterService(ctx.clock()), null, null, Set.of(), null));
 
 		result.add(def(JOIN, "Join Filter", JoinDatumFilterService.class,
 				messageSource(STD + "JoinDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE), ctx -> {
@@ -320,11 +314,6 @@ public final class StandardFilterTypes {
 			@Nullable Function<Map<String, String>, @Nullable String> limitations) {
 		return new FilterTypeDefinition(factoryUid, displayName, filterClass, messageSource, factory,
 				init, destroy, capabilities, limitations, null);
-	}
-
-	private static boolean hasValue(Map<String, String> settings, String key) {
-		String v = settings.get(key);
-		return (v != null && !v.isBlank() && !"0".equals(v.trim()));
 	}
 
 }

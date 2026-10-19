@@ -11,7 +11,9 @@ sn-common-expr-spel = "4.2.1"
 # 4.10.0 adds BaseDatumFilterSupport.getStatisticCount(); until it is on Maven Central, build
 # with -PlocalIvy
 sn-node = "4.10.0"
-sn-node-datum-filter-standard = "4.7.0"
+# 4.7.1 has the Downsample and Operational Mode filter clock fixes; until it is on Maven Central,
+# build with -PlocalIvy
+sn-node-datum-filter-standard = "4.7.1"
 # the filter registry follows the 4.1.1 blueprint, which also injects the opModesService; the
 # classes are unchanged
 sn-node-datum-filter-tariff = "4.1.0"

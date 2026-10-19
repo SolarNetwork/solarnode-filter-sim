@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import s10k.node.sim.filter.domain.DatumOrigin;
@@ -438,13 +439,22 @@ public class SimulationEngineTests {
 		// @formatter:on
 	}
 
+	private static FilterConfig splitTo(String id, String sourceId, String outputSourceId) {
+		Map<String, String> s = new LinkedHashMap<>();
+		s.put("uid", id);
+		s.put("sourceId", "^" + sourceId + "$");
+		s.put("swallowInput", "false");
+		s.put("propertySourceMappingsCount", "1");
+		s.put("propertySourceMappings[0].key", "^watts$");
+		s.put("propertySourceMappings[0].value", outputSourceId);
+		return new FilterConfig(id, StandardFilterTypes.SPLIT, null, s, null);
+	}
+
 	@Test
 	public void split_loopDetected() {
 		// GIVEN
-		SimulationRequest req = request(
-				List.of(chain("main", "Chain - Main", "split"),
-						new FilterConfig("split", StandardFilterTypes.SPLIT, null, split("SPLIT", null),
-								null)),
+		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "splitA", "splitB"),
+				splitTo("splitA", "/meter/1", "/meter/2"), splitTo("splitB", "/meter/2", "/meter/1")),
 				List.of(json(METER_DATUM)), null, null,
 				new SimulationOptions(null, 3, null, null, null, null, null));
 
@@ -460,11 +470,11 @@ public class SimulationEngineTests {
 		then(result.messages())
 			.as("Generation depth limit reported")
 			.extracting(SimulationMessage::code, SimulationMessage::filterId)
-			.containsExactly(tuple(SimulationMessage.CODE_GENERATION_DEPTH_LIMIT, "split"))
+			.containsExactly(tuple(SimulationMessage.CODE_GENERATION_DEPTH_LIMIT, "splitB"))
 			;
 		then(result.messages().getFirst().message())
 			.as("Message has the generation path")
-			.contains("/meter/1 → /meter/1/power → /meter/1/power")
+			.contains("/meter/1 → /meter/2 → /meter/1 → /meter/2 → /meter/1")
 			;
 		// @formatter:on
 	}
@@ -903,6 +913,69 @@ public class SimulationEngineTests {
 			.as("Datum metadata available to expressions")
 			.hasEntrySatisfying("panel", v -> then(number(v).doubleValue())
 					.isCloseTo(20.0, within(0.001)))
+			;
+		// @formatter:on
+	}
+
+	private static String wattsDatum(String created, int watts) {
+		return """
+				{"created":"%s","sourceId":"/meter/1","i":{"watts":%d}}""".formatted(created, watts);
+	}
+
+	@Test
+	public void opModeExpiry_simulatedClock() {
+		// GIVEN
+		Map<String, String> opMode = new LinkedHashMap<>();
+		opMode.put("uid", "Mode");
+		opMode.put("expressionConfigsCount", "1");
+		opMode.put("expressionConfigs[0].operationalMode", "boost");
+		opMode.put("expressionConfigs[0].expressionServiceId", SPEL);
+		opMode.put("expressionConfigs[0].expression", "watts > 100");
+		opMode.put("expressionConfigs[0].expireSeconds", "60");
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "mode", "exp"),
+						new FilterConfig("mode", StandardFilterTypes.OP_MODE, null, opMode, null),
+						expression("exp", "EXP", "boosted", "isOpMode('boost') ? 1 : 0")),
+				wattsDatum("2025-10-01 00:00:00Z", 200), wattsDatum("2025-10-01 00:00:30Z", 50),
+				wattsDatum("2025-10-01 00:01:30Z", 50));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("Mode active until it expires a minute later, in simulated time")
+			.extracting(t -> number(t.output().samples().i().get("boosted")).intValue())
+			.containsExactly(1, 1, 0)
+			;
+		then(result.finalState().opModes())
+			.as("Expired mode not active at the end")
+			.isEmpty()
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void downsampleDuration_simulatedClock() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "down"),
+						new FilterConfig("down", StandardFilterTypes.DOWNSAMPLE, null,
+								Map.of("uid", "Down", "sampleDurationSecs", "60"), null)),
+				wattsDatum("2025-10-01 00:00:10Z", 1), wattsDatum("2025-10-01 00:00:30Z", 2),
+				wattsDatum("2025-10-01 00:00:50Z", 3), wattsDatum("2025-10-01 00:01:10Z", 4));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("Datum grouped into minutes by their timestamps")
+			.extracting(t -> t.output() != null ? new TreeMap<>(t.output().samples().i()).toString()
+					: null)
+			.containsExactly(null, null, null, "{watts=2, watts_max=3, watts_min=1}")
 			;
 		// @formatter:on
 	}

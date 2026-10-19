@@ -291,8 +291,8 @@ public class SettingsFormServiceTests {
 			.startsWith("uid")
 			;
 		then(form.limitation())
-			.as("Simulation limitation for the settings")
-			.contains("Sample Duration")
+			.as("No simulation limitation, as Downsample follows the simulated clock")
+			.isNull()
 			;
 		// @formatter:on
 	}

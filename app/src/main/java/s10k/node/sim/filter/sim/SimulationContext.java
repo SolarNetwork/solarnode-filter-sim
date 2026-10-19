@@ -113,8 +113,9 @@ public final class SimulationContext implements FilterContext {
 		this.localStateDao = new SimLocalStateDao(clock);
 		this.settingDao = new SimSettingDao(clock);
 		this.opModes = new ConcurrentHashMap<>(8, 0.9f, 2);
-		this.opModesService = new DefaultOperationalModesService(opModes,
-				new StaticOptionalService<>(settingDao), null);
+		// on the simulated clock, so modes expire in simulated time
+		this.opModesService = new DefaultOperationalModesService(clock, opModes,
+				new ConcurrentHashMap<>(4), new StaticOptionalService<>(settingDao), null);
 		this.datumMetadataService = new SimDatumMetadataService();
 
 		// the path matcher configuration from the net.solarnetwork.node blueprint
