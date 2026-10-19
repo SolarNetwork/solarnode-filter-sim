@@ -19,6 +19,7 @@ jobs:
           formula_folder: Formula
           commit_owner: homebrew-releaser
           commit_email: homebrew-releaser@solarnetwork.net
+          update_readme_table: true
           target_darwin_amd64: false
           target_darwin_arm64: true
           target_linux_amd64: true
