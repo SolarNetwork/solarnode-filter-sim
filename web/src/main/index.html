@@ -722,6 +722,81 @@
 		</div>
 
 		<div
+			class="modal fade"
+			id="import-dialog"
+			tabindex="-1"
+			aria-labelledby="import-dialog-title"
+			aria-hidden="true"
+		>
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h1 class="modal-title fs-5" id="import-dialog-title">
+							Import Settings
+						</h1>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="Close"
+						></button>
+					</div>
+					<div class="modal-body">
+						<p>
+							Add the settings in
+							<strong
+								id="import-dialog-file"
+								class="text-break"
+							></strong>
+							to the simulation, or replace the simulation's
+							settings with them?
+						</p>
+						<dl class="small mb-0">
+							<dt>Add</dt>
+							<dd>
+								Keep the simulation's filters, and add the
+								file's settings. A setting in the file replaces
+								the same setting in the simulation, as when
+								SolarNode imports a settings file.
+							</dd>
+							<dt class="text-danger-emphasis">Replace</dt>
+							<dd>
+								Remove the simulation's filters, and use only
+								the file's.
+							</dd>
+						</dl>
+						<p class="small text-body-secondary mb-0">
+							You can undo either one with Ctrl+Z.
+						</p>
+					</div>
+					<div class="modal-footer">
+						<button
+							type="button"
+							class="btn btn-secondary"
+							data-bs-dismiss="modal"
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							class="btn btn-danger"
+							data-import-mode="replace"
+						>
+							Replace
+						</button>
+						<button
+							type="button"
+							class="btn btn-primary"
+							data-import-mode="add"
+						>
+							Add
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div
 			class="toast-container position-fixed bottom-0 end-0 p-3"
 			id="toasts"
 		></div>

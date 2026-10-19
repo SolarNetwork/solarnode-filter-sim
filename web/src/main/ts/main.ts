@@ -5,10 +5,17 @@ import {
 	getFilterTypes,
 	getInfo,
 	importSettings,
+	mergeSettings,
 	simulate,
 } from "./api.ts";
 import { Canvas } from "./canvas.ts";
-import { showError, showMessages, showToast } from "./dialogs.ts";
+import {
+	askImportMode,
+	showError,
+	showMessages,
+	showToast,
+	type ImportMode,
+} from "./dialogs.ts";
 import { InputPanel } from "./inputPanel.ts";
 import { InputError, NODE_METADATA_SERVICE_UID, RunInputs } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
@@ -152,18 +159,45 @@ class App {
 	/**
 	 * Import a settings CSV file.
 	 *
+	 * Unless the simulation is empty, this asks whether to add the file's
+	 * settings to the simulation, or replace the simulation's settings with
+	 * them.
+	 *
 	 * @param file the file
 	 */
 	async importFile(file: File): Promise<void> {
+		let mode: ImportMode = "replace";
+		if (!this.#ws.isEmpty) {
+			const choice = await askImportMode(file.name);
+			if (!choice) {
+				return;
+			}
+			mode = choice;
+		}
 		try {
-			const result = await importSettings(await file.text());
-			const notes = this.#ws.importConfig(result.config);
+			const csv = await file.text();
+			const before = new Set(this.#ws.filters.map((f) => f.id));
+			const result =
+				mode === "add"
+					? await mergeSettings(this.#ws.toConfig(), csv)
+					: await importSettings(csv);
+			const notes =
+				mode === "add"
+					? this.#ws.mergeConfig(result.config)
+					: this.#ws.importConfig(result.config);
 			this.#canvas.select(null);
 			this.#canvas.fit();
-			const count = (result.config.filters ?? []).filter(
+			const filters = (result.config.filters ?? []).filter(
 				(f) => f.factoryUid !== UNKNOWN_FACTORY_UID,
-			).length;
-			const summary = `Imported ${count} filter${count === 1 ? "" : "s"} from ${file.name}.`;
+			);
+			let summary: string;
+			if (mode === "add") {
+				const added = filters.filter((f) => !before.has(f.id)).length;
+				summary = `Added the settings in ${file.name}, with ${added} new filter${added === 1 ? "" : "s"}.`;
+			} else {
+				const count = filters.length;
+				summary = `Imported ${count} filter${count === 1 ? "" : "s"} from ${file.name}.`;
+			}
 			if (
 				notes.length ||
 				result.messages.length ||

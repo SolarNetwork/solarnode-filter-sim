@@ -80,6 +80,21 @@ export function importSettings(csv: string): Promise<SettingsImport> {
 }
 
 /**
+ * Add the settings of a settings CSV file to a configuration, the way
+ * SolarNode imports a file into its existing settings.
+ *
+ * @param config the configuration
+ * @param csv the file content
+ * @returns the import result, with the combined configuration
+ */
+export function mergeSettings(
+	config: SimConfig,
+	csv: string,
+): Promise<SettingsImport> {
+	return postJson<SettingsImport>("api/settings/merge", { config, csv });
+}
+
+/**
  * Export a configuration as a settings CSV file.
  *
  * @param config the configuration

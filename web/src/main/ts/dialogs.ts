@@ -159,6 +159,52 @@ export function showError(
 	});
 }
 
+/** How to import a settings file into a simulation that has filters. */
+export type ImportMode = "add" | "replace";
+
+/**
+ * Ask whether to add a settings file's settings to the simulation, or replace
+ * the simulation's settings with them.
+ *
+ * @param fileName the file name
+ * @returns the choice, or `null` if the dialog was closed without one
+ */
+export function askImportMode(fileName: string): Promise<ImportMode | null> {
+	const el = document.querySelector<HTMLElement>("#import-dialog")!;
+	const dialog = Modal.getOrCreateInstance(el);
+	el.querySelector("#import-dialog-file")!.textContent = fileName;
+	const buttons =
+		el.querySelectorAll<HTMLButtonElement>("[data-import-mode]");
+	return new Promise((resolve) => {
+		let choice: ImportMode | null = null;
+		const choose = (e: Event) => {
+			choice = (e.currentTarget as HTMLElement).dataset
+				.importMode as ImportMode;
+			dialog.hide();
+		};
+		buttons.forEach((b) => b.addEventListener("click", choose));
+		el.addEventListener(
+			"shown.bs.modal",
+			() =>
+				el
+					.querySelector<HTMLButtonElement>(
+						'[data-import-mode="add"]',
+					)
+					?.focus(),
+			{ once: true },
+		);
+		el.addEventListener(
+			"hidden.bs.modal",
+			() => {
+				buttons.forEach((b) => b.removeEventListener("click", choose));
+				resolve(choice);
+			},
+			{ once: true },
+		);
+		dialog.show();
+	});
+}
+
 /**
  * Show a short message that disappears by itself.
  *

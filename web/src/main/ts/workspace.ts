@@ -674,6 +674,74 @@ export class Workspace extends EventTarget {
 		return notes;
 	}
 
+	/**
+	 * Add imported settings: use the combined configuration of the simulation
+	 * and a settings file, from the server.
+	 *
+	 * Filters keep their canvas positions. The simulator's empty Main chain is
+	 * dropped when the file sets another Main chain.
+	 *
+	 * @param config the combined configuration
+	 * @returns notes about changes made to the configuration
+	 */
+	mergeConfig(config: SimConfig): string[] {
+		const notes: string[] = [];
+		const filters = structuredClone(config.filters ?? []);
+		let mainChainId = config.mainChainId ?? undefined;
+		const main = filters.find((f) => f.id === mainChainId);
+		if (!main) {
+			mainChainId = undefined;
+		} else if (main.factoryUid !== CHAIN_FACTORY_UID) {
+			notes.push(
+				`The Datum Queue's filter ${this.label(main)} is not a filter chain, so it is now the only filter of a new Main chain.`,
+			);
+			mainChainId = undefined;
+		}
+		this.#commit("Add settings", (s) => {
+			const oldMainId = s.mainChainId;
+			const oldMain = s.filters.find((f) => f.id === oldMainId);
+			s.filters = filters;
+			s.datumQueueComment = config.datumQueueComment;
+			if (mainChainId) {
+				s.mainChainId = mainChainId;
+			} else {
+				const chain = this.#newMainChain(s.filters);
+				if (main) {
+					chain.filterIds = [main.id];
+				}
+				s.filters.unshift(chain);
+				s.mainChainId = chain.id;
+			}
+			const newMain = s.filters.find((f) => f.id === s.mainChainId);
+			if (s.implicitMain && s.mainChainId !== oldMainId) {
+				const unused = s.filters.find(
+					(f) =>
+						f.id === oldMainId &&
+						(f.filterIds ?? []).length === 0 &&
+						!s.filters.some((c) =>
+							c.filterIds?.includes(oldMainId),
+						),
+				);
+				if (unused) {
+					s.filters = s.filters.filter((f) => f !== unused);
+				}
+			}
+			// the Main chain is still the simulator's only while the file left it alone
+			s.implicitMain =
+				s.implicitMain &&
+				s.mainChainId === oldMainId &&
+				(newMain?.filterIds ?? []).length === 0 &&
+				JSON.stringify(newMain?.settings) ===
+					JSON.stringify(oldMain?.settings);
+			s.positions = Object.fromEntries(
+				Object.entries(s.positions).filter(([id]) =>
+					s.filters.some((f) => f.id === id),
+				),
+			);
+		});
+		return notes;
+	}
+
 	/** Undo the last change. */
 	undo(): void {
 		const previous = this.#undo.pop();
