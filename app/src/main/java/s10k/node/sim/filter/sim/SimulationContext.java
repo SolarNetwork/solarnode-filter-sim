@@ -40,6 +40,7 @@ import net.solarnetwork.node.runtime.DefaultOperationalModesService;
 import net.solarnetwork.node.service.DatumMetadataService;
 import net.solarnetwork.node.service.DatumQueue;
 import net.solarnetwork.node.service.TariffScheduleProvider;
+import net.solarnetwork.node.service.support.SettingsPlaceholderService;
 import net.solarnetwork.node.service.support.BaseDatumFilterSupport;
 import net.solarnetwork.node.service.support.BaseIdentifiable;
 import net.solarnetwork.service.DatumFilterService;
@@ -85,6 +86,7 @@ public final class SimulationContext implements FilterContext {
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
 	private final SimTaskScheduler taskScheduler;
+	private final SettingsPlaceholderService placeholderService;
 	private @Nullable Supplier<@Nullable String> taskOwner;
 	private final SimMetadataService nodeMetadataService;
 	private final List<Object> services = new ArrayList<>(16);
@@ -125,6 +127,11 @@ public final class SimulationContext implements FilterContext {
 		this.instructionService = new SimInstructionService();
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
+		// the node's own placeholder service, without its cache, so placeholders
+		// that filters register are seen at once
+		this.placeholderService = new SettingsPlaceholderService(
+				new StaticOptionalService<>(settingDao));
+		this.placeholderService.setCacheSeconds(0);
 		this.taskScheduler = new SimTaskScheduler(clock, () -> {
 			final Supplier<@Nullable String> owner = taskOwner;
 			return (owner != null ? owner.get() : null);
@@ -165,6 +172,7 @@ public final class SimulationContext implements FilterContext {
 			f.setLocalStateDao(new StaticOptionalService<>(localStateDao));
 			// the standard filters' (function=node) MetadataService, for expressions
 			f.setMetadataService(new StaticOptionalService<>(nodeMetadataService));
+			f.setPlaceholderService(new StaticOptionalService<>(placeholderService));
 		}
 		if ( filter instanceof BaseDatumFilterSupport f ) {
 			f.setDatumService(new StaticOptionalService<>(datumService));
@@ -214,6 +222,24 @@ public final class SimulationContext implements FilterContext {
 	@Override
 	public OptionalService<ReactorService> reactorService() {
 		return new StaticOptionalService<>(instructionService);
+	}
+
+	/**
+	 * Get the setting DAO, which holds placeholders.
+	 *
+	 * @return the DAO
+	 */
+	public SimSettingDao settingDao() {
+		return settingDao;
+	}
+
+	/**
+	 * Get the datum metadata service.
+	 *
+	 * @return the service
+	 */
+	public SimDatumMetadataService simulatedDatumMetadataService() {
+		return datumMetadataService;
 	}
 
 	@Override

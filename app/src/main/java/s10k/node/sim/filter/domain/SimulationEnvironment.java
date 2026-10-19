@@ -20,6 +20,7 @@
 package s10k.node.sim.filter.domain;
 
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
@@ -40,10 +41,17 @@ import tools.jackson.databind.JsonNode;
  *        ({@code {"m":{…},"pm":{…},"t":[…]}}), or {@code null} for none
  * @param userMetadata
  *        the User Metadata Services, or {@code null} for none
+ * @param placeholders
+ *        placeholder values, like those in a node's {@code conf/placeholders.d}
+ *        files, or {@code null} for none
+ * @param datumMetadata
+ *        datum stream (source) metadata, as a map of source IDs to JSON objects
+ *        in the SolarNetwork metadata format, or {@code null} for none
  * @author matt
  * @version 1.0
  */
 public record SimulationEnvironment(@Nullable List<String> opModes, @Nullable String localStateCsv,
-		@Nullable JsonNode nodeMetadata, @Nullable List<UserMetadataConfig> userMetadata) {
+		@Nullable JsonNode nodeMetadata, @Nullable List<UserMetadataConfig> userMetadata,
+		@Nullable Map<String, String> placeholders, @Nullable Map<String, JsonNode> datumMetadata) {
 
 }

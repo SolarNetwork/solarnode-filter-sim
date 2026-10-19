@@ -111,7 +111,9 @@ A minimal simulation request runs one Expression filter on the main chain:
 The request can also include `history` datum, a starting `environment`, and `options` such as
 `"detail": "Debug"` for state snapshots, or `"runAfter": "PT5M"` to keep the simulated clock
 running after the last datum, so scheduled tasks like the Timeout filter's can run. The environment holds the starting operational modes and
-Local State CSV, plus the metadata that metadata services provide. The Node Metadata Service
+Local State CSV, placeholders (`placeholders`, a map of names to values), datum stream
+metadata (`datumMetadata`, a map of source IDs to metadata), plus the metadata that metadata
+services provide. The Node Metadata Service
 always exists, with `nodeMetadata` (or no metadata), and `userMetadata` adds User Metadata
 Services. A Tariff filter finds its service by the Service Name in its Metadata Service setting:
 

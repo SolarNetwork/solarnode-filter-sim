@@ -15,7 +15,12 @@ export const NODE_METADATA_SERVICE_UID = "Node Metadata Service";
 
 /** The input tabs. */
 export type InputTab =
-	"datum" | "history" | "environment" | "node-metadata" | "user-metadata";
+	| "datum"
+	| "history"
+	| "environment"
+	| "node-metadata"
+	| "user-metadata"
+	| "datum-metadata";
 
 /** A simulated User Metadata Service, as entered. */
 export interface UserMetadataInput {
@@ -41,6 +46,10 @@ export interface InputsState {
 	localState: string;
 	/** The seconds to keep running after the last datum. */
 	runAfter: string;
+	/** Placeholders, as `name = value` lines. */
+	placeholders: string;
+	/** Datum metadata JSON: an object of source IDs to metadata. */
+	datumMetadata: string;
 	nodeMetadata: string;
 	userMetadata: UserMetadataInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
@@ -94,6 +103,8 @@ function emptyState(): InputsState {
 		opModes: "",
 		localState: "",
 		runAfter: "",
+		placeholders: "",
+		datumMetadata: "",
 		nodeMetadata: "",
 		userMetadata: [],
 		entryPoint: "",
@@ -176,6 +187,56 @@ export function parseRunAfter(text: string): number {
 		throw new Error("Enter a number of seconds, like 300 for 5 minutes.");
 	}
 	return seconds;
+}
+
+/**
+ * Parse placeholders: `name = value` lines, like a SolarNode placeholders
+ * properties file, with `#` or `!` comment lines.
+ *
+ * @param text the placeholders
+ * @returns the placeholders, by name
+ * @throws Error if a line has no name and value
+ */
+export function parsePlaceholders(text: string): Record<string, string> {
+	const result: Record<string, string> = {};
+	text.split(/\r?\n/).forEach((line, i) => {
+		const l = line.trim();
+		if (!l || l.startsWith("#") || l.startsWith("!")) {
+			return;
+		}
+		const match = /^([^=:\s]+)\s*[=:]\s*(.*)$/.exec(l);
+		if (!match) {
+			throw new Error(
+				`Placeholder line ${i + 1} needs a name and value, like "factor = 2".`,
+			);
+		}
+		result[match[1]] = match[2];
+	});
+	return result;
+}
+
+/**
+ * Parse datum metadata JSON: an object of source IDs to metadata objects.
+ *
+ * @param text the JSON
+ * @returns the metadata, or `null` if the text is blank
+ * @throws Error if the JSON is not valid
+ */
+export function parseDatumMetadata(
+	text: string,
+): Record<string, unknown> | null {
+	const value = parseMetadata(text, "Datum metadata") as Record<
+		string,
+		unknown
+	> | null;
+	for (const [sourceId, meta] of Object.entries(value ?? {})) {
+		if (!isObject(meta)) {
+			throw new Error(
+				`The datum metadata of ${sourceId} must be a JSON object, like {"pm": {…}}.`,
+			);
+		}
+	}
+	return value;
 }
 
 /**
@@ -378,6 +439,12 @@ export class RunInputs extends EventTarget {
 		const runAfter = parse("environment", "runAfter", () =>
 			parseRunAfter(s.runAfter),
 		);
+		const placeholders = parse("environment", "placeholders", () =>
+			parsePlaceholders(s.placeholders),
+		);
+		const datumMetadata = parse("datum-metadata", "datumMetadata", () =>
+			parseDatumMetadata(s.datumMetadata),
+		);
 		return {
 			datum,
 			options: { runAfter: runAfter > 0 ? `PT${runAfter}S` : null },
@@ -390,6 +457,10 @@ export class RunInputs extends EventTarget {
 				localStateCsv: s.localState.trim() ? s.localState : null,
 				nodeMetadata,
 				userMetadata: userMetadata.length ? userMetadata : null,
+				placeholders: Object.keys(placeholders).length
+					? placeholders
+					: null,
+				datumMetadata,
 			},
 			entryPoint: s.entryPoint || null,
 		};

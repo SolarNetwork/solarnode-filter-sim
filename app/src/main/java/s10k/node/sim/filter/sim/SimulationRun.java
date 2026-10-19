@@ -55,6 +55,7 @@ import net.solarnetwork.node.runtime.DefaultOperationalModesService;
 import net.solarnetwork.node.service.DatumHistorian;
 import net.solarnetwork.node.service.DatumQueueProcessObserver.Stage;
 import net.solarnetwork.node.service.support.DatumFilterChainService;
+import net.solarnetwork.node.service.support.SettingsPlaceholderService;
 import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.service.ExpressionService;
 import net.solarnetwork.service.StaticOptionalService;
@@ -164,6 +165,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		this.context = new SimulationContext(firstDate != null ? firstDate : defaultStartDate(),
 				expressionService, this, nodeMetadata());
 		registerUserMetadataServices();
+		loadPlaceholders();
+		loadDatumMetadata();
 		this.tracer = new FilterTracer(context.opModesService());
 		context.setTaskOwner(() -> {
 			final StepRecord step = tracer.currentStep();
@@ -608,6 +611,40 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 						null, null);
 			}
 			context.registerService(new SimMetadataService(uid, meta));
+		}
+	}
+
+	private void loadPlaceholders() {
+		final SimulationEnvironment env = request.environment();
+		final Map<String, String> placeholders = (env != null ? env.placeholders() : null);
+		if ( placeholders == null ) {
+			return;
+		}
+		for ( Map.Entry<String, String> e : placeholders.entrySet() ) {
+			final String name = e.getKey();
+			if ( name != null && !name.isBlank() && e.getValue() != null ) {
+				// where the node keeps placeholders that SolarNetwork registers
+				context.settingDao().storeSetting(SettingsPlaceholderService.SETTING_KEY, name.trim(),
+						e.getValue());
+			}
+		}
+	}
+
+	private void loadDatumMetadata() {
+		final SimulationEnvironment env = request.environment();
+		final Map<String, JsonNode> metadata = (env != null ? env.datumMetadata() : null);
+		if ( metadata == null ) {
+			return;
+		}
+		for ( Map.Entry<String, JsonNode> e : metadata.entrySet() ) {
+			final String sourceId = e.getKey();
+			if ( sourceId == null || sourceId.isBlank() ) {
+				continue;
+			}
+			final String label = "Datum metadata \"%s\"".formatted(sourceId);
+			final GeneralDatumMetadata meta = DatumJson.metadata(e.getValue(), label);
+			ignoredMetadata(e.getValue(), label);
+			context.simulatedDatumMetadataService().addSourceMetadata(sourceId, meta);
 		}
 	}
 

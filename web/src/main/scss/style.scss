@@ -54,14 +54,18 @@ body {
 	min-height: 0;
 }
 
+// two rows of three tabs: the inputs, then the metadata
 .sim-input-tabs {
-	flex-wrap: wrap;
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
 	gap: 0.25rem;
 	font-size: 0.8rem;
 
 	.nav-link {
 		position: relative;
-		padding: 0.2rem 0.5rem;
+		width: 100%;
+		padding: 0.2rem 0.25rem;
+		white-space: nowrap;
 	}
 }
 

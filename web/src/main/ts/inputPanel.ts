@@ -4,6 +4,8 @@ import {
 	parseDatumList,
 	parseMetadata,
 	parseRunAfter,
+	parsePlaceholders,
+	parseDatumMetadata,
 	type InputError,
 	type InputField,
 	type InputTab,
@@ -27,6 +29,8 @@ const TEXT_INPUTS: Record<Exclude<InputField, "entryPoint">, string> = {
 	opModes: "#input-opmodes",
 	localState: "#input-localstate",
 	runAfter: "#input-runafter",
+	placeholders: "#input-placeholders",
+	datumMetadata: "#input-datum-metadata",
 	nodeMetadata: "#input-node-metadata",
 };
 
@@ -38,6 +42,8 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	opModes: "environment",
 	localState: "environment",
 	runAfter: "environment",
+	placeholders: "environment",
+	datumMetadata: "datum-metadata",
 	nodeMetadata: "node-metadata",
 };
 
@@ -51,6 +57,8 @@ const FIELD_CHECKS: Partial<
 		parseDatumList(text, "Unfiltered History datum"),
 	nodeMetadata: (text) => parseMetadata(text, "Node metadata"),
 	runAfter: (text) => parseRunAfter(text),
+	placeholders: (text) => parsePlaceholders(text),
+	datumMetadata: (text) => parseDatumMetadata(text),
 };
 
 function $<T extends HTMLElement>(selector: string): T {

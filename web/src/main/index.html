@@ -135,6 +135,26 @@
 									></span>
 								</button>
 							</li>
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link"
+									id="tab-datum-metadata-button"
+									data-input-tab="datum-metadata"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-datum-metadata"
+									type="button"
+									role="tab"
+									aria-controls="tab-datum-metadata"
+									aria-selected="false"
+								>
+									Datum Metadata
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
 						</ul>
 						<div class="tab-content">
 							<div
@@ -261,6 +281,30 @@
 									separated by commas.
 								</div>
 								<label
+									for="input-placeholders"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Placeholders</label
+								>
+								<textarea
+									id="input-placeholders"
+									class="form-control form-control-sm font-monospace sim-json-input"
+									rows="4"
+									spellcheck="false"
+									placeholder="siteName = Home&#10;factor = 2"
+								></textarea>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="placeholders"
+								></div>
+								<div class="form-text">
+									<code>name = value</code> lines, like the
+									files in a node's
+									<code>conf/placeholders.d</code>. Settings
+									use them like
+									<code>/meter/{siteName}</code>, and
+									expressions as parameters.
+								</div>
+								<label
 									for="input-localstate"
 									class="form-label small fw-semibold mb-1 mt-3"
 									>Local State</label
@@ -374,6 +418,34 @@
 									></i>
 									Add a User Metadata Service
 								</button>
+							</div>
+							<div
+								class="tab-pane fade"
+								id="tab-datum-metadata"
+								role="tabpanel"
+								aria-labelledby="tab-datum-metadata-button"
+								tabindex="0"
+							>
+								<textarea
+									id="input-datum-metadata"
+									class="form-control form-control-sm font-monospace sim-json-input"
+									rows="10"
+									spellcheck="false"
+									aria-label="Datum metadata JSON"
+									placeholder='{"/meter/1": {"pm": {"panel": {"efficiency": 0.2}}}}'
+								></textarea>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="datumMetadata"
+								></div>
+								<div class="form-text">
+									Datum stream metadata: a JSON object of
+									source IDs to their metadata, each with
+									<code>m</code>, <code>pm</code>, and
+									<code>t</code> properties. Expressions read
+									it with functions like
+									<code>meta(sourceId)</code>.
+								</div>
 							</div>
 						</div>
 					</div>

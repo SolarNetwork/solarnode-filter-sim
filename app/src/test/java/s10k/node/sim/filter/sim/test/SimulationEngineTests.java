@@ -169,7 +169,7 @@ public class SimulationEngineTests {
 	private static SimulationEnvironment metadataEnvironment(JsonNode nodeMetadata,
 			UserMetadataConfig... userMetadata) {
 		return new SimulationEnvironment(null, null, nodeMetadata,
-				userMetadata.length > 0 ? List.of(userMetadata) : null);
+				userMetadata.length > 0 ? List.of(userMetadata) : null, null, null);
 	}
 
 	private static Object rate(DatumTrace trace) {
@@ -260,7 +260,7 @@ public class SimulationEngineTests {
 		SimulationEnvironment env = new SimulationEnvironment(null, """
 				Key,Created,Modified,Type,Value
 				counter,,,Int64,41
-				""", null, null);
+				""", null, null, null, null);
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						expression("exp", "EXP", "count",
@@ -310,8 +310,8 @@ public class SimulationEngineTests {
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
-				List.of(json(METER_DATUM)), null, new SimulationEnvironment(List.of(), null, null, null),
-				null);
+				List.of(json(METER_DATUM)), null,
+				new SimulationEnvironment(List.of(), null, null, null, null, null), null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -342,7 +342,7 @@ public class SimulationEngineTests {
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
 				List.of(json(METER_DATUM)), null,
-				new SimulationEnvironment(List.of(" BOOST "), null, null, null), null);
+				new SimulationEnvironment(List.of(" BOOST "), null, null, null, null, null), null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -874,6 +874,35 @@ public class SimulationEngineTests {
 		then(result.stats())
 			.as("Timeout datum counted as generated")
 			.returns(2, from(s -> s.generated()))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void placeholdersAndDatumMetadata() {
+		// GIVEN
+		ObjectNode meta = JSON.createObjectNode();
+		meta.putObject("pm").putObject("panel").put("efficiency", 0.2);
+		SimulationEnvironment env = new SimulationEnvironment(null, null, null, null,
+				Map.of("factor", "2"), Map.of("/meter/1", meta));
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "exp"),
+						expression("exp", "EXP", "doubled", "watts * factor", "panel",
+								"meta(sourceId).metadataAtPath('/pm/panel/efficiency') * 100")),
+				List.of(json(METER_DATUM)), null, env, null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum().getFirst().output().samples().i())
+			.as("Placeholder available to expressions, as a number")
+			.hasEntrySatisfying("doubled", v -> then(number(v).doubleValue())
+					.isCloseTo(246.912, within(0.001)))
+			.as("Datum metadata available to expressions")
+			.hasEntrySatisfying("panel", v -> then(number(v).doubleValue())
+					.isCloseTo(20.0, within(0.001)))
 			;
 		// @formatter:on
 	}

@@ -184,6 +184,10 @@ export interface SimulationEnvironment {
 	/** The metadata of the Node Metadata Service. */
 	nodeMetadata?: unknown;
 	userMetadata?: UserMetadataConfig[] | null;
+	/** Placeholder values, by name. */
+	placeholders?: Record<string, string> | null;
+	/** Datum stream metadata, by source ID. */
+	datumMetadata?: Record<string, unknown> | null;
 }
 
 /** Datum to pre-load into the datum histories. */
