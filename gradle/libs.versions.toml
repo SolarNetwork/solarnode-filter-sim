@@ -4,18 +4,11 @@ junit-jupiter = "6.0.1"
 
 # SolarNetwork bundles; to use an unreleased version published to the local Ivy repository
 # (~/.ivy2/local) with `ant publish`, set the version here and build with -PlocalIvy
-# 4.55.0 reads tariff schedules stored as JSON arrays of arrays in metadata, and adds the
-# GeneralDatumMetadata JSON codec; until it is on Maven Central, build with -PlocalIvy
+
 sn-common = "4.55.0"
-sn-common-expr-spel = "4.2.1"
-# 4.10.0 adds BaseDatumFilterSupport.getStatisticCount(); until it is on Maven Central, build
-# with -PlocalIvy
+sn-common-expr-spel = "4.2.2"
 sn-node = "4.10.0"
-# 4.7.1 has the Downsample and Operational Mode filter clock fixes; until it is on Maven Central,
-# build with -PlocalIvy
 sn-node-datum-filter-standard = "4.7.1"
-# the filter registry follows the 4.1.1 blueprint, which also injects the opModesService; the
-# classes are unchanged
 sn-node-datum-filter-tariff = "4.1.0"
 
 [libraries]
