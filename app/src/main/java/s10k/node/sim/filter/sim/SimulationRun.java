@@ -90,6 +90,12 @@ import tools.jackson.databind.JsonNode;
  * history. Datum that filters generate are added to the end of the queue.
  * </p>
  *
+ * <p>
+ * On a node, input datum arrive over time, so the datum a filter generates are
+ * processed before the next input arrives. The simulation therefore queues each
+ * input datum only once the queue is empty.
+ * </p>
+ *
  * @author matt
  * @version 1.0
  */
@@ -104,11 +110,33 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	/** A limit on how far back to look in the datum history. */
 	private static final int MAX_HISTORY_OFFSET = 1000;
 
+	/** The maximum length of a logged message. */
+	private static final int MAX_LOG_LENGTH = 600;
+
 	/** A limit on the number of scheduled task runs. */
 	private static final int MAX_TASK_RUNS = 10_000;
 
 	private record QueuedDatum(int seq, NodeDatum datum, boolean persist, int depth,
 			DatumOrigin origin) {
+
+	}
+
+	/** Repeated log messages of a filter. */
+	private static final class LogRecord {
+
+		private final @Nullable String filterId;
+		private final @Nullable Integer datumSeq;
+		private final boolean error;
+		private final String message;
+		private int count = 1;
+
+		private LogRecord(@Nullable String filterId, @Nullable Integer datumSeq, boolean error,
+				String message) {
+			this.filterId = filterId;
+			this.datumSeq = datumSeq;
+			this.error = error;
+			this.message = message;
+		}
 
 	}
 
@@ -128,8 +156,11 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private final Map<Integer, QueuedDatum> datumBySeq = new HashMap<>(16);
 	private final List<DatumRecord> records = new ArrayList<>(16);
 	private final Map<String, DepthLimit> depthLimits = new LinkedHashMap<>(2);
+	private final Map<String, LogRecord> logs = new LinkedHashMap<>(4);
 
 	private @Nullable QueuedDatum current;
+	/** The index of the next input datum to queue. */
+	private int nextInput;
 	/** The filter being created or started, for its scheduled tasks. */
 	private @Nullable String creating;
 	/** The scheduled task running, and the datum it generated. */
@@ -184,6 +215,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 *         if the request is not valid
 	 */
 	SimulationResult run() {
+		FilterLogCapture.install();
+		FilterLogCapture.capture(this::logged);
+		try {
+			return doRun();
+		} finally {
+			FilterLogCapture.capture(null);
+		}
+	}
+
+	private SimulationResult doRun() {
 		final long start = System.nanoTime();
 		final Map<String, TracingDatumFilterService> filters = createFilters();
 		final TracingDatumFilterService entry = entryFilter(filters);
@@ -191,18 +232,14 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		loadEnvironment(firstDate);
 		loadHistory(firstDate);
 
-		for ( int i = 0; i < input.size(); i++ ) {
-			enqueue(input.get(i), true, 0, DatumOrigin.input(i));
-		}
-
 		final long deadline = start + TimeUnit.MILLISECONDS.toNanos(options.timeoutMsValue());
 		final int maxDatum = options.maxDatumValue();
 		final Instant runUntil = runUntil();
 		final SimTaskScheduler scheduler = context.taskScheduler();
 		while ( true ) {
 			// run scheduled tasks due before the next datum, or by the end time
-			final QueuedDatum next = queue.peekFirst();
-			final Instant nextTime = (next != null ? timestamp(next.datum()) : runUntil);
+			final NodeDatum next = nextDatum();
+			final Instant nextTime = (next != null ? timestamp(next) : runUntil);
 			final SimTaskScheduler.Task task = scheduler.peek();
 			if ( task != null && nextTime != null
 					&& (next != null ? task.due().isBefore(nextTime) : !task.due().isAfter(nextTime)) ) {
@@ -222,16 +259,20 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( records.size() >= maxDatum ) {
 				warn(SimulationMessage.CODE_DATUM_LIMIT,
 						"Stopped after processing %d datum, the maximum allowed, so %d datum were not processed. Filters that keep generating datum can cause this."
-								.formatted(maxDatum, queue.size()),
+								.formatted(maxDatum, waiting()),
 						null, null);
 				break;
 			}
 			if ( System.nanoTime() > deadline ) {
 				warn(SimulationMessage.CODE_TIMEOUT,
 						"Stopped after %d ms, the maximum allowed, so %d datum were not processed."
-								.formatted(options.timeoutMsValue(), queue.size()),
+								.formatted(options.timeoutMsValue(), waiting()),
 						null, null);
 				break;
+			}
+			if ( queue.isEmpty() ) {
+				enqueue(input.get(nextInput), true, 0, DatumOrigin.input(nextInput));
+				nextInput++;
 			}
 			process(queue.removeFirst(), entry);
 		}
@@ -239,12 +280,36 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		addPendingTaskMessages(scheduler, filters);
 		shutdown(filters);
 		addDepthLimitMessages();
+		addLogMessages(filters);
 
 		final SimulationState finalState = snapshot(true, null);
 		final long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 		return new SimulationResult(records.stream().map(DatumRecord::toTrace).toList(),
 				List.copyOf(messages), finalState, new SimulationStats(records.size(), generatedCount,
 						outputCount, discardedCount, durationMs));
+	}
+
+	/**
+	 * Get the next datum to process.
+	 *
+	 * @return the first queued datum, or else the next input datum, or
+	 *         {@code null} if there are none
+	 */
+	private @Nullable NodeDatum nextDatum() {
+		final QueuedDatum queued = queue.peekFirst();
+		if ( queued != null ) {
+			return queued.datum();
+		}
+		return (nextInput < input.size() ? input.get(nextInput) : null);
+	}
+
+	/**
+	 * Get the number of datum waiting to be processed.
+	 *
+	 * @return the queued datum plus the input datum not queued yet
+	 */
+	private int waiting() {
+		return queue.size() + input.size() - nextInput;
 	}
 
 	/**
@@ -287,6 +352,37 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			queue.addFirst(taskGenerated.get(i));
 		}
 		taskGenerated.clear();
+	}
+
+	/** Record a message a filter logged, attributed to the filter running. */
+	private void logged(boolean error, String message) {
+		final StepRecord step = tracer.currentStep();
+		final SimTaskScheduler.Task task = firing;
+		final String filterId = (step != null ? step.filterId : task != null ? task.owner() : creating);
+		final QueuedDatum datum = this.current;
+		final String text = (message.length() > MAX_LOG_LENGTH
+				? message.substring(0, MAX_LOG_LENGTH) + "…"
+				: message);
+		final String key = filterId + "\n" + text;
+		final LogRecord existing = logs.get(key);
+		if ( existing != null ) {
+			existing.count++;
+		} else {
+			logs.put(key, new LogRecord(filterId, datum != null ? datum.seq() : null, error, text));
+		}
+	}
+
+	private void addLogMessages(Map<String, TracingDatumFilterService> filters) {
+		for ( LogRecord log : logs.values() ) {
+			final TracingDatumFilterService filter = (log.filterId != null ? filters.get(log.filterId)
+					: null);
+			final String text = "%s logged: %s%s".formatted(filter != null ? label(filter) : "A filter",
+					log.message, log.count > 1 ? " (%d times)".formatted(log.count) : "");
+			messages.add(log.error
+					? SimulationMessage.error(SimulationMessage.CODE_FILTER_LOG, text, log.filterId)
+					: SimulationMessage.warning(SimulationMessage.CODE_FILTER_LOG, text, log.filterId,
+							log.datumSeq));
+		}
 	}
 
 	private void addPendingTaskMessages(SimTaskScheduler scheduler,

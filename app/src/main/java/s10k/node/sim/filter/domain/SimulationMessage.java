@@ -78,6 +78,12 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	public static final String CODE_FILTER_ERROR = "FilterError";
 
 	/**
+	 * A warning or error a filter logged, such as an expression that could not
+	 * be evaluated.
+	 */
+	public static final String CODE_FILTER_LOG = "FilterLog";
+
+	/**
 	 * A configuration problem that stops a filter from working, which SolarNode
 	 * only reports in its log.
 	 */

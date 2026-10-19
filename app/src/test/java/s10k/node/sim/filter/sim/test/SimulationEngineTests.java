@@ -451,6 +451,32 @@ public class SimulationEngineTests {
 	}
 
 	@Test
+	public void split_generatedBeforeNextInput() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "split"),
+						splitTo("split", "/meter/1", "/meter/1/power")),
+				METER_DATUM, METER_DATUM.replace("00:00:00Z", "00:01:00Z"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("Each input's generated datum processed before the next input arrives")
+			.extracting(t -> t.seq(), t -> t.input().sourceId(), t -> t.origin().type(),
+					t -> t.origin().parentSeq())
+			.containsExactly(
+					tuple(1, "/meter/1", DatumOrigin.Type.Input, null),
+					tuple(2, "/meter/1/power", DatumOrigin.Type.Generated, 1),
+					tuple(3, "/meter/1", DatumOrigin.Type.Input, null),
+					tuple(4, "/meter/1/power", DatumOrigin.Type.Generated, 3))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void split_loopDetected() {
 		// GIVEN
 		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "splitA", "splitB"),
@@ -576,10 +602,10 @@ public class SimulationEngineTests {
 		// THEN
 		// @formatter:off
 		then(result.datum().getFirst().startState())
-			.as("First datum starts with an empty history and the second datum queued")
+			.as("First datum starts with an empty history and queue, as the second has not arrived")
 			.isNotNull()
 			.returns(Map.of(), from(s -> s.history()))
-			.returns(List.of(2), from(s -> s.queue()))
+			.returns(List.of(), from(s -> s.queue()))
 			;
 		then(result.datum().get(1).startState().history())
 			.as("Second datum starts with the first datum output in the history")
@@ -976,6 +1002,33 @@ public class SimulationEngineTests {
 			.extracting(t -> t.output() != null ? new TreeMap<>(t.output().samples().i()).toString()
 					: null)
 			.containsExactly(null, null, null, "{watts=2, watts_max=3, watts_min=1}")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void filterLog_expressionError() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "exp"),
+						expression("exp", "EXP", "bad", "nope.notThere")),
+				METER_DATUM, METER_DATUM.replace("00:00:00Z", "00:01:00Z"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("The logged expression error is reported once, for the filter")
+			.singleElement()
+			.returns(SimulationMessage.CODE_FILTER_LOG, from(SimulationMessage::code))
+			.returns("exp", from(SimulationMessage::filterId))
+			.returns(1, from(SimulationMessage::datumSeq))
+			.extracting(SimulationMessage::message)
+			.asString()
+			.startsWith("EXP logged: ")
+			.contains("nope.notThere", "(2 times)")
 			;
 		// @formatter:on
 	}

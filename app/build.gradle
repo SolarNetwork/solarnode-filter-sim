@@ -1,6 +1,6 @@
 plugins {
-	id 'application'
-    id 'distribution'
+	id 'java'
+	id 'distribution'
 	id 'com.diffplug.spotless' version '8.10.2'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'net.ltgt.errorprone' version '5.1.1'
@@ -139,11 +139,9 @@ java {
 	}
 }
 
-application {
-	mainClass = 's10k.node.sim.filter.FilterSimulatorApplication'
-}
-
 springBoot {
+	mainClass = 's10k.node.sim.filter.FilterSimulatorApplication'
+
 	// generate META-INF/build-info.properties, for the BuildProperties bean (app version);
 	// exclude the build time so the output is reproducible and the task stays up-to-date
 	buildInfo {
@@ -308,9 +306,13 @@ def getArchName() {
 	} else if ( osdetector.arch == 'x86_64' ) {
 		return 'amd64'
 	}
-	return osdetector.os
+	return osdetector.arch
 }
 
+// the main distribution is only the native executable: nativeCompile also writes the build
+// report and JDK shim libraries (such as libawt.so) next to it, which the simulator does not
+// need at run time; Gradle 9 archives normalize file permissions to rw-r--r--, so the
+// executable's are set explicitly
 distributions  {
 	main {
 		distributionBaseName = "solarnode-filter-simualtor"
@@ -318,9 +320,175 @@ distributions  {
 		contents {
 			from(tasks.named("nativeCompile")) {
 				into('/')
-				exclude("management_ext.dll")
-				exclude("sn-filter-sim-build-report.html")
+				include('sn-filter-sim', 'sn-filter-sim.exe')
+				filePermissions {
+					unix('rwxr-xr-x')
+				}
 			}
 		}
 	}
+}
+
+/**
+ * Run the native executable and post each smoke test fixture to it, comparing
+ * a summary of each result with the fixture's expected summary.
+ *
+ * The fixtures are the simulation requests (<name>.json) and expected result
+ * summaries (<name>.expected.json) that SmokeFixtureTests also runs on the JVM,
+ * and the summary is made the same way. A result that differs, for example
+ * because an expression needs a runtime hint the native image lacks, fails the
+ * task and is saved as <name>.actual.json in the report directory, next to the
+ * executable's log.
+ */
+abstract class NativeSmokeTest extends DefaultTask {
+
+	@InputFile
+	abstract RegularFileProperty getExecutable()
+
+	@InputDirectory
+	abstract DirectoryProperty getFixtures()
+
+	@OutputDirectory
+	abstract DirectoryProperty getReportDir()
+
+	@Internal
+	abstract Property<Integer> getStartTimeoutSeconds()
+
+	@TaskAction
+	void smokeTest() {
+		def reports = reportDir.get().asFile
+		reports.mkdirs()
+		def log = new File(reports, 'sn-filter-sim.log')
+		int port = new ServerSocket(0).withCloseable { it.localPort }
+		def process = new ProcessBuilder(executable.get().asFile.absolutePath,
+				"--server.port=${port}", '--spring.main.banner-mode=off')
+				.redirectErrorStream(true)
+				.redirectOutput(log)
+				.start()
+		try {
+			def http = java.net.http.HttpClient.newHttpClient()
+			def base = "http://localhost:${port}/api"
+			waitForStart(http, base, process, log)
+			def failures = []
+			fixtureFiles().each { File f ->
+				def name = f.name - '.json'
+				def req = java.net.http.HttpRequest.newBuilder(URI.create("${base}/simulate"))
+						.header('Content-Type', 'application/json')
+						.POST(java.net.http.HttpRequest.BodyPublishers.ofFile(f.toPath()))
+						.build()
+				def res = http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString())
+				if ( res.statusCode() != 200 ) {
+					failures << "${name}: HTTP ${res.statusCode()}: ${res.body()}"
+					return
+				}
+				def actual = summary(new groovy.json.JsonSlurper().parseText(res.body()))
+				def expected = new groovy.json.JsonSlurper().parse(
+						new File(f.parentFile, "${name}.expected.json"))
+				if ( actual != expected ) {
+					new File(reports, "${name}.actual.json").text =
+							groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(actual))
+					def diffs = []
+					differences('', expected, actual, diffs)
+					failures << "${name}: the result differs from ${name}.expected.json:\n  " +
+							diffs.take(20).join('\n  ')
+				} else {
+					logger.lifecycle("${name}: OK")
+				}
+			}
+			if ( failures ) {
+				throw new GradleException("Native smoke test failed (see ${reports}):\n"
+						+ failures.join('\n'))
+			}
+		} finally {
+			process.destroy()
+			if ( !process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) ) {
+				process.destroyForcibly()
+			}
+		}
+	}
+
+	protected List<File> fixtureFiles() {
+		fixtures.get().asFile.listFiles()
+				.findAll { it.name.endsWith('.json') && !it.name.endsWith('.expected.json') }
+				.sort { it.name }
+	}
+
+	protected void waitForStart(def http, String base, Process process, File log) {
+		def info = java.net.http.HttpRequest.newBuilder(URI.create("${base}/info")).build()
+		long deadline = System.currentTimeMillis() + startTimeoutSeconds.getOrElse(60) * 1000L
+		while ( true ) {
+			if ( !process.alive ) {
+				throw new GradleException("The executable exited (${process.exitValue()}):\n${log.text}")
+			}
+			try {
+				def res = http.send(info, java.net.http.HttpResponse.BodyHandlers.ofString())
+				if ( res.statusCode() == 200 ) {
+					logger.lifecycle("Started ${res.body()}")
+					return
+				}
+			} catch ( IOException e ) {
+				// not listening yet
+			}
+			if ( System.currentTimeMillis() > deadline ) {
+				throw new GradleException("The executable did not start:\n${log.text}")
+			}
+			Thread.sleep(250)
+		}
+	}
+
+	/** Summarize a result the same way as SmokeFixtureTests. */
+	static Object summary(Map result) {
+		def datum = result.datum.collect { Map trace ->
+			def d = [seq: trace.seq, sourceId: trace.input?.sourceId,
+				steps: trace.steps.collect { "${it.filterId}:${it.status}".toString() }]
+			if ( trace.error != null ) {
+				d.error = trace.error
+			}
+			if ( trace.output?.samples != null ) {
+				d.output = trace.output.samples
+			}
+			d
+		}
+		normalized([messages: result.messages.collect { it.code },
+			stats: ['processed', 'generated', 'output', 'discarded'].collectEntries {
+				[(it): result.stats[it]] },
+			datum: datum])
+	}
+
+	/** Normalize to strings, with numbers in plain notation without trailing zeros. */
+	static Object normalized(Object v) {
+		if ( v instanceof Map ) {
+			return v.findAll { k, x -> x != null }.collectEntries { k, x -> [(k): normalized(x)] }
+		} else if ( v instanceof List ) {
+			return v.collect { normalized(it) }
+		} else if ( v instanceof Number ) {
+			return new BigDecimal(v.toString()).stripTrailingZeros().toPlainString()
+		}
+		return v == null ? '' : v.toString()
+	}
+
+	static void differences(String path, Object expected, Object actual, List diffs) {
+		if ( expected instanceof Map && actual instanceof Map ) {
+			(expected.keySet() + actual.keySet()).each {
+				differences("${path}/${it}", expected[it], actual[it], diffs)
+			}
+		} else if ( expected instanceof List && actual instanceof List ) {
+			(0..<Math.max(expected.size(), actual.size())).each {
+				differences("${path}[${it}]", it < expected.size() ? expected[it] : null,
+						it < actual.size() ? actual[it] : null, diffs)
+			}
+		} else if ( expected != actual ) {
+			diffs << "${path}: expected ${expected} but was ${actual}".toString()
+		}
+	}
+
+}
+
+tasks.register('nativeSmokeTest', NativeSmokeTest) {
+	group = 'verification'
+	description = 'Runs the smoke test fixtures against the native executable.'
+	dependsOn tasks.named('nativeCompile')
+	executable = tasks.named('nativeCompile').flatMap { it.outputFile }
+	fixtures = layout.projectDirectory.dir('src/test/resources/s10k/node/sim/filter/smoke')
+	reportDir = layout.buildDirectory.dir('reports/native-smoke')
 }

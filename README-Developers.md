@@ -172,7 +172,9 @@ gets a `400` response whose `problems` array lists each one.
 
 This builds the UI (with `npm ci` and a Vite production build, using a Gradle-managed Node) and
 packages it into the app. It also compiles and tests the app and runs the code checks. The
-runnable jar is `app/build/libs/app-<version>.jar`.
+runnable jar is `app/build/libs/sn-filter-sim-<version>.jar`. `build` also builds the native
+distribution (see below), so it needs GraalVM; `./gradlew check` runs the tests and code checks
+without it.
 
 ## Native executable
 
@@ -184,7 +186,11 @@ GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeCompi
 
 The executable is `app/build/native/nativeCompile/sn-filter-sim`.
 
-By default the native build uses `-O3` and a fixed 160 MB runtime heap. You can supply your own
+The build needs about 5 GB of memory for `native-image`. On a machine with less to spare, stop
+other JVMs (such as a `bootRun`) first, or cap the builder's heap with `-J-Xmx4g` in the
+native build arguments below.
+
+By default the native build uses `-O3` and a fixed 256 MB runtime heap. You can supply your own
 `native-image` arguments from any of these sources:
 
  * the `NATIVE_BUILD_ARGS` environment variable, as a comma-delimited list
@@ -200,6 +206,40 @@ For example, for a faster development build:
 NATIVE_BUILD_ARGS=--enable-native-access=ALL-UNNAMED,-Ob GRAALVM_HOME=/opt/graalvm-jdk@25 \
   ./gradlew :solarnode-filter-sim-app:nativeCompile
 ```
+
+### Distribution
+
+The release distribution is a tarball holding only the native executable, named for the
+operating system and CPU (`darwin`, `linux`, or `windows`, and `arm64` or `amd64`), for example
+`app/build/distributions/solarnode-filter-simualtor-0.1.0-linux-arm64.tar.gz`:
+
+```sh
+GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:distTar
+```
+
+The executable runs on its own: the JDK shim libraries and build report that `nativeCompile`
+writes next to it are left out. Gradle 9 archives normalize file permissions, so the
+distribution sets the executable's mode explicitly.
+
+### Native smoke test
+
+A native image only has the reflection metadata that Spring's AOT processing and
+`SimulatorRuntimeHints` give it, so an expression can fail natively that works on the JVM. The
+`nativeSmokeTest` task builds the executable (if needed), starts it on a free port, and runs
+the smoke fixtures through `/api/simulate`:
+
+```sh
+GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeSmokeTest
+```
+
+The fixtures are in `app/src/test/resources/s10k/node/sim/filter/smoke/`. Each `<name>.json` is
+a simulation request, and `<name>.expected.json` is a summary of the expected result: message
+codes, stats, and each datum's step statuses and output samples. `SmokeFixtureTests` checks the
+same summaries on the JVM. When a summary differs, the actual one is written to
+`app/build/reports/native-smoke/<name>.actual.json` (or `app/build/smoke/` by the test), next
+to the executable's log. A native-only difference usually means a missing runtime hint, shown
+as a `FilterLog` message with the expression error. When a behaviour change is deliberate,
+review the new summary and copy it over the fixture's.
 
 # Code style
 

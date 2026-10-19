@@ -1,0 +1,408 @@
+{
+ "config": {
+  "mainChainId": "main",
+  "filters": [
+   {
+    "id": "main",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Main"
+    },
+    "filterIds": [
+     "exp"
+    ]
+   },
+   {
+    "id": "exp",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+    "settings": {
+     "uid": "EXP",
+     "expressionConfigsCount": "55",
+     "expressionConfigs[0].name": "power",
+     "expressionConfigs[0].datumPropertyTypeKey": "i",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "amps * volts",
+     "expressionConfigs[1].name": "stateCopy",
+     "expressionConfigs[1].datumPropertyTypeKey": "s",
+     "expressionConfigs[1].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[1].expression": "datum.samples.s['state']",
+     "expressionConfigs[2].name": "propsState",
+     "expressionConfigs[2].datumPropertyTypeKey": "s",
+     "expressionConfigs[2].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[2].expression": "props['state']",
+     "expressionConfigs[3].name": "datumSource",
+     "expressionConfigs[3].datumPropertyTypeKey": "s",
+     "expressionConfigs[3].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[3].expression": "datum.sourceId + ' ' + sourceId",
+     "expressionConfigs[4].name": "hasAmps",
+     "expressionConfigs[4].datumPropertyTypeKey": "i",
+     "expressionConfigs[4].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[4].expression": "has('amps') ? 1 : 0",
+     "expressionConfigs[5].name": "paramCount",
+     "expressionConfigs[5].datumPropertyTypeKey": "i",
+     "expressionConfigs[5].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[5].expression": "parameters.size() >= 0 ? 1 : 0",
+     "expressionConfigs[6].name": "hasOff",
+     "expressionConfigs[6].datumPropertyTypeKey": "i",
+     "expressionConfigs[6].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[6].expression": "(hasOffset(1) ? 1 : 0) + (hasOffset(2) ? 10 : 0)",
+     "expressionConfigs[7].name": "ampsDiff",
+     "expressionConfigs[7].datumPropertyTypeKey": "i",
+     "expressionConfigs[7].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[7].expression": "amps - offset(1).amps",
+     "expressionConfigs[8].name": "latestDiff",
+     "expressionConfigs[8].datumPropertyTypeKey": "i",
+     "expressionConfigs[8].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[8].expression": "(amps * volts) - (latest('solar').amps * latest('solar').volts)",
+     "expressionConfigs[9].name": "sumMatch",
+     "expressionConfigs[9].datumPropertyTypeKey": "i",
+     "expressionConfigs[9].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[9].expression": "sum(latestMatching('solar*').?[amps>1].![amps * volts])",
+     "expressionConfigs[10].name": "sumSet",
+     "expressionConfigs[10].datumPropertyTypeKey": "i",
+     "expressionConfigs[10].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[10].expression": "sum(latestMatching({'solar1', 'solar2'}).![amps * volts])",
+     "expressionConfigs[11].name": "othersCount",
+     "expressionConfigs[11].datumPropertyTypeKey": "i",
+     "expressionConfigs[11].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[11].expression": "latestOthersMatching('solar*').size() * 10 + selfAndLatestMatching('solar*').size()",
+     "expressionConfigs[12].name": "hasLatestMatch",
+     "expressionConfigs[12].datumPropertyTypeKey": "i",
+     "expressionConfigs[12].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[12].expression": "(hasLatestMatching('solar*') ? 1 : 0) + (hasLatestMatching('nope*') ? 10 : 0) + (hasLatest('solar') ? 100 : 0) + (hasOffset('solar', 2) ? 1000 : 0)",
+     "expressionConfigs[13].name": "sliceCount",
+     "expressionConfigs[13].datumPropertyTypeKey": "i",
+     "expressionConfigs[13].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[13].expression": "slice('solar', 0, 5).size()",
+     "expressionConfigs[14].name": "offsetSource",
+     "expressionConfigs[14].datumPropertyTypeKey": "i",
+     "expressionConfigs[14].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[14].expression": "offset('solar', 1).amps",
+     "expressionConfigs[15].name": "unfiltered",
+     "expressionConfigs[15].datumPropertyTypeKey": "i",
+     "expressionConfigs[15].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[15].expression": "unfilteredOffset(1).amps + unfilteredLatest('solar2').amps",
+     "expressionConfigs[16].name": "unfilteredMatch",
+     "expressionConfigs[16].datumPropertyTypeKey": "i",
+     "expressionConfigs[16].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[16].expression": "unfilteredLatestMatching('solar*').size() * 10 + unfilteredSlice('solar', 0, 5).size()",
+     "expressionConfigs[17].name": "bits",
+     "expressionConfigs[17].datumPropertyTypeKey": "i",
+     "expressionConfigs[17].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[17].expression": "and(xor(7, 2), shiftLeft(1, 3)) + or(1, 2) + andNot(7, 1) + shiftRight(8, 1) + (testBit(5, 0) ? 1 : 0)",
+     "expressionConfigs[18].name": "narrowed",
+     "expressionConfigs[18].datumPropertyTypeKey": "i",
+     "expressionConfigs[18].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[18].expression": "narrow16(300) + narrow(5, 1)",
+     "expressionConfigs[19].name": "math",
+     "expressionConfigs[19].datumPropertyTypeKey": "i",
+     "expressionConfigs[19].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[19].expression": "round(sqrt(pow(amps, 2)) + cbrt(27) + exp(0) + ceil(1.2) + floor(1.8) + mround(7, 5), 2)",
+     "expressionConfigs[20].name": "interp",
+     "expressionConfigs[20].datumPropertyTypeKey": "i",
+     "expressionConfigs[20].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[20].expression": "interp(amps, 0, 10, 0, 100)",
+     "expressionConfigs[21].name": "stats",
+     "expressionConfigs[21].datumPropertyTypeKey": "i",
+     "expressionConfigs[21].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[21].expression": "avg(group('^voltage_')) + max(1, 2) + min({3, 4}) + rms({3, 4}) + max({5, 6}) + sum({1, 2})",
+     "expressionConfigs[22].name": "rounding",
+     "expressionConfigs[22].datumPropertyTypeKey": "i",
+     "expressionConfigs[22].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[22].expression": "wholePart(123.4567) + fracPart(1.25, 2) + scaled(1.5, 2) + up(1.2) + down(1.8) + roundUp(1.21, 1) + roundDown(1.29, 1) + ceil(7, 5) + floor(7, 5) + round(1.2345, 2)",
+     "expressionConfigs[23].name": "numberValue",
+     "expressionConfigs[23].datumPropertyTypeKey": "i",
+     "expressionConfigs[23].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[23].expression": "numberValue('12.5')",
+     "expressionConfigs[24].name": "sorted",
+     "expressionConfigs[24].datumPropertyTypeKey": "i",
+     "expressionConfigs[24].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[24].expression": "max(sort(group('^voltage_'), true))",
+     "expressionConfigs[25].name": "regex",
+     "expressionConfigs[25].datumPropertyTypeKey": "s",
+     "expressionConfigs[25].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[25].expression": "regexReplace(sourceId, '^meter', 'METER')",
+     "expressionConfigs[26].name": "regexMatch",
+     "expressionConfigs[26].datumPropertyTypeKey": "i",
+     "expressionConfigs[26].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[26].expression": "regexMatches(sourceId, '^meter/.*') ? 1 : 0",
+     "expressionConfigs[27].name": "dateFmt",
+     "expressionConfigs[27].datumPropertyTypeKey": "s",
+     "expressionConfigs[27].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[27].expression": "formatDate(datePlus(date(2024, 11, 21, 13, 0), 1, 'days'), 'yyyy-MM-dd HH:mm', tz('UTC'))",
+     "expressionConfigs[28].name": "dateTzEpoch",
+     "expressionConfigs[28].datumPropertyTypeKey": "i",
+     "expressionConfigs[28].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[28].expression": "epochSecs(dateTz(date('2024-11-21'), 'Pacific/Auckland'))",
+     "expressionConfigs[29].name": "between",
+     "expressionConfigs[29].datumPropertyTypeKey": "i",
+     "expressionConfigs[29].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[29].expression": "daysBetween(date('2024-01-01'), date('2024-03-01')) + hoursBetween(date(2024, 1, 1, 0, 0), date(2024, 1, 1, 5, 0)) + minutesBetween(date(2024, 1, 1, 0, 0), date(2024, 1, 1, 0, 30))",
+     "expressionConfigs[30].name": "betweenFrac",
+     "expressionConfigs[30].datumPropertyTypeKey": "i",
+     "expressionConfigs[30].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[30].expression": "round(monthsBetween(date('2024-01-01'), date('2024-07-01')) + yearsBetween(date('2024-01-01'), date('2025-01-01')), 2)",
+     "expressionConfigs[31].name": "seconds",
+     "expressionConfigs[31].datumPropertyTypeKey": "i",
+     "expressionConfigs[31].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[31].expression": "secondsBetween(timestamp('2024-01-01T00:00:00Z'), timestamp('2024-01-01T00:01:00Z'))",
+     "expressionConfigs[32].name": "dateFloor",
+     "expressionConfigs[32].datumPropertyTypeKey": "s",
+     "expressionConfigs[32].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[32].expression": "formatDate(dateFloor(timestamp('2024-01-01T10:17:00Z'), 'PT15M', 'UTC'), 'HH:mm', tz('UTC'))",
+     "expressionConfigs[33].name": "dateTrunc",
+     "expressionConfigs[33].datumPropertyTypeKey": "s",
+     "expressionConfigs[33].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[33].expression": "formatDate(dateTruncate(date(2024, 1, 1, 10, 17), 'hours'), 'HH:mm', tz('UTC'))",
+     "expressionConfigs[34].name": "datePlusDur",
+     "expressionConfigs[34].datumPropertyTypeKey": "s",
+     "expressionConfigs[34].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[34].expression": "formatDate(datePlus(date(2024, 1, 1, 10, 0), 'PT90M'), 'HH:mm', tz('UTC'))",
+     "expressionConfigs[35].name": "nowFns",
+     "expressionConfigs[35].datumPropertyTypeKey": "i",
+     "expressionConfigs[35].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[35].expression": "now() != null && now('UTC') != null && timestamp() != null && today() != null && startOfDay() != null && nowTz() != null && nowTz('UTC') != null && today('UTC') != null && startOfDay('UTC') != null ? 1 : 0",
+     "expressionConfigs[36].name": "localFns",
+     "expressionConfigs[36].datumPropertyTypeKey": "s",
+     "expressionConfigs[36].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[36].expression": "localDate(dateTz(date(2024, 1, 2, 3, 4), 'UTC')).toString() + ' ' + localTime(dateTz(date(2024, 1, 2, 3, 4), 'UTC')).toString() + ' ' + local(dateTz(date(2024, 1, 2, 3, 4), 'UTC')).toString()",
+     "expressionConfigs[37].name": "timeFn",
+     "expressionConfigs[37].datumPropertyTypeKey": "s",
+     "expressionConfigs[37].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[37].expression": "time('13:45').toString()",
+     "expressionConfigs[38].name": "chrono",
+     "expressionConfigs[38].datumPropertyTypeKey": "s",
+     "expressionConfigs[38].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[38].expression": "chronoUnit('hours').toString() + ' ' + duration('PT1H').toString() + ' ' + durationBetween(date(2024, 1, 1, 0, 0), date(2024, 1, 1, 2, 0)).toString()",
+     "expressionConfigs[39].name": "epochMs",
+     "expressionConfigs[39].datumPropertyTypeKey": "i",
+     "expressionConfigs[39].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[39].expression": "epoch(timestamp('2024-01-01T00:00:00Z'))",
+     "expressionConfigs[40].name": "tsZone",
+     "expressionConfigs[40].datumPropertyTypeKey": "i",
+     "expressionConfigs[40].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[40].expression": "epochSecs(timestamp(date(2024, 1, 1, 0, 0), 'UTC'))",
+     "expressionConfigs[41].name": "metaVar",
+     "expressionConfigs[41].datumPropertyTypeKey": "i",
+     "expressionConfigs[41].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[41].expression": "hasMeta() ? meta.getInfoNumber('factor') : 0",
+     "expressionConfigs[42].name": "metaPath",
+     "expressionConfigs[42].datumPropertyTypeKey": "i",
+     "expressionConfigs[42].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[42].expression": "meta('solar').metadataAtPath('/pm/panel/efficiency') + meta('solar').getInfoNumber('panel', 'efficiency')",
+     "expressionConfigs[43].name": "metaTag",
+     "expressionConfigs[43].datumPropertyTypeKey": "i",
+     "expressionConfigs[43].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[43].expression": "meta('solar').hasTag('roof') && hasMeta('solar') && meta('solar').hasMetadataAtPath('/m/factor') ? 1 : 0",
+     "expressionConfigs[44].name": "metaMatching",
+     "expressionConfigs[44].datumPropertyTypeKey": "i",
+     "expressionConfigs[44].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[44].expression": "metaMatching('sol*').size()",
+     "expressionConfigs[45].name": "metaProps",
+     "expressionConfigs[45].datumPropertyTypeKey": "i",
+     "expressionConfigs[45].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[45].expression": "meta('solar').infoKeys.size() + meta('solar').propertyInfoKeys.size() + meta('solar').tags.size()",
+     "expressionConfigs[46].name": "nodeMeta",
+     "expressionConfigs[46].datumPropertyTypeKey": "i",
+     "expressionConfigs[46].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[46].expression": "metadataAtPath('/pm/site/factor')",
+     "expressionConfigs[47].name": "opMode",
+     "expressionConfigs[47].datumPropertyTypeKey": "i",
+     "expressionConfigs[47].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[47].expression": "isOpMode('boost') ? 1 : 0",
+     "expressionConfigs[48].name": "placeholder",
+     "expressionConfigs[48].datumPropertyTypeKey": "i",
+     "expressionConfigs[48].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[48].expression": "factor * 2",
+     "expressionConfigs[49].name": "counter",
+     "expressionConfigs[49].datumPropertyTypeKey": "i",
+     "expressionConfigs[49].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[49].expression": "saveLocalState('counter', localState('counter', 0) + 1)",
+     "expressionConfigs[50].name": "hasState",
+     "expressionConfigs[50].datumPropertyTypeKey": "i",
+     "expressionConfigs[50].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[50].expression": "hasLocalState('counter') ? 1 : 0",
+     "expressionConfigs[51].name": "getAndSave",
+     "expressionConfigs[51].datumPropertyTypeKey": "i",
+     "expressionConfigs[51].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[51].expression": "getAndSaveLocalState('other', 5) == null ? 1 : 0",
+     "expressionConfigs[52].name": "changeState",
+     "expressionConfigs[52].datumPropertyTypeKey": "i",
+     "expressionConfigs[52].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[52].expression": "changeLocalState('flag', 'Int32', 7) ? 1 : 0",
+     "expressionConfigs[53].name": "tariff",
+     "expressionConfigs[53].datumPropertyTypeKey": "i",
+     "expressionConfigs[53].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[53].expression": "tariffSchedule('Tariff').resolveTariff(now(), null).rates['rate'].amount",
+     "expressionConfigs[54].name": "tariffRules",
+     "expressionConfigs[54].datumPropertyTypeKey": "i",
+     "expressionConfigs[54].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[54].expression": "tariffSchedule('Tariff').rules().size() + tariffScheduleGroup('none').size()"
+    }
+   },
+   {
+    "id": "tariff",
+    "factoryUid": "net.solarnetwork.node.datum.filter.tariff",
+    "settings": {
+     "uid": "Tariff"
+    }
+   }
+  ]
+ },
+ "datum": [
+  {
+   "created": "2025-10-01 12:00:00Z",
+   "sourceId": "meter/1",
+   "i": {
+    "amps": 4.2,
+    "volts": 240.0,
+    "voltage_a": 220,
+    "voltage_b": 222,
+    "voltage_c": 225
+   },
+   "a": {
+    "wattHours": 1000
+   },
+   "s": {
+    "state": "Ok"
+   }
+  }
+ ],
+ "history": {
+  "filtered": [
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "meter/1",
+    "i": {
+     "amps": 3.1,
+     "volts": 241.0
+    },
+    "a": {
+     "reading": 38009130
+    },
+    "s": {
+     "state": "Ok"
+    }
+   },
+   {
+    "created": "2025-10-01 11:58:00Z",
+    "sourceId": "solar",
+    "i": {
+     "amps": 5.9,
+     "volts": 239.9
+    }
+   },
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "solar",
+    "i": {
+     "amps": 6.0,
+     "volts": 240.0
+    }
+   },
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "solar1",
+    "i": {
+     "amps": 1.0,
+     "volts": 240.0
+    }
+   },
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "solar2",
+    "i": {
+     "amps": 3.0,
+     "volts": 240.0
+    }
+   }
+  ],
+  "unfiltered": [
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "meter/1",
+    "i": {
+     "amps": 3.1,
+     "volts": 241.0
+    },
+    "a": {
+     "reading": 38009130
+    },
+    "s": {
+     "state": "Ok"
+    }
+   },
+   {
+    "created": "2025-10-01 11:58:00Z",
+    "sourceId": "solar",
+    "i": {
+     "amps": 5.9,
+     "volts": 239.9
+    }
+   },
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "solar",
+    "i": {
+     "amps": 6.0,
+     "volts": 240.0
+    }
+   },
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "solar1",
+    "i": {
+     "amps": 1.0,
+     "volts": 240.0
+    }
+   },
+   {
+    "created": "2025-10-01 11:59:00Z",
+    "sourceId": "solar2",
+    "i": {
+     "amps": 3.0,
+     "volts": 240.0
+    }
+   }
+  ]
+ },
+ "environment": {
+  "opModes": [
+   "boost"
+  ],
+  "localStateCsv": "Key,Created,Modified,Type,Value\ncounter,,,Int64,41",
+  "nodeMetadata": {
+   "pm": {
+    "site": {
+     "factor": 2.5
+    },
+    "tariffs": {
+     "schedule": "Month,Day,Weekday,Time,Rate\n,,,,0.15"
+    }
+   }
+  },
+  "placeholders": {
+   "factor": "3"
+  },
+  "datumMetadata": {
+   "solar": {
+    "m": {
+     "factor": 2
+    },
+    "pm": {
+     "panel": {
+      "efficiency": 0.2
+     }
+    },
+    "t": [
+     "roof"
+    ]
+   },
+   "meter/1": {
+    "m": {
+     "factor": 2
+    }
+   }
+  }
+ }
+}

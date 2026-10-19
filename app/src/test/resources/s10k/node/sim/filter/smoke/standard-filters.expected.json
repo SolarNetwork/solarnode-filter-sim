@@ -1,0 +1,203 @@
+{
+  "messages" : [ "PendingTasks" ],
+  "stats" : {
+    "processed" : "13",
+    "generated" : "9",
+    "output" : "10",
+    "discarded" : "3"
+  },
+  "datum" : [ {
+    "seq" : "1",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "prop:Changed", "ts:Changed", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Unchanged", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "100",
+        "voltage_a" : "230",
+        "voltage_b" : "231",
+        "power" : "200",
+        "wattsHoursDiff" : "1.583333"
+      },
+      "a" : {
+        "wattHours" : "1000",
+        "wattsHours" : "501.583333"
+      },
+      "s" : {
+        "state" : "Ok"
+      }
+    }
+  }, {
+    "seq" : "2",
+    "sourceId" : "/meter/1/v",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Unchanged", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "voltage_a" : "230",
+        "voltage_b" : "231"
+      }
+    }
+  }, {
+    "seq" : "3",
+    "sourceId" : "/joined",
+    "steps" : [ "main:Dropped", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Dropped" ]
+  }, {
+    "seq" : "4",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "prop:Changed", "ts:Changed", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Changed", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "200",
+        "voltage_a" : "231",
+        "voltage_b" : "232",
+        "power" : "400",
+        "wattsHoursDiff" : "1.25"
+      },
+      "a" : {
+        "wattHours" : "1001",
+        "wattsHours" : "502.833333"
+      }
+    }
+  }, {
+    "seq" : "5",
+    "sourceId" : "/meter/1/v",
+    "steps" : [ "main:Dropped", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Dropped" ]
+  }, {
+    "seq" : "6",
+    "sourceId" : "/joined",
+    "steps" : [ "main:Changed", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Changed", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "150",
+        "watts_min" : "100",
+        "watts_max" : "200",
+        "voltage_a" : "230.5",
+        "voltage_a_min" : "230",
+        "voltage_a_max" : "231",
+        "voltage_b" : "231.5",
+        "voltage_b_min" : "231",
+        "voltage_b_max" : "232",
+        "power" : "300",
+        "power_min" : "200",
+        "power_max" : "400",
+        "wattsHoursDiff" : "1.417",
+        "wattsHoursDiff_min" : "1.25",
+        "wattsHoursDiff_max" : "1.583333",
+        "v_voltage_a" : "230.5",
+        "v_voltage_a_min" : "230",
+        "v_voltage_a_max" : "231",
+        "v_voltage_b" : "231.5",
+        "v_voltage_b_min" : "231",
+        "v_voltage_b_max" : "232"
+      },
+      "a" : {
+        "wattHours" : "1001",
+        "wattsHours" : "502.833333"
+      },
+      "s" : {
+        "state" : "Ok"
+      }
+    }
+  }, {
+    "seq" : "7",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "prop:Changed", "ts:Changed", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Changed", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "160",
+        "voltage_a" : "230",
+        "voltage_b" : "231",
+        "power" : "320",
+        "wattsHoursDiff" : "1.5"
+      },
+      "a" : {
+        "wattHours" : "1003",
+        "wattsHours" : "504.333333"
+      }
+    }
+  }, {
+    "seq" : "8",
+    "sourceId" : "/meter/1/v",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Unchanged", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "voltage_a" : "230",
+        "voltage_b" : "231"
+      }
+    }
+  }, {
+    "seq" : "9",
+    "sourceId" : "/joined",
+    "steps" : [ "main:Dropped", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Dropped" ]
+  }, {
+    "seq" : "10",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "prop:Changed", "ts:Unchanged", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Unchanged", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "50",
+        "voltage_a" : "229",
+        "voltage_b" : "230",
+        "power" : "100",
+        "wattsHoursDiff" : "1.75"
+      },
+      "a" : {
+        "wattHours" : "1004",
+        "wattsHours" : "506.083333"
+      },
+      "s" : {
+        "state" : "Warn"
+      }
+    }
+  }, {
+    "seq" : "11",
+    "sourceId" : "/meter/1/v",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Unchanged", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "voltage_a" : "229",
+        "voltage_b" : "230"
+      }
+    }
+  }, {
+    "seq" : "12",
+    "sourceId" : "/joined",
+    "steps" : [ "main:Changed", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Changed", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "105",
+        "watts_min" : "50",
+        "watts_max" : "160",
+        "voltage_a" : "229.5",
+        "voltage_a_min" : "229",
+        "voltage_a_max" : "230",
+        "voltage_b" : "230.5",
+        "voltage_b_min" : "230",
+        "voltage_b_max" : "231",
+        "power" : "210",
+        "power_min" : "100",
+        "power_max" : "320",
+        "wattsHoursDiff" : "1.625",
+        "wattsHoursDiff_min" : "1.5",
+        "wattsHoursDiff_max" : "1.75",
+        "v_voltage_a" : "229.5",
+        "v_voltage_a_min" : "229",
+        "v_voltage_a_max" : "230",
+        "v_voltage_b" : "230.5",
+        "v_voltage_b_min" : "230",
+        "v_voltage_b_max" : "231"
+      },
+      "a" : {
+        "wattHours" : "1004",
+        "wattsHours" : "506.083333"
+      },
+      "s" : {
+        "state" : "Warn"
+      }
+    }
+  }, {
+    "seq" : "13",
+    "sourceId" : "/meter/1/timeout",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : { }
+  } ]
+}

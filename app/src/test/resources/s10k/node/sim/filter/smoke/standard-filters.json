@@ -1,0 +1,290 @@
+{
+ "config": {
+  "mainChainId": "main",
+  "filters": [
+   {
+    "id": "main",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Main"
+    },
+    "filterIds": [
+     "prop",
+     "ts",
+     "exp",
+     "vm",
+     "param",
+     "opmode",
+     "ctl",
+     "instr",
+     "unchangedprop",
+     "inner",
+     "throttle",
+     "unchanged",
+     "downsample",
+     "timeout"
+    ]
+   },
+   {
+    "id": "prop",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.prop",
+    "settings": {
+     "uid": "Property",
+     "sourceId": "^/meter/1$",
+     "excludesCount": "1",
+     "excludes[0]": "^junk$"
+    }
+   },
+   {
+    "id": "ts",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.timestamp",
+    "settings": {
+     "uid": "Rounded",
+     "sourceId": "^/meter/1$",
+     "durationMs": "1000"
+    }
+   },
+   {
+    "id": "exp",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+    "settings": {
+     "uid": "Expression",
+     "sourceId": "^/meter/1$",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].name": "power",
+     "expressionConfigs[0].datumPropertyTypeKey": "i",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "watts * 2"
+    }
+   },
+   {
+    "id": "vm",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.virtmeter",
+    "settings": {
+     "uid": "Virtual Meter",
+     "sourceId": "^/meter/1$",
+     "virtualMeterConfigsCount": "1",
+     "virtualMeterConfigs[0].name": "watts",
+     "virtualMeterConfigs[0].propertyTypeKey": "i",
+     "virtualMeterConfigs[0].timeUnitName": "HOURS",
+     "virtualMeterConfigs[0].maxAgeSeconds": "3600",
+     "virtualMeterConfigs[0].includeInstantaneousDiffProperty": "true"
+    }
+   },
+   {
+    "id": "param",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.param",
+    "settings": {
+     "uid": "Parameters",
+     "sourceId": "^/meter/1$",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].name": "doubled",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "watts * 2"
+    }
+   },
+   {
+    "id": "opmode",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.opmode",
+    "settings": {
+     "uid": "Op Mode",
+     "sourceId": "^/meter/1$",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].operationalMode": "high",
+     "expressionConfigs[0].expireSeconds": "60",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "watts > 100"
+    }
+   },
+   {
+    "id": "ctl",
+    "factoryUid": "net.solarnetwork.node.datum.filter.control.update",
+    "settings": {
+     "uid": "Control Updater",
+     "sourceId": "^/meter/1$",
+     "controlConfigsCount": "1",
+     "controlConfigs[0].controlId": "/ctl/1",
+     "controlConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "controlConfigs[0].expression": "watts"
+    }
+   },
+   {
+    "id": "instr",
+    "factoryUid": "net.solarnetwork.node.datum.filter.instructor",
+    "settings": {
+     "uid": "Instructor",
+     "sourceId": "^/meter/1$",
+     "instructorConfigsCount": "1",
+     "instructorConfigs[0].predicate.expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "instructorConfigs[0].predicate.expression": "watts > 150",
+     "instructorConfigs[0].instructionsCount": "1",
+     "instructorConfigs[0].instructions[0].topic": "SetControlParameter",
+     "instructorConfigs[0].instructions[0].parametersCount": "1",
+     "instructorConfigs[0].instructions[0].parameters[0].name": "/ctl/2",
+     "instructorConfigs[0].instructions[0].parameters[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "instructorConfigs[0].instructions[0].parameters[0].expression": "watts"
+    }
+   },
+   {
+    "id": "unchangedprop",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.unchangedprop",
+    "settings": {
+     "uid": "Unchanged Property",
+     "sourceId": "^/meter/1$",
+     "unchangedPublishMaxSeconds": "3599",
+     "propConfigsCount": "1",
+     "propConfigs[0].name": "^state$",
+     "propConfigs[0].frequency": "120"
+    }
+   },
+   {
+    "id": "inner",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Inner"
+    },
+    "filterIds": [
+     "split",
+     "join"
+    ]
+   },
+   {
+    "id": "split",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.split",
+    "settings": {
+     "uid": "Split",
+     "sourceId": "^/meter/1$",
+     "swallowInput": "false",
+     "propertySourceMappingsCount": "1",
+     "propertySourceMappings[0].key": "^voltage_(.*)$",
+     "propertySourceMappings[0].value": "/meter/1/v"
+    }
+   },
+   {
+    "id": "join",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.join",
+    "settings": {
+     "uid": "Join",
+     "sourceId": "^/meter/1(/v)?$",
+     "outputSourceId": "/joined",
+     "coalesceThreshold": "2",
+     "swallowInput": "false",
+     "propertySourceMappingsCount": "2",
+     "propertySourceMappings[0].key": "^/meter/1$",
+     "propertySourceMappings[0].value": "{p}",
+     "propertySourceMappings[1].key": "^/meter/1/v$",
+     "propertySourceMappings[1].value": "v_{p}"
+    }
+   },
+   {
+    "id": "throttle",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.limiter",
+    "settings": {
+     "uid": "Throttle",
+     "sourceId": "^/meter/1/v$",
+     "frequencySeconds": "60"
+    }
+   },
+   {
+    "id": "unchanged",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.unchanged",
+    "settings": {
+     "uid": "Unchanged",
+     "sourceId": "^/joined$",
+     "unchangedPublishMaxSeconds": "3599"
+    }
+   },
+   {
+    "id": "downsample",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.downsample",
+    "settings": {
+     "uid": "Downsample",
+     "sourceId": "^/joined$",
+     "sampleCount": "2"
+    }
+   },
+   {
+    "id": "timeout",
+    "factoryUid": "net.solarnetwork.node.datum.filter.std.timeout",
+    "settings": {
+     "uid": "Timeout",
+     "sourceId": "^/meter/1$",
+     "outputSourceId": "/meter/1/timeout",
+     "timeoutMillis": "90000"
+    }
+   }
+  ]
+ },
+ "datum": [
+  {
+   "created": "2025-10-01 12:00:00.250Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 100,
+    "voltage_a": 230,
+    "voltage_b": 231,
+    "junk": 1
+   },
+   "a": {
+    "wattHours": 1000
+   },
+   "s": {
+    "state": "Ok"
+   }
+  },
+  {
+   "created": "2025-10-01 12:00:30.400Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 200,
+    "voltage_a": 231,
+    "voltage_b": 232,
+    "junk": 1
+   },
+   "a": {
+    "wattHours": 1001
+   },
+   "s": {
+    "state": "Ok"
+   }
+  },
+  {
+   "created": "2025-10-01 12:01:00.100Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 160,
+    "voltage_a": 230,
+    "voltage_b": 231,
+    "junk": 1
+   },
+   "a": {
+    "wattHours": 1003
+   },
+   "s": {
+    "state": "Ok"
+   }
+  },
+  {
+   "created": "2025-10-01 12:02:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 50,
+    "voltage_a": 229,
+    "voltage_b": 230,
+    "junk": 1
+   },
+   "a": {
+    "wattHours": 1004
+   },
+   "s": {
+    "state": "Warn"
+   }
+  }
+ ],
+ "environment": {
+  "localStateCsv": "Key,Created,Modified,Type,Value\nvm:/meter/1.wattsHours:date,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Int64,1759319940000\nvm:/meter/1.wattsHours:value,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Decimal,90\nvm:/meter/1.wattsHours:reading,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Decimal,500"
+ },
+ "options": {
+  "runAfter": "PT2M"
+ }
+}
