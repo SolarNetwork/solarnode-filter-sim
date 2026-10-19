@@ -173,8 +173,8 @@ gets a `400` response whose `problems` array lists each one.
 This builds the UI (with `npm ci` and a Vite production build, using a Gradle-managed Node) and
 packages it into the app. It also compiles and tests the app and runs the code checks. The
 runnable jar is `app/build/libs/sn-filter-sim-<version>.jar`. `build` also builds the native
-distribution (see below), so it needs GraalVM; `./gradlew check` runs the tests and code checks
-without it.
+distribution (see below), so it needs GraalVM. Without it, `./gradlew bootJar` builds the
+runnable jar, and `./gradlew check` runs the tests and code checks.
 
 ## Native executable
 
