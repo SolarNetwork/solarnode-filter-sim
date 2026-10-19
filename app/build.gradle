@@ -315,7 +315,7 @@ def getArchName() {
 // executable's are set explicitly
 distributions  {
 	main {
-		distributionBaseName = "solarnode-filter-simualtor"
+		distributionBaseName = "solarnode-filter-sim"
 		distributionClassifier = getOsName() + '-' + getArchName()
 		contents {
 			from(tasks.named("nativeCompile")) {
