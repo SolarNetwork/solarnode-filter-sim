@@ -1,0 +1,26 @@
+name: Homebrew Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  homebrew-releaser:
+    runs-on: ubuntu-latest
+    name: homebrew-releaser
+    steps:
+      - name: Release project to Homebrew tap
+        uses: Justintime50/homebrew-releaser@v3
+        with:
+          version: ${{ github.event.release.tag_name }}
+          homebrew_owner: SolarNetwork
+          homebrew_tap: homebrew-tap
+          github_token: ${{ secrets.RELEASE_TOKEN }}
+          formula_folder: Formula
+          commit_owner: homebrew-releaser
+          commit_email: homebrew-releaser@solarnetwork.net
+          target_darwin_amd64: false
+          target_darwin_arm64: true
+          target_linux_amd64: true
+          target_linux_arm64: true
+          install: 'bin.install "sn-filter-sim"'
