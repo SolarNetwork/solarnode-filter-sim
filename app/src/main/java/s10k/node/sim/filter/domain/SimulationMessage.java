@@ -145,7 +145,7 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	/**
 	 * A filter that a chain refers to by Service Name, without its settings.
 	 */
-	public static final String CODE_EXTERNAL_FILTER = "ExternalFilter";
+	public static final String CODE_UNKNOWN_FILTER = "UnknownFilter";
 
 	/** A problem with the Datum Queue's filter, the Main chain. */
 	public static final String CODE_MAIN_CHAIN = "MainChain";

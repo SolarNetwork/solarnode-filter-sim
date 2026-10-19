@@ -272,24 +272,24 @@ public class SettingsCsvServiceTests {
 		final String throttle = StandardFilterTypes.THROTTLE + ".1";
 		final String pvlib = "net.solarnetwork.node.datum.filter.pvlib.poa.P1";
 		final String bad = StandardFilterTypes.EXPRESSION + ".Bad:Name";
-		final String external = FilterConfig.EXTERNAL_FACTORY_UID + ":Somewhere Else";
+		final String unknown = FilterConfig.UNKNOWN_FACTORY_UID + ":Somewhere Else";
 		then(result.config().filtersOrEmpty())
-			.as("Filters, including the unsupported filter, then the external filter")
+			.as("Filters, including the unsupported filter, then the unknown filter")
 			.extracting(FilterConfig::id, FilterConfig::factoryUid)
 			.containsExactly(
 					tuple(MAIN_ID, StandardFilterTypes.CHAIN),
 					tuple(throttle, StandardFilterTypes.THROTTLE),
 					tuple(pvlib, "net.solarnetwork.node.datum.filter.pvlib.poa"),
 					tuple(bad, StandardFilterTypes.EXPRESSION),
-					tuple(external, FilterConfig.EXTERNAL_FACTORY_UID))
+					tuple(unknown, FilterConfig.UNKNOWN_FACTORY_UID))
 			;
 		then(filter(result.config(), MAIN_ID))
-			.as("Chain keeps the filter that is not in the file, as an external filter")
-			.returns(List.of(throttle, external, pvlib), from(FilterConfig::filterIds))
+			.as("Chain keeps the filter that is not in the file, as an unknown filter")
+			.returns(List.of(throttle, unknown, pvlib), from(FilterConfig::filterIds))
 			.returns("#\n# Main chain\n#", from(FilterConfig::comment))
 			;
-		then(filter(result.config(), external).settings())
-			.as("External filter known by its Service Name")
+		then(filter(result.config(), unknown).settings())
+			.as("Unknown filter known by its Service Name")
 			.isEqualTo(Map.of("uid", "Somewhere Else"))
 			;
 		then(filter(result.config(), throttle))
@@ -320,7 +320,7 @@ public class SettingsCsvServiceTests {
 					tuple(SimulationMessage.CODE_SETTING_FLAGS, throttle),
 					tuple(SimulationMessage.CODE_UNSUPPORTED_FILTER, pvlib),
 					tuple(SimulationMessage.CODE_INVALID_INSTANCE_ID, bad),
-					tuple(SimulationMessage.CODE_EXTERNAL_FILTER, external),
+					tuple(SimulationMessage.CODE_UNKNOWN_FILTER, unknown),
 					tuple(SimulationMessage.CODE_GLOBAL_FILTER, null))
 			;
 		then(result.ignored())
@@ -350,9 +350,9 @@ public class SettingsCsvServiceTests {
 		// THEN
 		// @formatter:off
 		then(result.csv())
-			.as("External filter used by the chain, without rows of its own")
+			.as("Unknown filter used by the chain, without rows of its own")
 			.contains("net.solarnetwork.node.datum.xform.user.Main,transformUids[1],Somewhere Else,,,\r\n")
-			.doesNotContain("external")
+			.doesNotContain("unknown")
 			.as("Note in the note column")
 			.contains("net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle,,,Limit everything\r\n")
 			.as("FACTORY row added")

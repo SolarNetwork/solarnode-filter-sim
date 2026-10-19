@@ -66,7 +66,7 @@ import s10k.node.sim.filter.sim.SimulationException;
  * row, and the Main chain's Service Name is the Datum Queue's
  * {@code transformServiceUid} setting. A chain's {@code transformUids} come
  * from its {@code filterIds}, using each member's Service Name, unless its
- * {@code filterIds} is {@code null}. External filters have no rows, and
+ * {@code filterIds} is {@code null}. Unknown filters have no rows, and
  * transient settings are left out, because SolarNode does not save them.
  * </p>
  *
@@ -197,7 +197,7 @@ final class SettingsCsvExporter {
 	 *        the filter configurations
 	 * @param mainId
 	 *        the Main chain ID
-	 * @return the instance ID of each filter configuration ID, without external
+	 * @return the instance ID of each filter configuration ID, without unknown
 	 *         filters
 	 */
 	private Map<String, String> instanceKeys(Map<String, FilterConfig> configs,
@@ -206,7 +206,7 @@ final class SettingsCsvExporter {
 		final Map<String, String> result = new LinkedHashMap<>(configs.size());
 		for ( FilterConfig c : configs.values() ) {
 			final String key = c.instanceKey();
-			if ( c.isExternal() || key == null || key.isEmpty() ) {
+			if ( c.isUnknown() || key == null || key.isEmpty() ) {
 				continue;
 			}
 			final String problem = InstanceIds.problem(key);
@@ -226,7 +226,7 @@ final class SettingsCsvExporter {
 		}
 		for ( FilterConfig c : configs.values() ) {
 			final String key = c.instanceKey();
-			if ( c.isExternal() || (key != null && !key.isEmpty()) ) {
+			if ( c.isUnknown() || (key != null && !key.isEmpty()) ) {
 				continue;
 			}
 			final Set<String> keys = used.computeIfAbsent(c.factoryUid(), _ -> new LinkedHashSet<>(4));
@@ -255,7 +255,7 @@ final class SettingsCsvExporter {
 		final Map<String, List<String>> idsByUid = new LinkedHashMap<>(configs.size());
 		for ( FilterConfig c : configs.values() ) {
 			final String uid = uid(c);
-			if ( uid != null && !c.isExternal() ) {
+			if ( uid != null && !c.isUnknown() ) {
 				idsByUid.computeIfAbsent(uid, _ -> new ArrayList<>(2)).add(c.id());
 			}
 		}
@@ -306,7 +306,7 @@ final class SettingsCsvExporter {
 	 *        the filter configurations
 	 * @param mainId
 	 *        the Main chain ID
-	 * @return the filters, without external filters
+	 * @return the filters, without unknown filters
 	 */
 	private List<FilterConfig> order(Map<String, FilterConfig> configs, @Nullable String mainId) {
 		final Set<String> visited = new LinkedHashSet<>(configs.size());
@@ -322,7 +322,7 @@ final class SettingsCsvExporter {
 		final List<FilterConfig> result = new ArrayList<>(visited.size());
 		for ( String id : visited ) {
 			final FilterConfig c = configs.get(id);
-			if ( c != null && !c.isExternal() ) {
+			if ( c != null && !c.isUnknown() ) {
 				result.add(c);
 			}
 		}

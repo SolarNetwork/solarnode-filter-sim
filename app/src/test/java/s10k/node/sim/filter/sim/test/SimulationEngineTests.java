@@ -534,11 +534,11 @@ public class SimulationEngineTests {
 	}
 
 	@Test
-	public void externalFilter() {
+	public void unknownFilter() {
 		// GIVEN
 		SimulationRequest req = request(
-				List.of(chain("main", "Chain - Main", "ext", "exp"),
-						new FilterConfig("ext", FilterConfig.EXTERNAL_FACTORY_UID, null,
+				List.of(chain("main", "Chain - Main", "unk", "exp"),
+						new FilterConfig("unk", FilterConfig.UNKNOWN_FACTORY_UID, null,
 								Map.of("uid", "Elsewhere"), null),
 						expression("exp", "EXP", "x", "1")),
 				METER_DATUM);
@@ -549,16 +549,16 @@ public class SimulationEngineTests {
 		// THEN
 		// @formatter:off
 		then(result.messages())
-			.as("External filter reported")
+			.as("Unknown filter reported")
 			.extracting(SimulationMessage::code, SimulationMessage::filterId)
-			.containsExactly(tuple(SimulationMessage.CODE_EXTERNAL_FILTER, "ext"))
+			.containsExactly(tuple(SimulationMessage.CODE_UNKNOWN_FILTER, "unk"))
 			;
 		then(result.datum().getFirst().steps())
-			.as("External filter passed the datum through, and the chain continued")
+			.as("Unknown filter passed the datum through, and the chain continued")
 			.extracting(FilterStep::filterId, FilterStep::status)
 			.containsExactly(
 					tuple("main", Status.Changed),
-					tuple("ext", Status.Unsupported),
+					tuple("unk", Status.Unsupported),
 					tuple("exp", Status.Changed))
 			;
 		// @formatter:on

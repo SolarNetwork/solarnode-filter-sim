@@ -14,7 +14,7 @@ import { InputError, NODE_METADATA_SERVICE_UID, RunInputs } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
 import type { FilterNode } from "./layout.ts";
 import {
-	EXTERNAL_FACTORY_UID,
+	UNKNOWN_FACTORY_UID,
 	type ExportStyle,
 	type FilterTypeInfo,
 	type SimulationResult,
@@ -161,7 +161,7 @@ class App {
 			this.#canvas.select(null);
 			this.#canvas.fit();
 			const count = (result.config.filters ?? []).filter(
-				(f) => f.factoryUid !== EXTERNAL_FACTORY_UID,
+				(f) => f.factoryUid !== UNKNOWN_FACTORY_UID,
 			).length;
 			const summary = `Imported ${count} filter${count === 1 ? "" : "s"} from ${file.name}.`;
 			if (

@@ -92,8 +92,8 @@ import s10k.node.sim.filter.sim.SimulationException;
  *
  * <p>
  * A chain's {@code transformUids} become its {@code filterIds}. A Service Name
- * that is not in the file becomes an external filter, so the chain keeps it.
- * The Datum Queue's {@code transformServiceUid} gives the Main chain.
+ * that is not in the file becomes an unknown filter, so the chain keeps it. The
+ * Datum Queue's {@code transformServiceUid} gives the Main chain.
  * </p>
  *
  * <p>
@@ -601,7 +601,7 @@ final class SettingsCsvImporter {
 		}
 
 		final List<FilterConfig> filters = new ArrayList<>(instances.size() + 2);
-		final Map<String, FilterConfig> externals = new LinkedHashMap<>(2);
+		final Map<String, FilterConfig> unknowns = new LinkedHashMap<>(2);
 		for ( Instance instance : instances.values() ) {
 			final List<String> uids = chainUids.get(instance.id());
 			List<String> filterIds = null;
@@ -610,17 +610,17 @@ final class SettingsCsvImporter {
 				for ( String uid : uids ) {
 					String memberId = idsByUid.get(uid);
 					if ( memberId == null ) {
-						FilterConfig external = externals.get(uid);
-						if ( external == null ) {
-							external = new FilterConfig(FilterConfig.EXTERNAL_FACTORY_UID + ':' + uid,
-									FilterConfig.EXTERNAL_FACTORY_UID, null, Map.of(UID, uid), null);
-							externals.put(uid, external);
-							messages.add(warning(SimulationMessage.CODE_EXTERNAL_FILTER,
-									"The chain %s uses the filter %s, which is not in the file. It is kept as an external filter, which datum pass through unchanged."
+						FilterConfig unknown = unknowns.get(uid);
+						if ( unknown == null ) {
+							unknown = new FilterConfig(FilterConfig.UNKNOWN_FACTORY_UID + ':' + uid,
+									FilterConfig.UNKNOWN_FACTORY_UID, null, Map.of(UID, uid), null);
+							unknowns.put(uid, unknown);
+							messages.add(warning(SimulationMessage.CODE_UNKNOWN_FILTER,
+									"The chain %s uses the filter %s, which is not in the file. It is kept as an unknown filter, which datum pass through unchanged."
 											.formatted(instance.label(), uid),
-									external.id(), null));
+									unknown.id(), null));
 						}
-						memberId = external.id();
+						memberId = unknown.id();
 					}
 					filterIds.add(memberId);
 				}
@@ -629,7 +629,7 @@ final class SettingsCsvImporter {
 					instance.settings, filterIds, comment(instance.comment),
 					instance.notes.isEmpty() ? null : instance.notes));
 		}
-		filters.addAll(externals.values());
+		filters.addAll(unknowns.values());
 
 		String mainChainId = null;
 		if ( mainUid != null ) {

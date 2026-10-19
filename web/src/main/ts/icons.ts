@@ -4,7 +4,7 @@
  * them as glyphs of the icon font.
  */
 
-import { CHAIN_FACTORY_UID, EXTERNAL_FACTORY_UID } from "./model.ts";
+import { CHAIN_FACTORY_UID, UNKNOWN_FACTORY_UID } from "./model.ts";
 
 /** The icon of each supported filter type, by factory UID. */
 const FILTER_ICONS: Record<string, string> = {
@@ -25,7 +25,7 @@ const FILTER_ICONS: Record<string, string> = {
 	"net.solarnetwork.node.datum.filter.std.timestamp": "clock",
 	"net.solarnetwork.node.datum.filter.instructor": "send",
 	"net.solarnetwork.node.datum.filter.tariff": "cash-coin",
-	[EXTERNAL_FACTORY_UID]: "box-arrow-up-right",
+	[UNKNOWN_FACTORY_UID]: "question-circle",
 };
 
 /** The icon of a filter type the simulator does not support. */

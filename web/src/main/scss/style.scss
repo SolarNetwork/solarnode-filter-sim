@@ -228,7 +228,7 @@ body {
 	}
 
 	&.is-unsupported,
-	&.is-external,
+	&.is-unknown,
 	&.is-loop {
 		fill: var(--bs-secondary-bg);
 		stroke-dasharray: 6 4;
@@ -312,7 +312,7 @@ rect.sim-badge {
 
 	.is-root ~ &,
 	.is-unsupported ~ &,
-	.is-external ~ & {
+	.is-unknown ~ & {
 		fill: var(--bs-secondary-color);
 	}
 }

@@ -462,8 +462,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final FilterTypeDefinition def = registry.definition(config.factoryUid());
 		final Map<String, String> settings = filterSettings(config, def);
 		if ( def == null ) {
-			if ( config.isExternal() ) {
-				warn(SimulationMessage.CODE_EXTERNAL_FILTER,
+			if ( config.isUnknown() ) {
+				warn(SimulationMessage.CODE_UNKNOWN_FILTER,
 						"The settings of the filter %s are not part of the configuration, so datum pass through it unchanged."
 								.formatted(label(config.id(), settings)),
 						config.id(), null);

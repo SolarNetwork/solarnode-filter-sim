@@ -608,7 +608,7 @@ export class Canvas extends EventTarget {
 		}
 		if (filter && !ws.isSupported(filter)) {
 			classes.push(
-				ws.isExternal(filter) ? "is-external" : "is-unsupported",
+				ws.isUnknown(filter) ? "is-unknown" : "is-unsupported",
 			);
 		}
 		if (node.root) {
@@ -646,8 +646,8 @@ export class Canvas extends EventTarget {
 		if (node.main) {
 			return "The Main chain: the filter chain the Datum Queue applies to every datum.";
 		}
-		if (ws.isExternal(filter)) {
-			return `${ws.label(filter)}: an external filter, which a chain uses by its Service Name but whose settings are not in this configuration. Datum pass through it unchanged.`;
+		if (ws.isUnknown(filter)) {
+			return `${ws.label(filter)}: an unknown filter, which a chain uses by its Service Name but whose settings are not in this configuration. Datum pass through it unchanged.`;
 		}
 		const type = ws.type(filter.factoryUid);
 		const lines = [

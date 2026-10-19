@@ -7,10 +7,10 @@
 export const CHAIN_FACTORY_UID = "net.solarnetwork.node.datum.xform.user";
 
 /**
- * The factory UID of an external filter: one that a chain refers to by its
+ * The factory UID of an unknown filter: one that a chain refers to by its
  * Service Name, but whose settings are not part of the configuration.
  */
-export const EXTERNAL_FACTORY_UID = "external";
+export const UNKNOWN_FACTORY_UID = "unknown";
 
 /** The Service Name setting key. */
 export const UID_SETTING = "uid";

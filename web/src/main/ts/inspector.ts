@@ -228,8 +228,8 @@ export class Inspector {
 		this.#alerts = element("div");
 		this.#alerts.append(...this.#alertsContent(node, form, formError));
 		parts.push(this.#alerts);
-		if (ws.isExternal(filter)) {
-			parts.push(this.#externalSettings(filter));
+		if (ws.isUnknown(filter)) {
+			parts.push(this.#unknownSettings(filter));
 		} else {
 			parts.push(this.#instanceIdField(filter));
 			if (form) {
@@ -311,8 +311,8 @@ export class Inspector {
 		let title: string;
 		if (node.main) {
 			title = "Main Filter Chain";
-		} else if (ws.isExternal(filter)) {
-			title = "External Filter";
+		} else if (ws.isUnknown(filter)) {
+			title = "Unknown Filter";
 		} else {
 			title = type?.name ?? "Unsupported Filter";
 		}
@@ -321,7 +321,7 @@ export class Inspector {
 		if (node.main) {
 			about.textContent =
 				"The filter chain the Datum Queue applies to every datum. Its filters run in order, from left to right.";
-		} else if (ws.isExternal(filter)) {
+		} else if (ws.isUnknown(filter)) {
 			about.textContent =
 				"A chain uses this filter by its Service Name, but its settings are not in this configuration. Datum pass through it unchanged, and an export keeps only the chain's reference to it.";
 		} else if (!type) {
@@ -973,8 +973,8 @@ export class Inspector {
 		return table;
 	}
 
-	/** An external filter's only setting: its Service Name. */
-	#externalSettings(filter: FilterConfig): HTMLElement {
+	/** An unknown filter's only setting: its Service Name. */
+	#unknownSettings(filter: FilterConfig): HTMLElement {
 		const id = this.#newId();
 		const wrapper = element("div", "mb-3");
 		const label = element(

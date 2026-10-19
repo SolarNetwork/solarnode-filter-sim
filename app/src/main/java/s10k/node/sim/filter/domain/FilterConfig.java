@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * </p>
  *
  * <p>
- * A filter with the {@link #EXTERNAL_FACTORY_UID} factory UID is known only by
+ * A filter with the {@link #UNKNOWN_FACTORY_UID} factory UID is known only by
  * its {@code uid} setting: a chain refers to it, but its settings are not part
  * of the configuration, such as when a settings CSV file holds a chain but not
  * all of its filters. Datum pass through it unchanged, and it is exported only
@@ -68,7 +68,7 @@ public record FilterConfig(String id, String factoryUid, @Nullable String instan
 		@Nullable String comment, @Nullable Map<String, String> notes) {
 
 	/** The factory UID of a filter that is known only by its Service Name. */
-	public static final String EXTERNAL_FACTORY_UID = "external";
+	public static final String UNKNOWN_FACTORY_UID = "unknown";
 
 	/**
 	 * Constructor, without a comment or notes.
@@ -91,12 +91,12 @@ public record FilterConfig(String id, String factoryUid, @Nullable String instan
 	}
 
 	/**
-	 * Test if this is an external filter, known only by its Service Name.
+	 * Test if this is an unknown filter, known only by its Service Name.
 	 *
-	 * @return {@code true} if the factory UID is {@link #EXTERNAL_FACTORY_UID}
+	 * @return {@code true} if the factory UID is {@link #UNKNOWN_FACTORY_UID}
 	 */
-	public boolean isExternal() {
-		return EXTERNAL_FACTORY_UID.equals(factoryUid);
+	public boolean isUnknown() {
+		return UNKNOWN_FACTORY_UID.equals(factoryUid);
 	}
 
 	/**

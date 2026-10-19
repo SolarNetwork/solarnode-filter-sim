@@ -1,7 +1,7 @@
 import { instanceIdProblem } from "./instanceIds.ts";
 import {
 	CHAIN_FACTORY_UID,
-	EXTERNAL_FACTORY_UID,
+	UNKNOWN_FACTORY_UID,
 	UID_SETTING,
 	type FilterConfig,
 	type FilterTypeInfo,
@@ -56,6 +56,9 @@ const SAVE_DELAY = 300;
 const MAIN_INSTANCE_KEY = "Main";
 const MAIN_UID = "Chain - Main";
 const NEW_ID_PREFIX = "filter-";
+
+/** The factory UID unknown filters had before they were renamed. */
+const OLD_UNKNOWN_FACTORY_UID = "external";
 
 /** How long, in milliseconds, edits of the same field merge into one undo step. */
 const MERGE_TIME = 2000;
@@ -112,7 +115,9 @@ export class Workspace extends EventTarget {
 		try {
 			const json = localStorage.getItem(STORAGE_KEY);
 			if (json) {
-				const saved = JSON.parse(json) as WorkspaceState;
+				const saved = migrate(
+					JSON.parse(json) as WorkspaceState | null,
+				);
 				if (isValidState(saved)) {
 					state = saved;
 				}
@@ -189,12 +194,12 @@ export class Workspace extends EventTarget {
 	}
 
 	/**
-	 * Test if a filter is an external filter, known only by its Service Name.
+	 * Test if a filter is an unknown filter, known only by its Service Name.
 	 *
 	 * @param filter the filter
 	 */
-	isExternal(filter: FilterConfig): boolean {
-		return filter.factoryUid === EXTERNAL_FACTORY_UID;
+	isUnknown(filter: FilterConfig): boolean {
+		return filter.factoryUid === UNKNOWN_FACTORY_UID;
 	}
 
 	/**
@@ -275,7 +280,7 @@ export class Workspace extends EventTarget {
 	 * @returns the problem, or `undefined` if the instance ID is fine
 	 */
 	instanceKeyProblem(filter: FilterConfig): string | undefined {
-		if (this.isExternal(filter)) {
+		if (this.isUnknown(filter)) {
 			return undefined;
 		}
 		const key = filter.instanceKey;
@@ -835,6 +840,41 @@ export class Workspace extends EventTarget {
 }
 
 /**
+ * Update a saved workspace from an earlier version of the simulator.
+ *
+ * Unknown filters used to have the `external` factory UID, and ids starting
+ * with `external:`.
+ *
+ * @param state the saved state
+ * @returns the state
+ */
+function migrate(state: WorkspaceState | null): WorkspaceState | null {
+	if (!state || !Array.isArray(state.filters)) {
+		return state;
+	}
+	const oldPrefix = `${OLD_UNKNOWN_FACTORY_UID}:`;
+	const rename = (id: string) =>
+		id.startsWith(oldPrefix)
+			? `${UNKNOWN_FACTORY_UID}:${id.substring(oldPrefix.length)}`
+			: id;
+	for (const f of state.filters) {
+		if (f.factoryUid === OLD_UNKNOWN_FACTORY_UID) {
+			f.factoryUid = UNKNOWN_FACTORY_UID;
+			f.id = rename(f.id);
+		}
+		if (f.filterIds) {
+			f.filterIds = f.filterIds.map(rename);
+		}
+	}
+	if (state.positions) {
+		state.positions = Object.fromEntries(
+			Object.entries(state.positions).map(([id, p]) => [rename(id), p]),
+		);
+	}
+	return state;
+}
+
+/**
  * Get the instance ID SolarNode gives a new instance: one more than the
  * number of instances, counting up past numbers in use.
  *
@@ -869,7 +909,9 @@ function uniqueId(filters: FilterConfig[], id: string): string {
 	}
 }
 
-function isValidState(state: WorkspaceState | null | undefined): boolean {
+function isValidState(
+	state: WorkspaceState | null | undefined,
+): state is WorkspaceState {
 	return (
 		!!state &&
 		state.version === 1 &&
