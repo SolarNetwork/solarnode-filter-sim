@@ -24,14 +24,36 @@ import org.jspecify.annotations.Nullable;
 /**
  * A request to export a filter configuration as a SolarNode settings CSV file.
  *
+ * <p>
+ * With external settings, the configuration is the combined one, and the export
+ * leaves out every setting that has the same value in the external settings,
+ * because a node with those external settings already has it.
+ * </p>
+ *
  * @param config
  *        the filter configuration
  * @param style
  *        the file style, or {@code null} for {@link Style#Organized}
+ * @param external
+ *        the configuration of the external settings, or {@code null} if there
+ *        are none
  * @author matt
  * @version 1.0
  */
-public record SettingsExportRequest(SimConfig config, @Nullable Style style) {
+public record SettingsExportRequest(SimConfig config, @Nullable Style style,
+		@Nullable SimConfig external) {
+
+	/**
+	 * Constructor, without external settings.
+	 *
+	 * @param config
+	 *        the filter configuration
+	 * @param style
+	 *        the file style, or {@code null} for {@link Style#Organized}
+	 */
+	public SettingsExportRequest(SimConfig config, @Nullable Style style) {
+		this(config, style, null);
+	}
 
 	/**
 	 * A settings CSV file style.

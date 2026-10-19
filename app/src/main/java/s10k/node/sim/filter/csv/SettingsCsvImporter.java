@@ -37,6 +37,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -51,6 +52,10 @@ import org.jspecify.annotations.Nullable;
 import de.siegmar.fastcsv.reader.CsvParseException;
 import de.siegmar.fastcsv.reader.CsvReader;
 import de.siegmar.fastcsv.reader.CsvRecord;
+import s10k.node.sim.filter.domain.ExternalFilterOrigin;
+import s10k.node.sim.filter.domain.ExternalSettings;
+import s10k.node.sim.filter.domain.ExternalSettingsFile;
+import s10k.node.sim.filter.domain.ExternalSettingsSummary;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.IgnoredComponent;
 import s10k.node.sim.filter.domain.SettingsImport;
@@ -103,6 +108,13 @@ import s10k.node.sim.filter.sim.SimulationException;
  * switched off, is kept with that component instead.
  * </p>
  *
+ * <p>
+ * Besides importing a file on its own, the importer can add a file to an
+ * existing configuration ({@link #merge(SimConfig, String)}), like SolarNode
+ * importing a file into its settings, and combine external settings files
+ * ({@link #external(List)}), like SolarNode applying its auto settings files.
+ * </p>
+ *
  * @author matt
  * @version 1.0
  */
@@ -124,6 +136,35 @@ final class SettingsCsvImporter {
 	private final List<String> discardedComment = new ArrayList<>(4);
 	private List<String> factoryUids = List.of();
 	private @Nullable String mainUid;
+
+	/** The ids of the configuration a file is added to, so new ids differ. */
+	private final Set<String> usedIds = new HashSet<>(16);
+
+	/** The unknown filters of the configuration a file is added to, by uid. */
+	private final Map<String, FilterConfig> baseUnknowns = new LinkedHashMap<>(2);
+
+	private @Nullable String baseDatumQueueComment;
+
+	/** What the filters are in, for messages about filters that are not. */
+	private String scope = "the file";
+
+	/**
+	 * {@code true} to apply rows add-only, like SolarNode's auto settings: a
+	 * row is applied only if it has a value and the setting does not exist yet.
+	 */
+	private boolean addOnly;
+
+	/** The name of the external settings file being applied. */
+	private @Nullable String source;
+
+	/** The name of the external settings file with the Datum Queue setting. */
+	private @Nullable String mainSource;
+
+	/** The components the file being applied ignores, with row counts. */
+	private final Map<Component, Integer> fileIgnored = new LinkedHashMap<>(4);
+
+	/** The filter instances the file being applied has rows for. */
+	private final Set<Component> fileComponents = new LinkedHashSet<>(8);
 
 	/**
 	 * A component of a settings CSV file.
@@ -199,6 +240,27 @@ final class SettingsCsvImporter {
 		private boolean skipped;
 		private boolean flags;
 
+		/** {@code true} if the instance has rows in a file. */
+		private boolean touched;
+
+		/** {@code true} if the instance is from the configuration added to. */
+		private boolean seeded;
+
+		/** The {@code id} to keep, or {@code null} for the default. */
+		private @Nullable String configId;
+
+		/** The instance key of a seeded instance, which can be missing. */
+		private @Nullable String baseInstanceKey;
+
+		/** The comment of a seeded instance, unless the file has one. */
+		private @Nullable String baseComment;
+
+		/** The external settings file that first has rows for the instance. */
+		private @Nullable String source;
+
+		/** The external settings file of each setting, by setting key. */
+		private final Map<String, String> sources = new LinkedHashMap<>(8);
+
 		private Instance(Component component) {
 			super();
 			this.component = component;
@@ -214,7 +276,12 @@ final class SettingsCsvImporter {
 		}
 
 		private String id() {
-			return factoryUid() + '.' + instanceKey();
+			final String id = configId;
+			return (id != null ? id : factoryUid() + '.' + instanceKey());
+		}
+
+		private @Nullable String resultInstanceKey() {
+			return (seeded ? baseInstanceKey : instanceKey());
 		}
 
 		private String label() {
@@ -249,11 +316,147 @@ final class SettingsCsvImporter {
 	 *         if SolarNode cannot import the file
 	 */
 	SettingsImport importCsv(String csv) {
-		final String text = (csv.startsWith("﻿") ? csv.substring(1) : csv);
+		if ( !applyFile(csv) ) {
+			throw new SimulationException("SolarNode cannot import this settings CSV file.", errors);
+		}
+		return result();
+	}
+
+	/**
+	 * Add a settings CSV file to a configuration, like SolarNode importing a
+	 * file into its existing settings.
+	 *
+	 * <p>
+	 * The configuration's filters become instances, with their member lists as
+	 * {@code transformUids} settings, and the file's rows then apply to them as
+	 * in {@link #importCsv(String)}: a row replaces the setting with the same
+	 * key, and an empty value removes it. The configuration's filters keep
+	 * their ids, and their comments unless the file has comments for them. An
+	 * importer can import only one file.
+	 * </p>
+	 *
+	 * @param base
+	 *        the configuration to add the file to
+	 * @param csv
+	 *        the settings CSV file content
+	 * @return the import result, with the combined configuration
+	 * @throws SimulationException
+	 *         if SolarNode cannot import the file
+	 */
+	SettingsImport merge(SimConfig base, String csv) {
+		scope = "the file or the simulation";
+		seed(base);
+		return importCsv(csv);
+	}
+
+	/**
+	 * Combine external settings files, like SolarNode applying the files in its
+	 * {@code auto-settings.d} directory.
+	 *
+	 * <p>
+	 * The files are applied in name order, ignoring case, and each row is
+	 * applied add-only: only if it has a value and the setting does not exist
+	 * yet. So the first file with a setting wins. Like SolarNode, a file it
+	 * cannot import is skipped, with an error message. An importer can combine
+	 * only one set of files.
+	 * </p>
+	 *
+	 * @param files
+	 *        the files
+	 * @return the combined external settings
+	 */
+	ExternalSettings external(List<ExternalSettingsFile> files) {
+		scope = "the external settings";
+		addOnly = true;
+		final List<ExternalSettingsFile> sorted = new ArrayList<>(files.size());
+		for ( ExternalSettingsFile f : files ) {
+			if ( f != null ) {
+				sorted.add(f);
+			}
+		}
+		sorted.sort(Comparator.comparing(f -> fileName(f), String.CASE_INSENSITIVE_ORDER));
+
+		// the parts of a file summary known before the result
+		record Pending(String name, int settingCount, boolean applied, List<Component> components,
+				List<IgnoredComponent> ignored, List<SimulationMessage> messages) {
+
+		}
+
+		final List<Pending> pending = new ArrayList<>(sorted.size());
+		for ( ExternalSettingsFile f : sorted ) {
+			final String name = fileName(f);
+			final String csv = f.csv();
+			source = name;
+			errors.clear();
+			missingFactoryKeys.clear();
+			fileIgnored.clear();
+			fileComponents.clear();
+			final int start = messages.size();
+			final boolean applied = applyFile(csv != null ? csv : "");
+			final List<SimulationMessage> fileMessages = new ArrayList<>(
+					messages.subList(start, messages.size()));
+			messages.subList(start, messages.size()).clear();
+			fileMessages.addAll(errors);
+			int settingCount = 0;
+			for ( Line line : lines ) {
+				if ( line instanceof SettingRow ) {
+					settingCount++;
+				}
+			}
+			final List<IgnoredComponent> ignoredComponents = new ArrayList<>(fileIgnored.size());
+			for ( Map.Entry<Component, Integer> e : fileIgnored.entrySet() ) {
+				ignoredComponents.add(
+						new IgnoredComponent(e.getKey().key(), e.getKey().instanceKey(), e.getValue()));
+			}
+			pending.add(new Pending(name, settingCount, applied, List.copyOf(fileComponents),
+					ignoredComponents, fileMessages));
+		}
+		source = null;
+		errors.clear();
+
+		final SettingsImport result = result();
+		final List<ExternalSettingsSummary> summaries = new ArrayList<>(pending.size());
+		for ( Pending p : pending ) {
+			final List<String> filterIds = new ArrayList<>(p.components().size());
+			for ( Component c : p.components() ) {
+				final Instance instance = instances.get(c);
+				if ( instance != null ) {
+					filterIds.add(instance.id());
+				}
+			}
+			summaries.add(new ExternalSettingsSummary(p.name(), p.settingCount(), p.applied(), filterIds,
+					p.ignored(), p.messages()));
+		}
+		final Map<String, ExternalFilterOrigin> origins = new LinkedHashMap<>(instances.size());
+		for ( Instance instance : instances.values() ) {
+			final String file = instance.source;
+			if ( file != null ) {
+				origins.put(instance.id(), new ExternalFilterOrigin(file, Map.copyOf(instance.sources)));
+			}
+		}
+		return new ExternalSettings(result.config(), summaries, origins, mainSource, result.messages());
+	}
+
+	private static String fileName(ExternalSettingsFile f) {
+		final String name = f.name();
+		return (name != null ? name : "");
+	}
+
+	/**
+	 * Apply a settings CSV file.
+	 *
+	 * @param csv
+	 *        the settings CSV file content
+	 * @return {@code true} if the file was applied, or {@code false} if
+	 *         SolarNode cannot import it, as described by {@code errors}
+	 */
+	private boolean applyFile(String csv) {
+		final String text = (csv.startsWith("\uFEFF") ? csv.substring(1) : csv);
 		checkHeader(text);
+		lines.clear();
 		read(text);
 		if ( !errors.isEmpty() ) {
-			throw new SimulationException("SolarNode cannot import this settings CSV file.", errors);
+			return false;
 		}
 
 		// like SolarNode, find the factory UIDs first, longest first, because one factory UID
@@ -271,7 +474,81 @@ final class SettingsCsvImporter {
 			targets.add(line instanceof SettingRow row ? apply(row) : null);
 		}
 		attachComments(targets);
-		return result();
+		return true;
+	}
+
+	/**
+	 * Make the filters of a configuration instances, before a file is added.
+	 *
+	 * @param base
+	 *        the configuration
+	 */
+	private void seed(SimConfig base) {
+		final Map<String, FilterConfig> byId = new LinkedHashMap<>(base.filtersOrEmpty().size());
+		for ( FilterConfig f : base.filtersOrEmpty() ) {
+			if ( f != null && f.id() != null && f.factoryUid() != null ) {
+				byId.putIfAbsent(f.id(), f);
+			}
+		}
+		for ( FilterConfig f : byId.values() ) {
+			usedIds.add(f.id());
+			if ( f.isUnknown() ) {
+				final String uid = f.settingsOrEmpty().get(UID);
+				if ( uid != null && !uid.isBlank() ) {
+					baseUnknowns.putIfAbsent(uid, f);
+				}
+				continue;
+			}
+			final String key = f.instanceKey();
+			Component c = new Component(f.factoryUid(), key != null && !key.isEmpty() ? key : null);
+			if ( c.instanceKey() == null || instances.containsKey(c) ) {
+				// without its own instance key, no row of the file can apply to it
+				c = new Component(f.factoryUid(), "\u0000" + f.id());
+			}
+			final Instance instance = new Instance(c);
+			instance.seeded = true;
+			instance.factoryRow = true;
+			instance.configId = f.id();
+			instance.baseInstanceKey = key;
+			instance.baseComment = f.comment();
+			final boolean chain = StandardFilterTypes.CHAIN.equals(f.factoryUid());
+			for ( Map.Entry<String, String> e : f.settingsOrEmpty().entrySet() ) {
+				if ( e.getKey() != null && e.getValue() != null
+						&& !(chain && e.getKey().startsWith(CHAIN_FILTERS)) ) {
+					instance.settings.put(e.getKey(), e.getValue());
+				}
+			}
+			for ( Map.Entry<String, String> e : f.notesOrEmpty().entrySet() ) {
+				if ( e.getKey() != null && e.getValue() != null ) {
+					instance.notes.put(e.getKey(), e.getValue());
+				}
+			}
+			if ( chain && f.filterIds() != null ) {
+				// the members as transformUids settings, so the file's rows can change them
+				final List<String> uids = new ArrayList<>(f.filterIdsOrEmpty().size());
+				for ( String memberId : f.filterIdsOrEmpty() ) {
+					final FilterConfig member = (memberId != null ? byId.get(memberId) : null);
+					final String uid = (member != null ? member.settingsOrEmpty().get(UID) : null);
+					if ( uid != null && !uid.isBlank() ) {
+						uids.add(uid);
+					}
+				}
+				instance.settings.put(CHAIN_FILTERS_COUNT, String.valueOf(uids.size()));
+				for ( int i = 0; i < uids.size(); i++ ) {
+					instance.settings.put(CHAIN_FILTERS + '[' + i + ']', uids.get(i));
+				}
+			}
+			instances.put(c, instance);
+		}
+		final String mainId = base.mainChainId();
+		final FilterConfig main = (mainId != null ? byId.get(mainId) : null);
+		if ( main != null ) {
+			final String uid = main.settingsOrEmpty().get(UID);
+			if ( uid != null && !uid.isBlank() ) {
+				mainUid = uid;
+			}
+		}
+		baseDatumQueueComment = base.datumQueueComment();
 	}
 
 	private void checkHeader(String text) {
@@ -377,6 +654,10 @@ final class SettingsCsvImporter {
 	 */
 	private List<String> apply(SettingRow row) {
 		final String key = row.key();
+		if ( addOnly && row.value() == null ) {
+			// like SolarNode's auto settings, a row without a value is not imported
+			return discardedComment;
+		}
 		if ( key.regionMatches(true, 0, INTERNAL_PREFIX, 0, INTERNAL_PREFIX.length()) ) {
 			return ignore(new Component(key, null));
 		}
@@ -392,6 +673,7 @@ final class SettingsCsvImporter {
 				return (instance != null ? instance.comment : ignore(c));
 			}
 			final Instance instance = instances.computeIfAbsent(c, Instance::new);
+			touch(instance);
 			instance.factoryRow = true;
 			return instance.comment;
 		}
@@ -400,7 +682,10 @@ final class SettingsCsvImporter {
 		if ( instanceKey == null || !isFilterType(c.key()) ) {
 			if ( DATUM_QUEUE_KEY.equals(key) ) {
 				if ( DATUM_QUEUE_FILTER.equals(row.type()) ) {
-					mainUid = row.value();
+					if ( !addOnly || mainUid == null ) {
+						mainUid = row.value();
+						mainSource = source;
+					}
 				} else {
 					ignore(c);
 				}
@@ -412,6 +697,7 @@ final class SettingsCsvImporter {
 			return ignore(c);
 		}
 		final Instance instance = instances.computeIfAbsent(c, Instance::new);
+		touch(instance);
 		if ( row.type().isEmpty() ) {
 			messages.add(warning(SimulationMessage.CODE_SETTING_SKIPPED,
 					"Line %d has no setting key in its type column, so SolarNode skips it."
@@ -429,12 +715,19 @@ final class SettingsCsvImporter {
 		if ( row.value() == null ) {
 			instance.settings.remove(row.type());
 			instance.notes.remove(row.type());
+		} else if ( addOnly && instance.settings.containsKey(row.type()) ) {
+			// like SolarNode's auto settings, an existing setting is kept
+			return instance.comment;
 		} else {
 			instance.settings.put(row.type(), row.value());
 			if ( row.note() != null ) {
 				instance.notes.put(row.type(), row.note());
 			} else {
 				instance.notes.remove(row.type());
+			}
+			final String file = source;
+			if ( file != null ) {
+				instance.sources.put(row.type(), file);
 			}
 		}
 		if ( row.flags() != 0 ) {
@@ -471,7 +764,22 @@ final class SettingsCsvImporter {
 
 	private List<String> ignore(Component c) {
 		ignored.merge(c, 1, Integer::sum);
+		fileIgnored.merge(c, 1, Integer::sum);
 		return discardedComment;
+	}
+
+	/**
+	 * Note that the file being applied has a row for an instance.
+	 *
+	 * @param instance
+	 *        the instance
+	 */
+	private void touch(Instance instance) {
+		instance.touched = true;
+		fileComponents.add(instance.component);
+		if ( instance.source == null ) {
+			instance.source = source;
+		}
 	}
 
 	/**
@@ -573,11 +881,26 @@ final class SettingsCsvImporter {
 	}
 
 	private SettingsImport result() {
+		// a new instance's id must not be one the configuration added to already uses
+		for ( Instance instance : instances.values() ) {
+			if ( instance.configId == null && usedIds.contains(instance.id()) ) {
+				final String id = instance.id();
+				int n = 2;
+				while ( usedIds.contains(id + '-' + n) ) {
+					n++;
+				}
+				instance.configId = id + '-' + n;
+			}
+			usedIds.add(instance.id());
+		}
+
 		final Map<String, String> idsByUid = new LinkedHashMap<>(instances.size());
 		final Map<String, List<String>> duplicateUids = new LinkedHashMap<>(2);
 		final Map<String, List<String>> chainUids = new LinkedHashMap<>(4);
 		for ( Instance instance : instances.values() ) {
-			instanceMessages(instance);
+			if ( instance.touched ) {
+				instanceMessages(instance);
+			}
 			if ( StandardFilterTypes.CHAIN.equals(instance.factoryUid()) ) {
 				final List<String> members = chainMembers(instance);
 				if ( members != null ) {
@@ -602,6 +925,12 @@ final class SettingsCsvImporter {
 
 		final List<FilterConfig> filters = new ArrayList<>(instances.size() + 2);
 		final Map<String, FilterConfig> unknowns = new LinkedHashMap<>(2);
+		// the configuration's unknown filters are kept, without a message
+		for ( Map.Entry<String, FilterConfig> e : baseUnknowns.entrySet() ) {
+			if ( !idsByUid.containsKey(e.getKey()) ) {
+				unknowns.put(e.getKey(), e.getValue());
+			}
+		}
 		for ( Instance instance : instances.values() ) {
 			final List<String> uids = chainUids.get(instance.id());
 			List<String> filterIds = null;
@@ -616,8 +945,8 @@ final class SettingsCsvImporter {
 									FilterConfig.UNKNOWN_FACTORY_UID, null, Map.of(UID, uid), null);
 							unknowns.put(uid, unknown);
 							messages.add(warning(SimulationMessage.CODE_UNKNOWN_FILTER,
-									"The chain %s uses the filter %s, which is not in the file. It is kept as an unknown filter, which datum pass through unchanged."
-											.formatted(instance.label(), uid),
+									"The chain %s uses the filter %s, which is not in %s. It is kept as an unknown filter, which datum pass through unchanged."
+											.formatted(instance.label(), uid, scope),
 									unknown.id(), null));
 						}
 						memberId = unknown.id();
@@ -625,8 +954,10 @@ final class SettingsCsvImporter {
 					filterIds.add(memberId);
 				}
 			}
-			filters.add(new FilterConfig(instance.id(), instance.factoryUid(), instance.instanceKey(),
-					instance.settings, filterIds, comment(instance.comment),
+			final String comment = comment(instance.comment);
+			filters.add(new FilterConfig(instance.id(), instance.factoryUid(),
+					instance.resultInstanceKey(), instance.settings, filterIds,
+					comment != null ? comment : instance.baseComment,
 					instance.notes.isEmpty() ? null : instance.notes));
 		}
 		filters.addAll(unknowns.values());
@@ -636,8 +967,8 @@ final class SettingsCsvImporter {
 			mainChainId = idsByUid.get(mainUid);
 			if ( mainChainId == null ) {
 				messages.add(warning(SimulationMessage.CODE_MAIN_CHAIN,
-						"The Datum Queue uses the filter %s, which is not in the file."
-								.formatted(mainUid),
+						"The Datum Queue uses the filter %s, which is not in %s.".formatted(mainUid,
+								scope),
 						null, null));
 			}
 		}
@@ -653,7 +984,10 @@ final class SettingsCsvImporter {
 						null));
 			}
 		}
-		return new SettingsImport(new SimConfig(filters, mainChainId, comment(datumQueueComment)),
+		final String dqComment = comment(datumQueueComment);
+		return new SettingsImport(
+				new SimConfig(filters, mainChainId,
+						dqComment != null ? dqComment : baseDatumQueueComment),
 				messages, ignoredComponents);
 	}
 

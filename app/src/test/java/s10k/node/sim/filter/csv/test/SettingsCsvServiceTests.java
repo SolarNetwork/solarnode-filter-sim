@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,12 +36,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import s10k.node.sim.filter.csv.SettingsCsvService;
+import s10k.node.sim.filter.domain.ExternalFilterOrigin;
+import s10k.node.sim.filter.domain.ExternalSettings;
+import s10k.node.sim.filter.domain.ExternalSettingsFile;
+import s10k.node.sim.filter.domain.ExternalSettingsRequest;
+import s10k.node.sim.filter.domain.ExternalSettingsSummary;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.IgnoredComponent;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsExportRequest.Style;
 import s10k.node.sim.filter.domain.SettingsImport;
+import s10k.node.sim.filter.domain.SettingsMergeRequest;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.form.SettingsFormService;
@@ -56,7 +63,9 @@ import net.solarnetwork.common.expr.spel.SpelExpressionService;
  * The {@code daily-limit-tracking}, {@code main-filter-chain}, and
  * {@code peak-tracking} files are the SolarNode Handbook recipes, which are
  * SolarNode exports. The {@code commented} file is organized by hand with
- * comment banners.
+ * comment banners. The {@code 0010-solarnode-config-*} files are the auto
+ * settings files of the {@code solarnode-config-*} packages in
+ * {@code solarnode-os-packages}.
  * </p>
  *
  * @author matt
@@ -91,6 +100,46 @@ public class SettingsCsvServiceTests {
 
 	private SettingsExport export(SimConfig config, Style style) {
 		return service.exportCsv(new SettingsExportRequest(config, style));
+	}
+
+	private static final String DATUM_FILTERS_PACKAGE = "0010-solarnode-config-datumfilters.csv";
+
+	private static final String PING_PACKAGE = "0100-solarnode-config-ping.csv";
+
+	private static final String SETUP_LIVE_PACKAGE = "0200-solarnode-config-setup-live.csv";
+
+	/**
+	 * Get a settings CSV file of rows, after the header.
+	 */
+	private static String csv(String... rows) {
+		return HEADER + String.join("\r\n", rows) + "\r\n";
+	}
+
+	private static ExternalSettingsFile packageFile(String name) {
+		return new ExternalSettingsFile(name, resource(name));
+	}
+
+	/**
+	 * Get a configuration with different filter ids, like filters added on the
+	 * canvas.
+	 */
+	private static SimConfig withIds(SimConfig config, Map<String, String> ids) {
+		final List<FilterConfig> filters = new ArrayList<>();
+		for ( FilterConfig f : config.filtersOrEmpty() ) {
+			filters.add(new FilterConfig(ids.getOrDefault(f.id(), f.id()), f.factoryUid(),
+					f.instanceKey(), f.settings(),
+					f.filterIds() != null
+							? f.filterIds().stream().map(id -> ids.getOrDefault(id, id)).toList()
+							: null,
+					f.comment(), f.notes()));
+		}
+		return new SimConfig(filters, ids.getOrDefault(config.mainChainId(), config.mainChainId()),
+				config.datumQueueComment());
+	}
+
+	private static FilterConfig withComment(FilterConfig f, String comment) {
+		return new FilterConfig(f.id(), f.factoryUid(), f.instanceKey(), f.settings(), f.filterIds(),
+				comment, f.notes());
 	}
 
 	@Test
@@ -523,6 +572,421 @@ public class SettingsCsvServiceTests {
 			.as("Transient setting reported")
 			.extracting(SimulationMessage::code)
 			.containsExactly(SimulationMessage.CODE_TRANSIENT_SETTING)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void mergeReplacesAndAddsSettings() {
+		// GIVEN
+		final String throttle = StandardFilterTypes.THROTTLE + ".1";
+		final SimConfig imported = withIds(
+				service.importCsv(resource("peak-tracking-settings.csv")).config(),
+				Map.of(StandardFilterTypes.PARAMETER + ".15Min", "filter-1",
+						StandardFilterTypes.DOWNSAMPLE + ".Meters", "filter-2",
+						StandardFilterTypes.EXPRESSION + ".Peak Power", "filter-3", MAIN_ID, "main"));
+		final List<FilterConfig> filters = new ArrayList<>(imported.filtersOrEmpty());
+		filters.replaceAll(f -> switch (f.id()) {
+			case "filter-2" -> withComment(f, "# Meters");
+			case "filter-3" -> withComment(f, "# Peak power");
+			default -> f;
+		});
+		final SimConfig base = new SimConfig(filters, imported.mainChainId());
+
+		// @formatter:off
+		final String file = csv(
+				"net.solarnetwork.node.datum.samplefilter.expression.Peak Power,sourceId,^/meter/2$,,,",
+				"net.solarnetwork.node.datum.samplefilter.expression.FACTORY,Peak Power,Peak Power,,,",
+				"# Meters, without a duration",
+				"net.solarnetwork.node.datum.samplefilter.downsample.Meters,sampleDurationSecs,,,,",
+				"net.solarnetwork.node.datum.samplefilter.downsample.FACTORY,Meters,Meters,,,",
+				"net.solarnetwork.node.datum.filter.std.param.15Min,sourceId,/other/,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,frequencySeconds,10,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,4,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[3],Throttle,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,");
+		// @formatter:on
+
+		// WHEN
+		SettingsImport result = service.merge(new SettingsMergeRequest(base, file));
+
+		// THEN
+		// @formatter:off
+		then(result.config().filtersOrEmpty())
+			.as("Filters keep their ids and order, and the new filter follows them")
+			.extracting(FilterConfig::id)
+			.containsExactly("filter-1", "filter-2", "filter-3", "main", throttle)
+			;
+		then(result.config().mainChainId())
+			.as("Same Main chain")
+			.isEqualTo("main")
+			;
+		then(filter(result.config(), "main").filterIds())
+			.as("The file's chain row adds a member, as on a node")
+			.containsExactly("filter-1", "filter-3", "filter-2", throttle)
+			;
+		then(filter(result.config(), "filter-3"))
+			.as("Setting replaced, and comment kept")
+			.returns("^/meter/2$", from(f -> f.settings().get("sourceId")))
+			.returns("# Peak power", from(FilterConfig::comment))
+			;
+		then(filter(result.config(), "filter-2"))
+			.as("Empty value removes the setting, and the file's comment replaces the comment")
+			.returns(false, from(f -> f.settings().containsKey("sampleDurationSecs")))
+			.returns("# Meters, without a duration", from(FilterConfig::comment))
+			;
+		then(filter(result.config(), "filter-1").settings())
+			.as("A row without its .FACTORY row is not imported, as on a node")
+			.containsEntry("sourceId", "/meter/")
+			;
+		then(filter(result.config(), throttle))
+			.as("New filter added")
+			.returns("1", from(FilterConfig::instanceKey))
+			.returns(Map.of("uid", "Throttle", "frequencySeconds", "10"), from(FilterConfig::settings))
+			;
+		then(result.messages())
+			.as("Only the row without its .FACTORY row reported")
+			.extracting(SimulationMessage::code)
+			.containsExactly(SimulationMessage.CODE_MISSING_FACTORY)
+			;
+		then(result.ignored())
+			.as("The row without its .FACTORY row ignored")
+			.extracting(IgnoredComponent::key, IgnoredComponent::instanceKey,
+					IgnoredComponent::settingCount)
+			.containsExactly(tuple(StandardFilterTypes.PARAMETER + ".15Min", null, 1))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void mergeChainMembersByPosition() {
+		// GIVEN
+		final SimConfig base = service.importCsv(resource("peak-tracking-settings.csv")).config();
+		final String throttle = StandardFilterTypes.THROTTLE + ".1";
+
+		// @formatter:off
+		final String file = csv(
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[1],Throttle,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,");
+		// @formatter:on
+
+		// WHEN
+		SettingsImport result = service.merge(new SettingsMergeRequest(base, file));
+
+		// THEN
+		// @formatter:off
+		then(filter(result.config(), MAIN_ID).filterIds())
+			.as("The file replaces only the second member, as on a node")
+			.containsExactly(StandardFilterTypes.PARAMETER + ".15Min", throttle,
+					StandardFilterTypes.DOWNSAMPLE + ".Meters")
+			;
+		then(filter(result.config(), StandardFilterTypes.EXPRESSION + ".Peak Power"))
+			.as("The replaced member is still a filter")
+			.isNotNull()
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void mergeKeepsIdsAndUnknownFilters() {
+		// GIVEN
+		final String throttle = StandardFilterTypes.THROTTLE + ".1";
+		final String elsewhere = FilterConfig.UNKNOWN_FACTORY_UID + ":Elsewhere";
+		final String loose = FilterConfig.UNKNOWN_FACTORY_UID + ":Loose";
+		final String second = StandardFilterTypes.CHAIN + ".Second";
+		// @formatter:off
+		final SimConfig base = new SimConfig(List.of(
+				new FilterConfig("main", StandardFilterTypes.CHAIN, "Main",
+						Map.of("uid", "Chain - Main"), List.of(throttle, elsewhere)),
+				// an id from an import, but a different instance ID
+				new FilterConfig(throttle, StandardFilterTypes.THROTTLE, "2",
+						Map.of("uid", "Throttle"), null),
+				new FilterConfig("x", StandardFilterTypes.EXPRESSION, null, Map.of("uid", "Exp"),
+						null),
+				new FilterConfig(elsewhere, FilterConfig.UNKNOWN_FACTORY_UID, null,
+						Map.of("uid", "Elsewhere"), null),
+				new FilterConfig(loose, FilterConfig.UNKNOWN_FACTORY_UID, null,
+						Map.of("uid", "Loose"), null)),
+				"main");
+		final String file = csv(
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Other Throttle,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+				"net.solarnetwork.node.datum.xform.user.Second,uid,Chain - Second,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Second,Second,,,",
+				"net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - Second,,,");
+		// @formatter:on
+
+		// WHEN
+		SettingsImport result = service.merge(new SettingsMergeRequest(base, file));
+
+		// THEN
+		// @formatter:off
+		then(result.config().filtersOrEmpty())
+			.as("A new filter gets an id that is not in use, and unknown filters are kept")
+			.extracting(FilterConfig::id, FilterConfig::instanceKey)
+			.containsExactly(
+					tuple("main", "Main"),
+					tuple(throttle, "2"),
+					tuple("x", null),
+					tuple(throttle + "-2", "1"),
+					tuple(second, "Second"),
+					tuple(elsewhere, null),
+					tuple(loose, null))
+			;
+		then(filter(result.config(), "main").filterIds())
+			.as("Chain members kept")
+			.containsExactly(throttle, elsewhere)
+			;
+		then(result.config().mainChainId())
+			.as("The file's Datum Queue setting changes the Main chain")
+			.isEqualTo(second)
+			;
+		then(result.messages())
+			.as("No problems")
+			.isEmpty()
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void externalPackages() {
+		// GIVEN
+		final ExternalSettingsRequest req = new ExternalSettingsRequest(
+				List.of(packageFile(SETUP_LIVE_PACKAGE), packageFile(PING_PACKAGE),
+						packageFile(DATUM_FILTERS_PACKAGE)));
+
+		// WHEN
+		ExternalSettings result = service.external(req);
+
+		// THEN
+		// @formatter:off
+		then(result.files())
+			.as("Files in name order, like SolarNode applies them")
+			.extracting(ExternalSettingsSummary::name, ExternalSettingsSummary::settingCount,
+					ExternalSettingsSummary::applied, ExternalSettingsSummary::filterIds)
+			.containsExactly(
+					tuple(DATUM_FILTERS_PACKAGE, 3, true, List.of(MAIN_ID)),
+					tuple(PING_PACKAGE, 2, true, List.of()),
+					tuple(SETUP_LIVE_PACKAGE, 6, true, List.of()))
+			;
+		then(result.files())
+			.as("Components that are not filters ignored")
+			.flatExtracting(ExternalSettingsSummary::ignored)
+			.extracting(IgnoredComponent::key, IgnoredComponent::instanceKey,
+					IgnoredComponent::settingCount)
+			.containsExactly(
+					tuple("net.solarnetwork.node.control.ping.http", "Default", 2),
+					tuple("net.solarnetwork.node.datum.opmode.invoker", "SetupLive", 6))
+			;
+		then(result.files())
+			.as("No problems with the files")
+			.flatExtracting(ExternalSettingsSummary::messages)
+			.isEmpty()
+			;
+		then(result.config().filtersOrEmpty())
+			.as("The Main chain, without members")
+			.extracting(FilterConfig::id, FilterConfig::settings, FilterConfig::filterIds)
+			.containsExactly(tuple(MAIN_ID, Map.of("uid", "Chain - Main"), null))
+			;
+		then(result.config().mainChainId())
+			.as("Main chain from the Datum Queue setting")
+			.isEqualTo(MAIN_ID)
+			;
+		then(result.datumQueueFile())
+			.as("Datum Queue setting's file")
+			.isEqualTo(DATUM_FILTERS_PACKAGE)
+			;
+		then(result.origins())
+			.as("Each setting's file")
+			.containsExactly(Map.entry(MAIN_ID,
+					new ExternalFilterOrigin(DATUM_FILTERS_PACKAGE, Map.of("uid", DATUM_FILTERS_PACKAGE))))
+			;
+		then(result.messages())
+			.as("No problems")
+			.isEmpty()
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void externalFirstFileWins() {
+		// GIVEN
+		final String throttle = StandardFilterTypes.THROTTLE + ".1";
+		final String missing = FilterConfig.UNKNOWN_FACTORY_UID + ":Missing";
+		// @formatter:off
+		final ExternalSettingsFile b = new ExternalSettingsFile("b.csv", csv(
+				"net.solarnetwork.node.datum.xform.user.Main,uid,Chain - B,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,frequencySeconds,10,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,sourceId,/b/,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+				"net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - B,,,"));
+		final ExternalSettingsFile a = new ExternalSettingsFile("A.csv", csv(
+				"net.solarnetwork.node.datum.xform.user.Main,uid,Chain - A,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,2,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[0],Throttle,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[1],Missing,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,frequencySeconds,5,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,sourceId,,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+				"net.solarnetwork.node.runtime.dq,transformServiceUid,Chain - A,,,"));
+		// @formatter:on
+
+		// WHEN
+		ExternalSettings result = service.external(new ExternalSettingsRequest(List.of(b, a)));
+
+		// THEN
+		// @formatter:off
+		then(result.files())
+			.as("Files in name order, ignoring case")
+			.extracting(ExternalSettingsSummary::name)
+			.containsExactly("A.csv", "b.csv")
+			;
+		then(filter(result.config(), MAIN_ID))
+			.as("The first file's settings win, and members resolve across files")
+			.returns(Map.of("uid", "Chain - A"), from(FilterConfig::settings))
+			.returns(List.of(throttle, missing), from(FilterConfig::filterIds))
+			;
+		then(filter(result.config(), throttle).settings())
+			.as("Settings only in the later file are added, and empty values do nothing")
+			.isEqualTo(Map.of("uid", "Throttle", "frequencySeconds", "5", "sourceId", "/b/"))
+			;
+		then(result.config().mainChainId())
+			.as("Main chain from the first file's Datum Queue setting")
+			.isEqualTo(MAIN_ID)
+			;
+		then(result.datumQueueFile())
+			.as("Datum Queue setting's file")
+			.isEqualTo("A.csv")
+			;
+		then(result.origins().get(throttle))
+			.as("Each setting's file")
+			.isEqualTo(new ExternalFilterOrigin("A.csv",
+					Map.of("frequencySeconds", "A.csv", "uid", "b.csv", "sourceId", "b.csv")))
+			;
+		then(result.messages())
+			.as("Member that is not in any file reported")
+			.extracting(SimulationMessage::code, SimulationMessage::filterId)
+			.containsExactly(tuple(SimulationMessage.CODE_UNKNOWN_FILTER, missing))
+			;
+		then(result.messages().getFirst().message())
+			.as("Message says where the filter is not")
+			.contains("not in the external settings")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void externalSkipsFileNodeCannotImport() {
+		// GIVEN
+		// @formatter:off
+		final ExternalSettingsFile bad = new ExternalSettingsFile("bad.csv", csv(
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Bad,x,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,"));
+		// @formatter:on
+
+		// WHEN
+		ExternalSettings result = service
+				.external(new ExternalSettingsRequest(List.of(bad, packageFile(DATUM_FILTERS_PACKAGE))));
+
+		// THEN
+		// @formatter:off
+		then(result.files())
+			.as("File with an invalid flags value not applied, like SolarNode")
+			.extracting(ExternalSettingsSummary::name, ExternalSettingsSummary::applied)
+			.containsExactly(tuple(DATUM_FILTERS_PACKAGE, true), tuple("bad.csv", false))
+			;
+		then(result.files().getLast().messages())
+			.as("Error reported")
+			.extracting(SimulationMessage::code)
+			.containsExactly(SimulationMessage.CODE_CSV_FORMAT)
+			;
+		then(result.config().filtersOrEmpty())
+			.as("Only the other file's filter")
+			.extracting(FilterConfig::id)
+			.containsExactly(MAIN_ID)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void exportLeavesOutExternalSettings() {
+		// GIVEN
+		final String extThrottle = StandardFilterTypes.THROTTLE + ".Ext";
+		final String sameThrottle = StandardFilterTypes.THROTTLE + ".Same";
+		final String throttle = StandardFilterTypes.THROTTLE + ".1";
+		// @formatter:off
+		final ExternalSettingsFile throttles = new ExternalSettingsFile("throttles.csv", csv(
+				"net.solarnetwork.node.datum.samplefilter.limiter.Ext,uid,Ext Throttle,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.Ext,frequencySeconds,60,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,Ext,Ext,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.Same,uid,Same Throttle,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.Same,frequencySeconds,30,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,Same,Same,,,"));
+		final SimConfig external = service.external(new ExternalSettingsRequest(
+				List.of(packageFile(DATUM_FILTERS_PACKAGE), throttles))).config();
+
+		// the combined configuration: a filter added to the Main chain, and a changed setting
+		final SimConfig config = new SimConfig(List.of(
+				new FilterConfig(MAIN_ID, StandardFilterTypes.CHAIN, "Main",
+						Map.of("uid", "Chain - Main"), List.of(extThrottle, throttle)),
+				new FilterConfig(extThrottle, StandardFilterTypes.THROTTLE, "Ext",
+						Map.of("uid", "Ext Throttle", "frequencySeconds", "120"), null),
+				new FilterConfig(sameThrottle, StandardFilterTypes.THROTTLE, "Same",
+						Map.of("uid", "Same Throttle", "frequencySeconds", "30"), null),
+				new FilterConfig(throttle, StandardFilterTypes.THROTTLE, "1",
+						Map.of("uid", "Throttle 1", "frequencySeconds", "10"), null)),
+				MAIN_ID);
+		// @formatter:on
+
+		// WHEN
+		SettingsExport result = service
+				.exportCsv(new SettingsExportRequest(config, Style.Plain, external));
+
+		// THEN
+		// @formatter:off
+		then(result.csv())
+			.as("Only changed rows, with the .FACTORY row of each filter that has them")
+			.isEqualTo(csv(
+					"net.solarnetwork.node.datum.samplefilter.limiter.1,frequencySeconds,10,,,",
+					"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle 1,,,",
+					"net.solarnetwork.node.datum.samplefilter.limiter.Ext,frequencySeconds,120,,,",
+					"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+					"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,Ext,Ext,,,",
+					"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,2,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[0],Ext Throttle,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[1],Throttle 1,,,"))
+			;
+		then(result.messages())
+			.as("No problems")
+			.isEmpty()
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void exportOnlyExternalSettings() {
+		// GIVEN
+		final SimConfig external = service
+				.external(new ExternalSettingsRequest(List.of(packageFile(DATUM_FILTERS_PACKAGE))))
+				.config();
+
+		// WHEN
+		SettingsExport result = service
+				.exportCsv(new SettingsExportRequest(external, Style.Organized, external));
+
+		// THEN
+		// @formatter:off
+		then(result.csv())
+			.as("Nothing to export but the header")
+			.isEqualTo(HEADER)
 			;
 		// @formatter:on
 	}

@@ -85,6 +85,15 @@ import s10k.node.sim.filter.sim.SimulationException;
  * type has, prevents the export.
  * </p>
  *
+ * <p>
+ * With external settings, the configuration is the combined one, and every row
+ * that has the same value in the external settings is left out, because a node
+ * with those settings already has it. A filter whose rows are all left out is
+ * left out with its {@code .FACTORY} row, but a filter with other rows keeps
+ * its {@code .FACTORY} row, because SolarNode applies the settings of a factory
+ * instance only when the same file has it.
+ * </p>
+ *
  * @author matt
  * @version 1.0
  */
@@ -123,6 +132,19 @@ final class SettingsCsvExporter {
 	}
 
 	/**
+	 * The rows of external settings.
+	 *
+	 * @param settings
+	 *        the setting values by setting key, by component key (like
+	 *        {@code <factoryUid>.<instanceKey>})
+	 * @param mainUid
+	 *        the Service Name of the Datum Queue's filter, or {@code null}
+	 */
+	private record ExternalRows(Map<String, Map<String, String>> settings, @Nullable String mainUid) {
+
+	}
+
+	/**
 	 * Constructor.
 	 *
 	 * @param registry
@@ -147,30 +169,86 @@ final class SettingsCsvExporter {
 	 *        the configuration
 	 * @param style
 	 *        the file style
+	 * @param external
+	 *        the configuration of the external settings, or {@code null} if
+	 *        there are none
 	 * @return the export
 	 * @throws SimulationException
 	 *         if the configuration cannot be exported
 	 */
-	SettingsExport export(SimConfig config, Style style) {
+	SettingsExport export(SimConfig config, Style style, @Nullable SimConfig external) {
 		final Map<String, FilterConfig> configs = configs(config);
 		final Map<String, String> instanceKeys = instanceKeys(configs, config.mainChainId());
 		if ( !errors.isEmpty() ) {
 			throw new SimulationException("The filter configuration cannot be exported.", errors);
 		}
 		checkUids(configs);
+		final ExternalRows ext = (external != null ? externalRows(external) : null);
 
 		final List<Section> sections = new ArrayList<>(configs.size() + 1);
-		final Section datumQueue = datumQueueSection(config, configs);
+		final Section datumQueue = datumQueueSection(config, configs, ext);
 		if ( datumQueue != null ) {
 			sections.add(datumQueue);
 		}
+		final Set<String> writtenKeys = new LinkedHashSet<>(configs.size());
 		for ( FilterConfig c : order(configs, config.mainChainId()) ) {
 			final String instanceKey = instanceKeys.get(c.id());
 			if ( instanceKey != null ) {
-				sections.add(filterSection(c, instanceKey, configs));
+				final Section section = filterSection(c, instanceKey, configs, ext);
+				if ( section != null ) {
+					sections.add(section);
+					writtenKeys.add(instanceKey);
+				}
 			}
 		}
+		final List<String> legacy = writtenKeys.stream().filter(k -> !InstanceIds.isLegacyCompatible(k))
+				.toList();
+		if ( !legacy.isEmpty() ) {
+			messages.add(warning(SimulationMessage.CODE_LEGACY_INSTANCE_ID,
+					"SolarNode releases before Core Settings Support 4.2.1 do not import the settings of instance IDs with characters other than A-Z, a-z, and 0-9: %s."
+							.formatted(String.join(", ", legacy)),
+					null, null));
+		}
 		return new SettingsExport(write(sections, style), messages);
+	}
+
+	/**
+	 * Get the rows of external settings, without reporting their problems.
+	 *
+	 * @param external
+	 *        the configuration of the external settings
+	 * @return the rows
+	 */
+	private ExternalRows externalRows(SimConfig external) {
+		final Map<String, FilterConfig> configs = new LinkedHashMap<>(external.filtersOrEmpty().size());
+		for ( FilterConfig c : external.filtersOrEmpty() ) {
+			if ( c != null && c.id() != null && c.factoryUid() != null ) {
+				configs.putIfAbsent(c.id(), c);
+			}
+		}
+		final Map<String, Map<String, String>> settings = new HashMap<>(configs.size());
+		for ( FilterConfig c : configs.values() ) {
+			final String key = c.instanceKey();
+			if ( c.isUnknown() || key == null || key.isEmpty() ) {
+				continue;
+			}
+			final Map<String, String> values = new HashMap<>(c.settingsOrEmpty().size());
+			for ( Map.Entry<String, String> e : c.settingsOrEmpty().entrySet() ) {
+				if ( e.getKey() != null && e.getValue() != null ) {
+					values.put(e.getKey(), e.getValue());
+				}
+			}
+			if ( StandardFilterTypes.CHAIN.equals(c.factoryUid()) ) {
+				values.keySet().removeIf(k -> k.startsWith(CHAIN_FILTERS));
+				if ( c.filterIds() != null ) {
+					values.putAll(chainFilters(c, configs, false));
+				}
+			}
+			settings.putIfAbsent(c.factoryUid() + '.' + key, values);
+		}
+		final String mainId = external.mainChainId();
+		final FilterConfig main = (mainId != null ? configs.get(mainId) : null);
+		return new ExternalRows(settings, main != null ? uid(main) : null);
 	}
 
 	private Map<String, FilterConfig> configs(SimConfig config) {
@@ -240,14 +318,6 @@ final class SettingsCsvExporter {
 							assigned),
 					c.id()));
 		}
-		final List<String> legacy = result.values().stream()
-				.filter(k -> !InstanceIds.isLegacyCompatible(k)).distinct().toList();
-		if ( !legacy.isEmpty() ) {
-			messages.add(warning(SimulationMessage.CODE_LEGACY_INSTANCE_ID,
-					"SolarNode releases before Core Settings Support 4.2.1 do not import the settings of instance IDs with characters other than A-Z, a-z, and 0-9: %s."
-							.formatted(String.join(", ", legacy)),
-					null, null));
-		}
 		return result;
 	}
 
@@ -270,7 +340,8 @@ final class SettingsCsvExporter {
 		}
 	}
 
-	private @Nullable Section datumQueueSection(SimConfig config, Map<String, FilterConfig> configs) {
+	private @Nullable Section datumQueueSection(SimConfig config, Map<String, FilterConfig> configs,
+			@Nullable ExternalRows ext) {
 		final String mainId = config.mainChainId();
 		if ( mainId == null ) {
 			return null;
@@ -289,6 +360,10 @@ final class SettingsCsvExporter {
 					"The Main chain %s has no Service Name, so the Datum Queue setting is not exported."
 							.formatted(main.id()),
 					main.id(), null));
+			return null;
+		}
+		if ( ext != null && uid.equals(ext.mainUid()) ) {
+			// the external settings already have it
 			return null;
 		}
 		final List<String[]> rows = new ArrayList<>(1);
@@ -343,8 +418,8 @@ final class SettingsCsvExporter {
 		}
 	}
 
-	private Section filterSection(FilterConfig c, String instanceKey,
-			Map<String, FilterConfig> configs) {
+	private @Nullable Section filterSection(FilterConfig c, String instanceKey,
+			Map<String, FilterConfig> configs, @Nullable ExternalRows ext) {
 		final FilterTypeDefinition def = registry.definition(c.factoryUid());
 		final Map<String, String> settings = new LinkedHashMap<>(c.settingsOrEmpty().size());
 		for ( Map.Entry<String, String> e : c.settingsOrEmpty().entrySet() ) {
@@ -355,7 +430,7 @@ final class SettingsCsvExporter {
 		if ( def != null && def.isChain() ) {
 			settings.keySet().removeIf(k -> k.startsWith(CHAIN_FILTERS));
 			if ( c.filterIds() != null ) {
-				settings.putAll(chainFilters(c, configs));
+				settings.putAll(chainFilters(c, configs, true));
 			}
 		}
 
@@ -370,11 +445,12 @@ final class SettingsCsvExporter {
 		order.addAll(settings.keySet());
 
 		final String componentKey = c.factoryUid() + '.' + instanceKey;
+		final Map<String, String> external = (ext != null ? ext.settings().get(componentKey) : null);
 		final List<String[]> rows = new ArrayList<>(settings.size() + 1);
 		final List<String> leftOut = new ArrayList<>(2);
 		for ( String key : order ) {
 			final String value = settings.get(key);
-			if ( value == null ) {
+			if ( value == null || (external != null && value.equals(external.get(key))) ) {
 				continue;
 			}
 			if ( transientKeys.contains(key) ) {
@@ -382,6 +458,10 @@ final class SettingsCsvExporter {
 				continue;
 			}
 			rows.add(row(componentKey, key, value, c.notesOrEmpty().get(key)));
+		}
+		if ( external != null && rows.isEmpty() ) {
+			// the external settings already have every setting
+			return null;
 		}
 		rows.add(row(c.factoryUid() + FACTORY_SUFFIX, instanceKey, instanceKey, null));
 		if ( !leftOut.isEmpty() ) {
@@ -408,13 +488,19 @@ final class SettingsCsvExporter {
 	 *        the chain
 	 * @param configs
 	 *        the filter configurations
+	 * @param report
+	 *        {@code true} to add messages about members that cannot be used
 	 * @return the settings
 	 */
-	private Map<String, String> chainFilters(FilterConfig chain, Map<String, FilterConfig> configs) {
+	private Map<String, String> chainFilters(FilterConfig chain, Map<String, FilterConfig> configs,
+			boolean report) {
 		final List<String> uids = new ArrayList<>(chain.filterIdsOrEmpty().size());
 		for ( String memberId : chain.filterIdsOrEmpty() ) {
 			final FilterConfig member = (memberId != null ? configs.get(memberId) : null);
 			if ( member == null ) {
+				if ( !report ) {
+					continue;
+				}
 				messages.add(warning(SimulationMessage.CODE_UNKNOWN_CHAIN_MEMBER,
 						"The chain %s refers to the filter %s, which does not exist, so it is left out."
 								.formatted(label(chain), memberId),
@@ -423,6 +509,9 @@ final class SettingsCsvExporter {
 			}
 			final String uid = uid(member);
 			if ( uid == null ) {
+				if ( !report ) {
+					continue;
+				}
 				messages.add(warning(SimulationMessage.CODE_MISSING_UID,
 						"The filter %s in the chain %s has no Service Name, so the chain cannot use it."
 								.formatted(member.id(), label(chain)),

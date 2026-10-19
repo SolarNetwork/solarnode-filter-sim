@@ -1,0 +1,7 @@
+key,type,value,flags,modified,note
+net.solarnetwork.node.datum.opmode.invoker.SetupLive,uid,Setup Live,,2026-10-08 00:00:00,
+net.solarnetwork.node.datum.opmode.invoker.SetupLive,operationalMode,setup-live,,2026-10-08 00:00:00,
+net.solarnetwork.node.datum.opmode.invoker.SetupLive,configurationsCount,1,,2026-10-08 00:00:00,
+net.solarnetwork.node.datum.opmode.invoker.SetupLive,configurations[0].schedule,1,,2026-10-08 00:00:00,
+net.solarnetwork.node.datum.opmode.invoker.SetupLive,configurations[0].persist,false,,2026-10-08 00:00:00,
+net.solarnetwork.node.datum.opmode.invoker.FACTORY,SetupLive,SetupLive,,2026-10-08 00:00:00,

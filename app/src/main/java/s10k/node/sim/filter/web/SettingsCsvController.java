@@ -29,9 +29,12 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import s10k.node.sim.filter.csv.SettingsCsvService;
+import s10k.node.sim.filter.domain.ExternalSettings;
+import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsImport;
+import s10k.node.sim.filter.domain.SettingsMergeRequest;
 
 /**
  * Web API for importing and exporting SolarNode settings CSV files.
@@ -95,6 +98,32 @@ public class SettingsCsvController {
 	@PostMapping("/export")
 	public SettingsExport exportCsv(@RequestBody SettingsExportRequest request) {
 		return service.exportCsv(request);
+	}
+
+	/**
+	 * Add a settings CSV file to a filter configuration, like SolarNode
+	 * importing a file into its existing settings.
+	 *
+	 * @param request
+	 *        the request
+	 * @return the import result, with the combined configuration
+	 */
+	@PostMapping("/merge")
+	public SettingsImport mergeCsv(@RequestBody SettingsMergeRequest request) {
+		return service.merge(request);
+	}
+
+	/**
+	 * Combine external settings files, like SolarNode applying the files in its
+	 * {@code auto-settings.d} directory.
+	 *
+	 * @param request
+	 *        the request
+	 * @return the combined external settings
+	 */
+	@PostMapping("/external")
+	public ExternalSettings externalSettings(@RequestBody ExternalSettingsRequest request) {
+		return service.external(request);
 	}
 
 }

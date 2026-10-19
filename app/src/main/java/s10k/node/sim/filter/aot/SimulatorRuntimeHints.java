@@ -59,12 +59,15 @@ import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.aot.hint.TypeReference;
 import org.springframework.beans.BeanUtils;
+import s10k.node.sim.filter.domain.ExternalSettings;
+import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsForm;
 import s10k.node.sim.filter.domain.SettingsFormRequest;
 import s10k.node.sim.filter.domain.SettingsImport;
+import s10k.node.sim.filter.domain.SettingsMergeRequest;
 import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
@@ -146,7 +149,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 	 */
 	public static final List<Class<?>> API_TYPES = List.of(SimulationRequest.class,
 			SimulationResult.class, SettingsFormRequest.class, SettingsForm.class, SettingsImport.class,
-			SettingsExportRequest.class, SettingsExport.class, InfoController.AppInfo.class);
+			SettingsExportRequest.class, SettingsExport.class, SettingsMergeRequest.class,
+			ExternalSettingsRequest.class, ExternalSettings.class, InfoController.AppInfo.class);
 
 	/**
 	 * The JDK collection implementation types, which are not public, that

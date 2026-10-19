@@ -19,9 +19,12 @@
 
 package s10k.node.sim.filter.csv;
 
+import s10k.node.sim.filter.domain.ExternalSettings;
+import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsImport;
+import s10k.node.sim.filter.domain.SettingsMergeRequest;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
@@ -82,7 +85,39 @@ public class SettingsCsvService {
 		if ( config == null ) {
 			throw new SimulationException("The config is required.");
 		}
-		return new SettingsCsvExporter(registry, forms).export(config, request.styleOrDefault());
+		return new SettingsCsvExporter(registry, forms).export(config, request.styleOrDefault(),
+				request.external());
+	}
+
+	/**
+	 * Add a settings CSV file to a filter configuration, like SolarNode
+	 * importing a file into its existing settings.
+	 *
+	 * @param request
+	 *        the request
+	 * @return the import result, with the combined configuration
+	 * @throws SimulationException
+	 *         if the request is incomplete, or SolarNode cannot import the file
+	 */
+	public SettingsImport merge(SettingsMergeRequest request) {
+		final SimConfig config = request.config();
+		final String csv = request.csv();
+		if ( config == null || csv == null ) {
+			throw new SimulationException("The config and csv are required.");
+		}
+		return new SettingsCsvImporter(registry).merge(config, csv);
+	}
+
+	/**
+	 * Combine external settings files, like SolarNode applying the files in its
+	 * {@code auto-settings.d} directory.
+	 *
+	 * @param request
+	 *        the request
+	 * @return the combined external settings
+	 */
+	public ExternalSettings external(ExternalSettingsRequest request) {
+		return new SettingsCsvImporter(registry).external(request.filesOrEmpty());
 	}
 
 }

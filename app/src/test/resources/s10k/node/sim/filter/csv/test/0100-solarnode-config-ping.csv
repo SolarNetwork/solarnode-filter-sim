@@ -1,0 +1,3 @@
+key,type,value,flags,modified,note
+net.solarnetwork.node.control.ping.http.Default,jobService.url,http://www.google.com,,2026-07-21 00:00:00,
+net.solarnetwork.node.control.ping.http.FACTORY,Default,Default,,2026-07-21 00:00:00,
