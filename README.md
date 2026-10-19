@@ -17,8 +17,9 @@ Central, so filters behave the same as they do on a node.
 
 # Running
 
-The simulator is a single application that serves its web UI over HTTP, by default on port
-`8080`. Once it is running, visit <http://localhost:8080/> in a desktop web browser.
+The simulator is a single application that serves its web UI over HTTP. Once it is running,
+visit the URL it prints in a desktop web browser. The native executable listens on port `2008` by
+default, and the JVM build (`bootRun`) on port `8080`.
 
 To run from source with Java 25:
 
@@ -33,6 +34,14 @@ it):
 ./app/build/native/nativeCompile/sn-filter-sim
 ```
 
-Pass `--server.port=8081` to use a different port.
+Once started, it prints a message with its URL:
+
+```
+SolarNode Filter Simulator (0.1.1) started, visit
+http://localhost:2008
+```
+
+Pass `--server.port=8081` (or set the `SERVER_PORT` environment variable) to use a different
+port.
 
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/

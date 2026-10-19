@@ -184,7 +184,9 @@ The native executable needs GraalVM for JDK 25. Point `GRAALVM_HOME` at it, for 
 GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeCompile
 ```
 
-The executable is `app/build/native/nativeCompile/sn-filter-sim`.
+The executable is `app/build/native/nativeCompile/sn-filter-sim`. It listens on port 2008 by
+default (`FilterSimulatorApplication.NATIVE_DEFAULT_PORT`), while the JVM build keeps Spring
+Boot's 8080, which the Vite dev server proxies to.
 
 The build needs about 5 GB of memory for `native-image`. On a machine with less to spare, stop
 other JVMs (such as a `bootRun`) first, or cap the builder's heap with `-J-Xmx4g` in the
