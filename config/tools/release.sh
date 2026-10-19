@@ -30,7 +30,7 @@ case $(sed --help 2>&1) in
 esac
 
 updateVersions () {
-	for f in build.gradle; do
+	for f in app/build.gradle; do
 		echo "RELEASE: Update $f version to $1"
 		if [ ! -e "$f" ]; then
 			echo "ERROR: missing file $f" >&2
