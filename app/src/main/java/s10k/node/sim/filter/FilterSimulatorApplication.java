@@ -22,9 +22,11 @@ public class FilterSimulatorApplication {
 		// StartupMessage prints the application URL instead
 		app.setBannerMode(Banner.Mode.OFF);
 		if ( NativeDetector.inNativeImage() ) {
-			// default properties have the lowest precedence, so --server.port and
-			// SERVER_PORT still override this
-			app.setDefaultProperties(Map.of("server.port", NATIVE_DEFAULT_PORT));
+			// default properties have the lowest precedence, so --server.port,
+			// --logging.level.root, and the like still override these; the root level
+			// stays at WARN, not OFF, as FilterLogCapture needs filter warnings logged
+			app.setDefaultProperties(
+					Map.of("server.port", NATIVE_DEFAULT_PORT, "logging.level.root", "WARN"));
 		}
 		app.run(args);
 	}

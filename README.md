@@ -42,6 +42,7 @@ http://localhost:2008
 ```
 
 Pass `--server.port=8081` (or set the `SERVER_PORT` environment variable) to use a different
-port.
+port. The native executable logs only warnings and errors; pass `--logging.level.root=info` for
+the full log.
 
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/
