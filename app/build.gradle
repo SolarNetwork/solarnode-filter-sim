@@ -1,9 +1,11 @@
 plugins {
 	id 'application'
+    id 'distribution'
 	id 'com.diffplug.spotless' version '8.10.2'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'net.ltgt.errorprone' version '5.1.1'
 	id 'org.graalvm.buildtools.native' version '1.1.8'
+	id 'com.google.osdetector' version '1.7.3'
 	id 'org.springframework.boot' version '4.1.1'
 }
 
@@ -260,13 +262,18 @@ graalvmNative {
 		}
 
 		if (allArgs.isEmpty()) {
-			buildArgs.addAll(['--enable-native-access=ALL-UNNAMED', '-O3', '-R:MaxHeapSize=256m'])
+			buildArgs.addAll([
+				'--enable-native-access=ALL-UNNAMED',
+				'-O3',
+				'-R:MaxHeapSize=256m',
+				'-Duser.language=en',
+				'-Duser.country=US',
+				'--emit=build-report'
+			])
 		} else {
 			buildArgs.addAll(allArgs)
 		}
-	}
-	
-	binaries.main {
+
 		imageName = 'sn-filter-sim'
 	}
 }
@@ -283,3 +290,37 @@ compileAotTestJava {
 	options.errorprone.enabled = false
 }
 
+distTar {
+	archiveExtension = 'tar.gz'
+	compression = Compression.GZIP
+}
+
+def getOsName() {
+	if ( osdetector.os == 'osx' ) {
+		return 'darwin' // to work with homebrew-releaser
+	}
+	return osdetector.os
+}
+
+def getArchName() {
+	if ( osdetector.arch == 'aarch_64' ) {
+		return 'arm64'
+	} else if ( osdetector.arch == 'x86_64' ) {
+		return 'amd64'
+	}
+	return osdetector.os
+}
+
+distributions  {
+	main {
+		distributionBaseName = "solarnode-filter-simualtor"
+		distributionClassifier = getOsName() + '-' + getArchName()
+		contents {
+			from(tasks.named("nativeCompile")) {
+				into('/')
+				exclude("management_ext.dll")
+				exclude("sn-filter-sim-build-report.html")
+			}
+		}
+	}
+}
