@@ -67,6 +67,7 @@ The main TypeScript modules are:
 | `view.ts`      | Rendering helpers shared by the execution flow and debug views. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
+| `externalSettings.ts` | The External Settings dialog: settings CSV files the simulation applies first, combined by `/api/settings/external`. |
 | `palette.ts`, `dialogs.ts`, `splitter.ts` | The other parts of the page. |
 | `icons.ts`     | The [Bootstrap Icons][bootstrap-icons] of the filter types. |
 | `api.ts`, `model.ts` | The web API client and its types. |

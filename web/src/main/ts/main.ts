@@ -16,6 +16,7 @@ import {
 	showToast,
 	type ImportMode,
 } from "./dialogs.ts";
+import { ExternalSettingsDialog } from "./externalSettings.ts";
 import { InputPanel } from "./inputPanel.ts";
 import { InputError, NODE_METADATA_SERVICE_UID, RunInputs } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
@@ -179,7 +180,7 @@ class App {
 			const before = new Set(this.#ws.filters.map((f) => f.id));
 			const result =
 				mode === "add"
-					? await mergeSettings(this.#ws.toConfig(), csv)
+					? await mergeSettings(this.#ws.projectConfig(), csv)
 					: await importSettings(csv);
 			const notes =
 				mode === "add"
@@ -226,7 +227,11 @@ class App {
 	 */
 	async exportFile(style: ExportStyle): Promise<void> {
 		try {
-			const result = await exportSettings(this.#ws.toConfig(true), style);
+			const result = await exportSettings(
+				this.#ws.toConfig(true),
+				style,
+				this.#ws.externalSettings?.config,
+			);
 			download(result.csv, EXPORT_FILE_NAME, "text/csv");
 			if (result.messages.length) {
 				showMessages({
@@ -447,6 +452,8 @@ class App {
 		$("#export-button").addEventListener("click", () =>
 			this.exportFile("Organized"),
 		);
+		const external = new ExternalSettingsDialog(ws);
+		$("#external-button").addEventListener("click", () => external.show());
 		document
 			.querySelectorAll<HTMLElement>("[data-export-style]")
 			.forEach((item) =>

@@ -3,6 +3,8 @@ import {
 	CHAIN_FACTORY_UID,
 	UNKNOWN_FACTORY_UID,
 	UID_SETTING,
+	type ExternalSettings,
+	type ExternalSettingsFile,
 	type FilterConfig,
 	type FilterTypeInfo,
 	type SimConfig,
@@ -37,6 +39,22 @@ export interface WorkspaceState {
 	 * used, so an export leaves it out.
 	 */
 	implicitMain: boolean;
+	/** The External Settings files, in the order they were added. */
+	externalFiles?: ExternalSettingsFile[];
+	/** The settings the External Settings files combine to, from the server. */
+	external?: ExternalSettings | null;
+}
+
+/**
+ * The filters as the simulation sees them: the project's own settings over the
+ * External Settings.
+ */
+interface View {
+	filters: FilterConfig[];
+	byId: Map<string, FilterConfig>;
+	mainChainId: string;
+	/** The external filter of each filter with external settings, by id. */
+	external: Map<string, FilterConfig>;
 }
 
 /** The detail of a workspace `change` event. */
@@ -82,9 +100,16 @@ export function shortTypeName(type: FilterTypeInfo): string {
  *
  * Changes emit a `change` event with a {@link WorkspaceChange} detail, can be
  * undone, and are saved in the browser's local storage.
+ *
+ * The state holds the project's own filters and settings, and the External
+ * Settings beside them. The queries show the combination, as the simulation
+ * runs it: an external filter's settings, with the project's settings for it
+ * on top. Changing an external filter adds the project's own filter for it,
+ * which holds just the changes.
  */
 export class Workspace extends EventTarget {
 	#state: WorkspaceState;
+	#view?: View;
 	readonly #types: Map<string, FilterTypeInfo>;
 	readonly #undo: string[] = [];
 	readonly #redo: string[] = [];
@@ -130,14 +155,36 @@ export class Workspace extends EventTarget {
 
 	/* === Queries === */
 
-	/** The filter configurations. */
+	/** The filter configurations, combined with the External Settings. */
 	get filters(): readonly FilterConfig[] {
-		return this.#state.filters;
+		return this.#v().filters;
 	}
 
 	/** The Main chain id. */
 	get mainChainId(): string {
-		return this.#state.mainChainId;
+		return this.#v().mainChainId;
+	}
+
+	/** The External Settings files, in the order they were added. */
+	get externalFiles(): readonly ExternalSettingsFile[] {
+		return this.#state.externalFiles ?? [];
+	}
+
+	/** The settings the External Settings files combine to, if there are any. */
+	get externalSettings(): ExternalSettings | null {
+		return this.#state.external ?? null;
+	}
+
+	/**
+	 * Get the external filter of a filter: its settings from the External
+	 * Settings, without the project's.
+	 *
+	 * @param id the filter id
+	 * @returns the external filter, or `undefined` if the External Settings do
+	 *     not have the filter
+	 */
+	externalFilter(id: string): FilterConfig | undefined {
+		return this.#v().external.get(id);
 	}
 
 	/** The positions of filters that are not in a chain. */
@@ -147,9 +194,9 @@ export class Workspace extends EventTarget {
 
 	/** `true` if there is nothing but an empty Main chain. */
 	get isEmpty(): boolean {
+		const v = this.#v();
 		return (
-			this.#state.filters.length === 1 &&
-			this.members(this.#state.mainChainId).length === 0
+			v.filters.length === 1 && this.members(v.mainChainId).length === 0
 		);
 	}
 
@@ -170,7 +217,7 @@ export class Workspace extends EventTarget {
 	 * @returns the filter, or `undefined` if there is no such filter
 	 */
 	filter(id: string): FilterConfig | undefined {
-		return this.#state.filters.find((f) => f.id === id);
+		return this.#v().byId.get(id);
 	}
 
 	/**
@@ -228,8 +275,8 @@ export class Workspace extends EventTarget {
 	 * @returns the chain ids
 	 */
 	chainsOf(filterId: string): string[] {
-		return this.#state.filters
-			.filter((f) => f.filterIds?.includes(filterId))
+		return this.#v()
+			.filters.filter((f) => f.filterIds?.includes(filterId))
 			.map((f) => f.id);
 	}
 
@@ -240,7 +287,7 @@ export class Workspace extends EventTarget {
 	 */
 	isRoot(filterId: string): boolean {
 		return (
-			filterId !== this.#state.mainChainId &&
+			filterId !== this.#v().mainChainId &&
 			this.chainsOf(filterId).length === 0
 		);
 	}
@@ -292,7 +339,7 @@ export class Workspace extends EventTarget {
 		if (problem) {
 			return problem;
 		}
-		const same = this.#state.filters.find(
+		const same = this.#v().filters.find(
 			(f) =>
 				f.id !== filter.id &&
 				f.factoryUid === filter.factoryUid &&
@@ -314,7 +361,7 @@ export class Workspace extends EventTarget {
 		if (!uid) {
 			return "A chain can only use a filter that has a Service Name.";
 		}
-		const others = this.#state.filters.filter(
+		const others = this.#v().filters.filter(
 			(f) => f.id !== filter.id && this.uid(f) === uid,
 		);
 		if (others.length === 0) {
@@ -355,7 +402,7 @@ export class Workspace extends EventTarget {
 		const chain = this.filter(slot.chainId);
 		if (
 			!this.isChain(chain) ||
-			filterId === this.#state.mainChainId ||
+			filterId === this.#v().mainChainId ||
 			!this.filter(filterId)
 		) {
 			return false;
@@ -373,25 +420,44 @@ export class Workspace extends EventTarget {
 	}
 
 	/**
-	 * Get the configuration for the web API.
+	 * Get the configuration for the web API, combined with the External
+	 * Settings.
 	 *
 	 * @param forExport `true` to leave out the Main chain while the simulator
-	 *     created it and it is still empty
+	 *     created it and it is still empty, unless the External Settings have it
 	 * @returns the configuration
 	 */
 	toConfig(forExport = false): SimConfig {
 		const s = this.#state;
+		const v = this.#v();
 		if (
 			forExport &&
 			s.implicitMain &&
+			v.mainChainId === s.mainChainId &&
+			!v.external.has(s.mainChainId) &&
 			this.members(s.mainChainId).length === 0
 		) {
 			return {
-				filters: s.filters.filter((f) => f.id !== s.mainChainId),
+				filters: v.filters.filter((f) => f.id !== s.mainChainId),
 				mainChainId: null,
 				datumQueueComment: s.datumQueueComment,
 			};
 		}
+		return {
+			filters: v.filters,
+			mainChainId: v.mainChainId,
+			datumQueueComment: s.datumQueueComment,
+		};
+	}
+
+	/**
+	 * Get the project's own configuration, without the External Settings, for
+	 * adding imported settings to.
+	 *
+	 * @returns the configuration
+	 */
+	projectConfig(): SimConfig {
+		const s = this.#state;
 		return {
 			filters: s.filters,
 			mainChainId: s.mainChainId,
@@ -485,11 +551,13 @@ export class Workspace extends EventTarget {
 		if (!filterId) {
 			return;
 		}
+		// in another chain, or in this chain more than once
+		const inChain =
+			this.chainsOf(filterId).some((id) => id !== from.chainId) ||
+			this.members(from.chainId).filter((id) => id === filterId).length >
+				1;
 		this.#commit("Disconnect filter", (s) => {
 			this.#removeMember(s, from);
-			const inChain = s.filters.some((f) =>
-				f.filterIds?.includes(filterId),
-			);
 			if (position && !inChain) {
 				s.positions[filterId] = position;
 			}
@@ -505,7 +573,7 @@ export class Workspace extends EventTarget {
 	 * @param filterId the filter id
 	 */
 	remove(filterId: string): void {
-		if (filterId === this.#state.mainChainId || !this.filter(filterId)) {
+		if (filterId === this.mainChainId || !this.filter(filterId)) {
 			return;
 		}
 		this.#commit("Delete filter", (s) => {
@@ -541,7 +609,7 @@ export class Workspace extends EventTarget {
 		this.#commit(
 			"Edit settings",
 			(s) => {
-				const f = s.filters.find((f) => f.id === filterId)!;
+				const f = this.#own(s, filterId)!;
 				const settings = { ...(f.settings ?? {}) };
 				const notes = { ...(f.notes ?? {}) };
 				for (const [key, value] of Object.entries(changes)) {
@@ -742,6 +810,25 @@ export class Workspace extends EventTarget {
 		return notes;
 	}
 
+	/**
+	 * Change the External Settings.
+	 *
+	 * @param files the files, in the order they were added
+	 * @param external what the files combine to, from the server, or `null`
+	 *     if there are no files
+	 * @param label what changed, for example "Add External Settings"
+	 */
+	setExternalSettings(
+		files: ExternalSettingsFile[],
+		external: ExternalSettings | null,
+		label: string,
+	): void {
+		this.#commit(label, (s) => {
+			s.externalFiles = files.length > 0 ? files : undefined;
+			s.external = files.length > 0 ? external : undefined;
+		});
+	}
+
 	/** Undo the last change. */
 	undo(): void {
 		const previous = this.#undo.pop();
@@ -749,6 +836,7 @@ export class Workspace extends EventTarget {
 		if (previous) {
 			this.#redo.push(JSON.stringify(this.#state));
 			this.#state = JSON.parse(previous) as WorkspaceState;
+			this.#view = undefined;
 			this.#changed("Undo");
 		}
 	}
@@ -760,6 +848,7 @@ export class Workspace extends EventTarget {
 		if (next) {
 			this.#undo.push(JSON.stringify(this.#state));
 			this.#state = JSON.parse(next) as WorkspaceState;
+			this.#view = undefined;
 			this.#changed("Redo");
 		}
 	}
@@ -799,20 +888,23 @@ export class Workspace extends EventTarget {
 	}
 
 	#newId(): string {
-		return uniqueId(this.#state.filters, NEW_ID_PREFIX + "1");
+		return uniqueId(this.#v().filters, NEW_ID_PREFIX + "1");
 	}
 
 	#newInstanceKey(factoryUid: string): string {
+		// external filters count, so an export cannot merge a new filter into one
 		return nextInstanceKey(
-			this.#state.filters
-				.filter((f) => f.factoryUid === factoryUid && f.instanceKey)
+			this.#v()
+				.filters.filter(
+					(f) => f.factoryUid === factoryUid && f.instanceKey,
+				)
 				.map((f) => f.instanceKey!),
 		);
 	}
 
 	#newUid(name: string): string {
 		const uids = new Set(
-			this.#state.filters.map((f) => f.settings?.[UID_SETTING]),
+			this.#v().filters.map((f) => f.settings?.[UID_SETTING]),
 		);
 		for (let n = 1; ; n++) {
 			const uid = `${name} ${n}`;
@@ -823,7 +915,7 @@ export class Workspace extends EventTarget {
 	}
 
 	#insertMember(s: WorkspaceState, filterId: string, slot: ChainSlot): void {
-		const chain = s.filters.find((f) => f.id === slot.chainId);
+		const chain = this.#ownChain(s, slot.chainId);
 		if (!chain) {
 			return;
 		}
@@ -836,7 +928,7 @@ export class Workspace extends EventTarget {
 	}
 
 	#removeMember(s: WorkspaceState, slot: ChainSlot): void {
-		const chain = s.filters.find((f) => f.id === slot.chainId);
+		const chain = this.#ownChain(s, slot.chainId);
 		if (chain?.filterIds) {
 			chain.filterIds = chain.filterIds.filter(
 				(_, i) => i !== slot.index,
@@ -856,9 +948,256 @@ export class Workspace extends EventTarget {
 		}
 		this.#commit(
 			label,
-			(s) => change(s.filters.find((f) => f.id === filterId)!),
+			(s) => change(this.#own(s, filterId)!),
 			mergeKey,
 			drawing,
+		);
+	}
+
+	/**
+	 * Get the project's own filter, to change it. For an external filter that
+	 * the project has no settings for yet, this adds one without settings, so
+	 * the external settings still apply.
+	 *
+	 * @param s the state being changed
+	 * @param id the filter id
+	 * @returns the filter, or `undefined` if there is no such filter
+	 */
+	#own(s: WorkspaceState, id: string): FilterConfig | undefined {
+		const own = s.filters.find((f) => f.id === id);
+		if (own) {
+			return own;
+		}
+		const v = this.#v();
+		const filter = v.byId.get(id);
+		if (!filter || !v.external.has(id)) {
+			return undefined;
+		}
+		const added: FilterConfig = {
+			id,
+			factoryUid: filter.factoryUid,
+			instanceKey: filter.instanceKey,
+			settings: {},
+		};
+		s.filters.push(added);
+		return added;
+	}
+
+	/**
+	 * Get the project's own chain, to change its filters. If the chain's
+	 * filters come from the External Settings, the project's chain gets them
+	 * first.
+	 *
+	 * @param s the state being changed
+	 * @param id the chain id
+	 * @returns the chain, or `undefined` if there is no such filter
+	 */
+	#ownChain(s: WorkspaceState, id: string): FilterConfig | undefined {
+		const inherited = this.#inheritsMembers(s, id);
+		const chain = this.#own(s, id);
+		if (chain && inherited) {
+			chain.filterIds = [...this.members(id)];
+		}
+		return chain;
+	}
+
+	/**
+	 * Test if a chain's filters come from the External Settings.
+	 *
+	 * @param s the state
+	 * @param id the chain id
+	 */
+	#inheritsMembers(s: WorkspaceState, id: string): boolean {
+		const external = this.#v().external.get(id);
+		if (!external) {
+			return false;
+		}
+		const own = s.filters.find((f) => f.id === id);
+		return own
+			? this.#inheritsMembersOf(s, own, external)
+			: !!external.filterIds;
+	}
+
+	/** Get the view, computing it after a change. */
+	#v(): View {
+		this.#view ??= this.#computeView();
+		return this.#view;
+	}
+
+	/**
+	 * Combine the project's filters with the External Settings.
+	 *
+	 * Filters are matched by type and instance ID, like SolarNode components.
+	 * A matched filter has the external settings with the project's on top, and
+	 * keeps the project's id. Chains whose filters come from the External
+	 * Settings, and unknown filters, are resolved by Service Name, as chains are
+	 * on a node.
+	 */
+	#computeView(): View {
+		const s = this.#state;
+		const ext = s.external?.config;
+		const extFilters = ext?.filters ?? [];
+		if (extFilters.length === 0) {
+			return {
+				filters: s.filters,
+				byId: new Map(s.filters.map((f) => [f.id, f])),
+				mainChainId: s.mainChainId,
+				external: new Map(),
+			};
+		}
+		const component = (f: FilterConfig) =>
+			f.factoryUid !== UNKNOWN_FACTORY_UID && f.instanceKey
+				? `${f.factoryUid}\u0000${f.instanceKey}`
+				: undefined;
+		const extByComponent = new Map<string, FilterConfig>();
+		for (const e of extFilters) {
+			const c = component(e);
+			if (c && !extByComponent.has(c)) {
+				extByComponent.set(c, e);
+			}
+		}
+
+		let filters: FilterConfig[] = [];
+		const external = new Map<string, FilterConfig>();
+		/** The id of each external filter in the view, by external id. */
+		const ids = new Map<string, string>();
+		/** The chains whose filters are external ids. */
+		const externalMembers = new Set<string>();
+		for (const p of s.filters) {
+			const c = component(p);
+			const e = c ? extByComponent.get(c) : undefined;
+			if (!e || ids.has(e.id)) {
+				filters.push(p);
+				continue;
+			}
+			ids.set(e.id, p.id);
+			external.set(p.id, e);
+			const inherit = this.#inheritsMembersOf(s, p, e);
+			if (inherit) {
+				externalMembers.add(p.id);
+			}
+			const notes = { ...(e.notes ?? {}), ...(p.notes ?? {}) };
+			filters.push({
+				...p,
+				settings: { ...(e.settings ?? {}), ...(p.settings ?? {}) },
+				notes: Object.keys(notes).length > 0 ? notes : null,
+				comment: p.comment ?? e.comment,
+				filterIds: inherit ? e.filterIds : p.filterIds,
+			});
+		}
+		const used = new Set(s.filters.map((f) => f.id));
+		for (const e of extFilters) {
+			if (e.factoryUid === UNKNOWN_FACTORY_UID || ids.has(e.id)) {
+				continue;
+			}
+			const id = used.has(e.id) ? uniqueId(filters, `ext-${e.id}`) : e.id;
+			used.add(id);
+			ids.set(e.id, id);
+			external.set(id, e);
+			if (e.filterIds) {
+				externalMembers.add(id);
+			}
+			filters.push({ ...e, id });
+		}
+
+		// resolve chain members by Service Name, like a node
+		const byUid = new Map<string, string>();
+		for (const f of filters) {
+			const uid = this.uid(f);
+			if (uid && !this.isUnknown(f) && !byUid.has(uid)) {
+				byUid.set(uid, f.id);
+			}
+		}
+		const extUnknowns = new Map(
+			extFilters
+				.filter((f) => f.factoryUid === UNKNOWN_FACTORY_UID)
+				.map((f) => [f.id, f]),
+		);
+		const unknowns = new Map<string, FilterConfig>();
+		const resolve = (id: string, fromExternal: boolean): string => {
+			const mapped = fromExternal ? (ids.get(id) ?? id) : id;
+			const unknown = fromExternal
+				? extUnknowns.get(id)
+				: filters.find(
+						(f) =>
+							f.id === mapped &&
+							f.factoryUid === UNKNOWN_FACTORY_UID,
+					);
+			if (!unknown) {
+				return mapped;
+			}
+			const uid = this.uid(unknown);
+			const real = uid ? byUid.get(uid) : undefined;
+			if (real) {
+				return real;
+			}
+			if (fromExternal && !used.has(mapped)) {
+				unknowns.set(mapped, unknown);
+			}
+			return mapped;
+		};
+		filters = filters.map((f) =>
+			f.filterIds
+				? {
+						...f,
+						filterIds: f.filterIds.map((id) =>
+							resolve(id, externalMembers.has(f.id)),
+						),
+					}
+				: f,
+		);
+		// an unknown filter that the External Settings have is not unknown
+		filters = filters.filter((f) => {
+			const uid = this.isUnknown(f) ? this.uid(f) : undefined;
+			return !(uid && byUid.has(uid));
+		});
+		filters.push(...unknowns.values());
+
+		// the External Settings' Main chain, unless the project has its own
+		let mainChainId = s.mainChainId;
+		const extMain = ext?.mainChainId ? ids.get(ext.mainChainId) : undefined;
+		const projectMain = s.filters.find((f) => f.id === s.mainChainId);
+		if (
+			extMain &&
+			extMain !== s.mainChainId &&
+			s.implicitMain &&
+			(projectMain?.filterIds ?? []).length === 0 &&
+			filters.find((f) => f.id === extMain)?.factoryUid ===
+				CHAIN_FACTORY_UID
+		) {
+			mainChainId = extMain;
+			// the simulator's empty Main chain is then not used
+			if (!filters.some((f) => f.filterIds?.includes(s.mainChainId))) {
+				filters = filters.filter((f) => f.id !== s.mainChainId);
+			}
+		}
+		return {
+			filters,
+			byId: new Map(filters.map((f) => [f.id, f])),
+			mainChainId,
+			external,
+		};
+	}
+
+	/**
+	 * Test if a project chain uses the filters of its external chain.
+	 *
+	 * @param s the state
+	 * @param p the project's filter
+	 * @param e the external filter
+	 */
+	#inheritsMembersOf(
+		s: WorkspaceState,
+		p: FilterConfig,
+		e: FilterConfig,
+	): boolean {
+		return (
+			!!e.filterIds &&
+			(p.filterIds === undefined ||
+				p.filterIds === null ||
+				(p.id === s.mainChainId &&
+					s.implicitMain &&
+					p.filterIds.length === 0))
 		);
 	}
 
@@ -885,6 +1224,7 @@ export class Workspace extends EventTarget {
 		const next = structuredClone(this.#state);
 		change(next);
 		this.#state = next;
+		this.#view = undefined;
 		this.#changed(label, drawing);
 	}
 

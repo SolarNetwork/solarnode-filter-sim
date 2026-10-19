@@ -1,6 +1,8 @@
 import type {
 	AppInfo,
 	ExportStyle,
+	ExternalSettings,
+	ExternalSettingsFile,
 	FilterTypeInfo,
 	ProblemDetail,
 	SettingsExport,
@@ -95,16 +97,35 @@ export function mergeSettings(
 }
 
 /**
+ * Combine External Settings files, the way SolarNode applies its auto settings
+ * files.
+ *
+ * @param files the files
+ */
+export function combineExternalSettings(
+	files: readonly ExternalSettingsFile[],
+): Promise<ExternalSettings> {
+	return postJson<ExternalSettings>("api/settings/external", { files });
+}
+
+/**
  * Export a configuration as a settings CSV file.
  *
- * @param config the configuration
+ * @param config the configuration, combined with any external settings
  * @param style the file style
+ * @param external the configuration of the external settings, whose settings
+ *     are left out of the export
  */
 export function exportSettings(
 	config: SimConfig,
 	style: ExportStyle,
+	external?: SimConfig | null,
 ): Promise<SettingsExport> {
-	return postJson<SettingsExport>("api/settings/export", { config, style });
+	return postJson<SettingsExport>("api/settings/export", {
+		config,
+		style,
+		external: external ?? null,
+	});
 }
 
 /**

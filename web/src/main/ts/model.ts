@@ -82,6 +82,45 @@ export interface SettingsImport {
 	ignored: IgnoredComponent[];
 }
 
+/** An External Settings file: a settings CSV file the simulation applies first. */
+export interface ExternalSettingsFile {
+	name: string;
+	csv: string;
+}
+
+/** A summary of an External Settings file. */
+export interface ExternalSettingsSummary {
+	name: string;
+	/** The setting rows, including `.FACTORY` rows. */
+	settingCount: number;
+	/** `false` if SolarNode cannot import the file, as an error message says. */
+	applied: boolean;
+	/** The external filters the file has settings for. */
+	filterIds: string[];
+	ignored: IgnoredComponent[];
+	messages: SimulationMessage[];
+}
+
+/** Where a filter's external settings come from. */
+export interface ExternalFilterOrigin {
+	/** The first file with settings for the filter. */
+	file: string;
+	/** The file of each setting, by setting key. */
+	settings: Record<string, string>;
+}
+
+/** External Settings files, combined like SolarNode's auto settings files. */
+export interface ExternalSettings {
+	config: SimConfig;
+	/** A summary of each file, in the order they apply. */
+	files: ExternalSettingsSummary[];
+	/** Where each external filter's settings come from, by external filter id. */
+	origins: Record<string, ExternalFilterOrigin>;
+	/** The file with the Datum Queue setting. */
+	datumQueueFile?: string | null;
+	messages: SimulationMessage[];
+}
+
 /** A settings CSV file style. */
 export type ExportStyle = "Organized" | "Plain";
 

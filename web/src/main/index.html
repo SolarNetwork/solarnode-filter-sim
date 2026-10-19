@@ -517,6 +517,21 @@
 									</li>
 								</ul>
 							</div>
+							<button
+								type="button"
+								class="btn btn-outline-secondary btn-sm text-nowrap"
+								id="external-button"
+								title="External Settings: SolarNode settings files that the simulation applies first, like those SolarNode packages install"
+							>
+								<i
+									class="bi bi-box-seam"
+									aria-hidden="true"
+								></i>
+								<span class="visually-hidden"
+									>External Settings</span
+								>
+								<span id="external-count" hidden></span>
+							</button>
 							<div class="btn-group ms-auto">
 								<button
 									type="button"
@@ -715,6 +730,92 @@
 							data-bs-dismiss="modal"
 						>
 							OK
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div
+			class="modal fade"
+			id="external-dialog"
+			tabindex="-1"
+			aria-labelledby="external-dialog-title"
+			aria-hidden="true"
+		>
+			<div class="modal-dialog modal-lg modal-dialog-scrollable">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h1 class="modal-title fs-5" id="external-dialog-title">
+							External Settings
+						</h1>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="Close"
+						></button>
+					</div>
+					<div class="modal-body">
+						<p>
+							You can upload additional SolarNode settings CSV
+							files to add those settings to the simulation. They
+							will not be included in the settings export.
+						</p>
+						<p class="small text-body-secondary">
+							These are like the auto settings files that
+							SolarNode packages install, such as the Main filter
+							chain of the
+							<code>solarnode-config-datumfilters</code> package.
+							They apply before the simulation's own settings, in
+							file name order, and the first file with a setting
+							wins. A setting in the simulation overrides the same
+							setting in these files.
+						</p>
+						<div class="input-group mb-3">
+							<input
+								type="file"
+								class="form-control"
+								id="external-file"
+								accept=".csv,text/csv"
+								multiple
+								aria-label="Choose settings CSV files"
+							/>
+							<button
+								type="button"
+								class="btn btn-primary"
+								id="external-add"
+								disabled
+							>
+								Add Settings
+							</button>
+						</div>
+						<table
+							class="table table-sm align-middle mb-0 sim-external-files"
+						>
+							<thead>
+								<tr>
+									<th scope="col">File</th>
+									<th scope="col" class="text-end pe-3">
+										Setting Count
+									</th>
+									<th scope="col">
+										<span class="visually-hidden"
+											>Actions</span
+										>
+									</th>
+								</tr>
+							</thead>
+							<tbody id="external-files"></tbody>
+						</table>
+					</div>
+					<div class="modal-footer">
+						<button
+							type="button"
+							class="btn btn-primary"
+							data-bs-dismiss="modal"
+						>
+							Close
 						</button>
 					</div>
 				</div>
