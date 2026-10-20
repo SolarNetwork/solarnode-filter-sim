@@ -6,7 +6,11 @@ import {
 	type RouteLayers,
 	type RouteLine,
 } from "./routeOverlay.ts";
-import { RoutesLegend, type LegendToggle } from "./routesLegend.ts";
+import {
+	RoutesLegend,
+	type LegendToggle,
+	type SeqRange,
+} from "./routesLegend.ts";
 import { showToast } from "./dialogs.ts";
 import { filterIcon, iconGlyph, MAIN_CHAIN_ICON } from "./icons.ts";
 import {
@@ -68,6 +72,9 @@ export interface CanvasRun {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** The most datum routes shown at first, so a large run stays readable. */
+const MAX_START_ROUTES = 20;
 
 /** The browser storage key of whether every datum route is shown. */
 const ROUTES_STORAGE_KEY = "sn-filter-sim.datumRoutes";
@@ -484,7 +491,11 @@ export class Canvas extends EventTarget {
 	setRun(run: CanvasRun | null): void {
 		this.#run = run;
 		this.#path = null;
-		this.#visibleSeqs = null;
+		const datum = run?.datum ?? [];
+		this.#visibleSeqs =
+			datum.length > MAX_START_ROUTES
+				? new Set(datum.slice(0, MAX_START_ROUTES).map((t) => t.seq))
+				: null;
 		this.#routeHover = null;
 		this.#sourceColors.clear();
 		for (const trace of run?.datum ?? []) {
@@ -833,6 +844,24 @@ export class Canvas extends EventTarget {
 		this.#legend?.addEventListener("toggle", (e) =>
 			this.#toggleRoutes((e as CustomEvent<LegendToggle>).detail),
 		);
+		this.#legend?.addEventListener("showall", () => {
+			this.#visibleSeqs = null;
+			this.#drawRoutes();
+		});
+		this.#legend?.addEventListener("showrange", (e) => {
+			const ranges = (e as CustomEvent<SeqRange[]>).detail;
+			const all = (this.#run?.datum ?? []).map((t) => t.seq);
+			const seqs = all.filter((seq) =>
+				ranges.some((r) => seq >= r.from && seq <= r.to),
+			);
+			this.#visibleSeqs =
+				seqs.length === all.length ? null : new Set(seqs);
+			this.#drawRoutes();
+		});
+		this.#legend?.addEventListener("shownone", () => {
+			this.#visibleSeqs = new Set();
+			this.#drawRoutes();
+		});
 		this.#legend?.addEventListener("hover", (e) =>
 			this.#setRouteHover((e as CustomEvent<number | null>).detail),
 		);

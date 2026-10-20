@@ -23,6 +23,52 @@ export interface LegendToggle {
 	additive: boolean;
 }
 
+/** A range of datum sequence numbers, inclusive. */
+export interface SeqRange {
+	from: number;
+	to: number;
+}
+
+/** The browser storage key of whether the legend is wide. */
+const WIDE_STORAGE_KEY = "sn-filter-sim.routesLegendWide";
+
+/**
+ * Parse a comma-delimited list of datum numbers and ranges, like
+ * `1-5, 8, 99-`: a range without a start starts at 1, and one without an end
+ * has no end.
+ *
+ * @param text the list
+ * @returns the ranges
+ * @throws Error if the list is empty or has something that is not a number or
+ *     range
+ */
+export function parseRanges(text: string): SeqRange[] {
+	const ranges: SeqRange[] = [];
+	for (const raw of text.split(",")) {
+		const part = raw.trim();
+		if (!part) {
+			continue;
+		}
+		const m = /^(\d*)\s*-\s*(\d*)$/.exec(part) ?? /^(\d+)()$/.exec(part);
+		if (!m || (!m[1] && !m[2])) {
+			throw new Error(
+				`"${part}" is not a datum number or range, like 3, 1-5, -4, or 99-.`,
+			);
+		}
+		const single = !part.includes("-");
+		const from = m[1] ? Number(m[1]) : 1;
+		const to = single ? from : m[2] ? Number(m[2]) : Infinity;
+		if (from > to) {
+			throw new Error(`The range "${part}" starts after it ends.`);
+		}
+		ranges.push({ from, to });
+	}
+	if (ranges.length === 0) {
+		throw new Error("Enter datum numbers or ranges, like 1-5, 8, 99-.");
+	}
+	return ranges;
+}
+
 function element<K extends keyof HTMLElementTagNameMap>(
 	tag: K,
 	className?: string,
@@ -45,6 +91,8 @@ function element<K extends keyof HTMLElementTagNameMap>(
  * It emits these events:
  *
  * - `toggle`, with a {@link LegendToggle} detail;
+ * - `showall` and `shownone`, from the All and None buttons;
+ * - `showrange`, with a {@link SeqRange} list detail, from the Range field;
  * - `hover`, with a datum sequence number detail, or `null` when the pointer
  *   leaves a datum.
  */
@@ -67,8 +115,15 @@ export class RoutesLegend extends EventTarget {
 			"div",
 			"card-header d-flex align-items-center gap-2 py-1 px-2",
 		);
-		const title = element("span", "fw-semibold", "Datum Routes");
-		this.#count = element("span", "text-body-secondary ms-auto");
+		const title = element(
+			"span",
+			"fw-semibold text-nowrap text-truncate",
+			"Datum Routes",
+		);
+		this.#count = element(
+			"span",
+			"text-body-secondary text-nowrap ms-auto",
+		);
 		const collapse = element(
 			"button",
 			"btn btn-sm btn-link text-body-secondary p-0 sim-tool",
@@ -87,13 +142,126 @@ export class RoutesLegend extends EventTarget {
 		collapse.addEventListener("click", () =>
 			setCollapsed(!this.#collapsed),
 		);
-		header.append(title, this.#count, collapse);
+		const button = (text: string, label: string, event: string) => {
+			const b = element(
+				"button",
+				"btn btn-sm btn-link p-0 text-decoration-none",
+				text,
+			);
+			b.type = "button";
+			b.title = label;
+			b.addEventListener("click", () =>
+				this.dispatchEvent(new Event(event)),
+			);
+			return b;
+		};
+		const range = this.#rangeForm();
+		const rangeButton = element(
+			"button",
+			"btn btn-sm btn-link p-0 text-decoration-none",
+			"Range",
+		);
+		rangeButton.type = "button";
+		rangeButton.title =
+			"Show the routes of a list of datum numbers and ranges, like 1-5, 8, 99-";
+		rangeButton.addEventListener("click", () => {
+			range.hidden = !range.hidden;
+			if (!range.hidden) {
+				setCollapsed(false);
+				range.querySelector("input")?.select();
+			}
+		});
+		const wide = element(
+			"button",
+			"btn btn-sm btn-link text-body-secondary p-0 sim-tool",
+		);
+		wide.type = "button";
+		const wideIcon = element("i");
+		wideIcon.setAttribute("aria-hidden", "true");
+		wide.append(wideIcon);
+		const setWide = (isWide: boolean) => {
+			el.classList.toggle("is-wide", isWide);
+			wideIcon.className = `bi bi-arrows-angle-${isWide ? "contract" : "expand"}`;
+			wide.title = isWide
+				? "Make the legend smaller"
+				: "Make the legend larger";
+			wide.setAttribute("aria-label", wide.title);
+		};
+		wide.addEventListener("click", () => {
+			const isWide = !el.classList.contains("is-wide");
+			setWide(isWide);
+			try {
+				localStorage.setItem(WIDE_STORAGE_KEY, String(isWide));
+			} catch {
+				// not saved
+			}
+		});
+		let savedWide = false;
+		try {
+			savedWide = localStorage.getItem(WIDE_STORAGE_KEY) === "true";
+		} catch {
+			// not wide
+		}
+		setWide(savedWide);
+		header.append(
+			title,
+			this.#count,
+			button("All", "Show every datum's route", "showall"),
+			button("None", "Hide every datum's route", "shownone"),
+			rangeButton,
+			wide,
+			collapse,
+		);
 		this.#body = element("div", "sim-routes-legend-body");
 		header.title =
 			"Click a datum or source to show only it, and again to show all. Shift+click, ⌘+click, Ctrl+click, or right click to show or hide one.";
-		el.append(header, this.#body);
+		el.append(header, range, this.#body);
 		setCollapsed(false);
 		this.#body.addEventListener("pointerleave", () => this.#hover(null));
+	}
+
+	/** The Range field, which shows the routes of the datum numbers entered. */
+	#rangeForm(): HTMLFormElement {
+		const form = element(
+			"form",
+			"sim-routes-range px-2 py-1 border-bottom",
+		);
+		form.hidden = true;
+		form.noValidate = true;
+		const input = element("input", "form-control form-control-sm");
+		input.placeholder = "1-5, 8, 99-";
+		input.spellcheck = false;
+		input.setAttribute("aria-label", "Datum numbers and ranges to show");
+		input.title =
+			"Datum numbers and ranges, separated by commas: 1-5 is datum 1 to 5, -4 is datum 1 to 4, and 99- is datum 99 and up. Press Enter to show them.";
+		const feedback = element("div", "invalid-feedback");
+		const setProblem = (problem: string) => {
+			input.classList.toggle("is-invalid", !!problem);
+			feedback.textContent = problem;
+		};
+		form.append(input, feedback);
+		form.addEventListener("submit", (e) => {
+			e.preventDefault();
+			try {
+				const ranges = parseRanges(input.value);
+				setProblem("");
+				this.dispatchEvent(
+					new CustomEvent<SeqRange[]>("showrange", {
+						detail: ranges,
+					}),
+				);
+			} catch (err) {
+				setProblem(err instanceof Error ? err.message : String(err));
+			}
+		});
+		input.addEventListener("input", () => setProblem(""));
+		input.addEventListener("keydown", (e) => {
+			if (e.key === "Escape") {
+				e.stopPropagation();
+				form.hidden = true;
+			}
+		});
+		return form;
 	}
 
 	/**
