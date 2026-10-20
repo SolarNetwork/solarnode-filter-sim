@@ -16,7 +16,7 @@ export function quoted(name: string): string {
 }
 
 /** The badge class of each message level. */
-const LEVEL_CLASSES: Record<MessageLevel, string> = {
+export const LEVEL_CLASSES: Record<MessageLevel, string> = {
 	Info: "text-bg-secondary",
 	Warning: "text-bg-warning",
 	Error: "text-bg-danger",

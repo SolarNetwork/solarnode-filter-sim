@@ -15,6 +15,7 @@ import type {
 	DatumTrace,
 	FilterStep,
 	FilterStepStatus,
+	MessageLevel,
 	SimulationMessage,
 	SimulationResult,
 	SimulationState,
@@ -27,6 +28,7 @@ import {
 	formatDuration,
 	formatTimestamp,
 	formatValue,
+	LEVEL_CLASSES,
 	messageItem,
 	quoted,
 	SAMPLE_TYPES,
@@ -163,6 +165,48 @@ export function datumPath(trace: DatumTrace): DatumPath {
 }
 
 /**
+ * The most datum a result shows expanded at first: with more, only the first
+ * is, so a large run stays easy to scan.
+ */
+const MAX_START_EXPANDED = 9;
+
+/** How a datum came out of the filters, which the datum filter pills group by. */
+type DatumOutcome = "Output" | "Output, not persisted" | "Discarded" | "Error";
+
+/** The badge class of each datum outcome. */
+const OUTCOME_CLASSES: Record<DatumOutcome, string> = {
+	Output: "text-bg-success",
+	"Output, not persisted": "text-bg-success",
+	Discarded: "text-bg-secondary",
+	Error: "text-bg-danger",
+};
+
+/** The outcome of a datum. */
+function datumOutcome(trace: DatumTrace): DatumOutcome {
+	if (trace.error) {
+		return "Error";
+	}
+	if (trace.output) {
+		return trace.persist === false ? "Output, not persisted" : "Output";
+	}
+	return "Discarded";
+}
+
+/**
+ * Count values by key, in the order they first appear.
+ *
+ * @param keys the keys
+ * @returns the count of each key
+ */
+function countBy<K>(keys: K[]): Map<K, number> {
+	const counts = new Map<K, number>();
+	for (const k of keys) {
+		counts.set(k, (counts.get(k) ?? 0) + 1);
+	}
+	return counts;
+}
+
+/**
  * The Execution Flow panel, which shows a simulation result: messages, every
  * datum with each filter step it went through, and the final state.
  *
@@ -187,6 +231,12 @@ export class ResultsPanel extends EventTarget {
 	#result: SimulationResult | null = null;
 	#selectedSeq: number | null = null;
 	#stale?: HTMLElement;
+	/** The message levels hidden by their filter pills, kept between runs. */
+	readonly #hiddenLevels = new Set<MessageLevel>();
+	/** The datum outcomes hidden by their filter pills, kept between runs. */
+	readonly #hiddenOutcomes = new Set<DatumOutcome>();
+	/** `true` if the messages are collapsed, kept between runs. */
+	#messagesCollapsed = false;
 	#debug: DebugSession | null = null;
 
 	/**
@@ -261,6 +311,7 @@ export class ResultsPanel extends EventTarget {
 			this.show(result);
 			return;
 		}
+		this.#result = result;
 		const header = this.#debugHeader();
 		const stateEl = element("div", "sim-debug-state border-start");
 		this.#debug = {
@@ -310,10 +361,17 @@ export class ResultsPanel extends EventTarget {
 				element("p", "text-body-secondary", "No datum were processed."),
 			);
 		}
-		for (const trace of result.datum) {
-			body.append(this.#datum(trace));
+		if (result.datum.length) {
+			body.append(this.#datumFilters(result));
 		}
+		const collapse = result.datum.length > MAX_START_EXPANDED;
+		result.datum.forEach((trace, i) => {
+			const section = this.#datum(trace);
+			this.#setCollapsed(section, collapse && i > 0);
+			body.append(section);
+		});
 		body.append(this.#finalState(result.finalState));
+		this.#applyDatumFilters(body);
 		return body;
 	}
 
@@ -357,14 +415,23 @@ export class ResultsPanel extends EventTarget {
 		this.#stale.title =
 			"The filters or inputs changed after this run. Run again to see their effect.";
 		this.#stale.hidden = true;
-		const close = element("button", "btn-close ms-auto");
+		const close = element(
+			"button",
+			`btn-close${result.datum.length < 2 ? " ms-auto" : ""}`,
+		);
 		close.type = "button";
 		close.title = "Close the execution flow";
 		close.setAttribute("aria-label", close.title);
 		close.addEventListener("click", () =>
 			this.dispatchEvent(new Event("close")),
 		);
-		header.append(title, summary, this.#stale, close);
+		header.append(
+			title,
+			summary,
+			this.#stale,
+			...this.#collapseAllButtons(result),
+			close,
+		);
 		return header;
 	}
 
@@ -416,15 +483,87 @@ export class ResultsPanel extends EventTarget {
 			"Changed since this run",
 		);
 		this.#stale.hidden = true;
-		const close = element("button", "btn-close ms-auto");
+		const close = element(
+			"button",
+			`btn-close${(this.#result?.datum.length ?? 0) < 2 ? " ms-auto" : ""}`,
+		);
 		close.type = "button";
 		close.title = "Close the execution flow";
 		close.setAttribute("aria-label", close.title);
 		close.addEventListener("click", () =>
 			this.dispatchEvent(new Event("close")),
 		);
-		header.append(group, stop, label, this.#stale, close);
+		header.append(
+			group,
+			stop,
+			label,
+			this.#stale,
+			...(this.#result ? this.#collapseAllButtons(this.#result) : []),
+			close,
+		);
 		return { el: header, label, buttons };
+	}
+
+	/**
+	 * Get the buttons that expand and collapse every datum, if there are
+	 * several, the first of them with the `ms-auto` class.
+	 */
+	#collapseAllButtons(result: SimulationResult): HTMLElement[] {
+		if (result.datum.length < 2) {
+			return [];
+		}
+		const button = (icon: string, title: string, collapsed: boolean) => {
+			const b = element(
+				"button",
+				"btn btn-sm btn-link text-body-secondary p-0 sim-tool",
+			);
+			b.type = "button";
+			b.title = title;
+			b.setAttribute("aria-label", title);
+			const glyph = element("i", `bi bi-${icon}`);
+			glyph.setAttribute("aria-hidden", "true");
+			b.append(glyph);
+			b.addEventListener("click", () =>
+				this.#el
+					.querySelectorAll<HTMLElement>(".sim-datum")
+					.forEach((section) =>
+						this.#setCollapsed(section, collapsed),
+					),
+			);
+			return b;
+		};
+		const expand = button("arrows-expand", "Expand every datum", false);
+		expand.classList.add("ms-auto");
+		return [
+			expand,
+			button(
+				"arrows-collapse",
+				"Collapse every datum to its header",
+				true,
+			),
+		];
+	}
+
+	/**
+	 * Collapse a datum to its header, or expand it.
+	 *
+	 * @param section the datum's section
+	 * @param collapsed `true` to collapse it
+	 */
+	#setCollapsed(section: HTMLElement, collapsed: boolean): void {
+		section.classList.toggle("is-collapsed", collapsed);
+		const button = section.querySelector<HTMLButtonElement>(
+			".sim-datum-collapse",
+		);
+		if (button) {
+			button.setAttribute("aria-expanded", String(!collapsed));
+			button.title = collapsed
+				? "Expand this datum"
+				: "Collapse this datum to its header";
+			button.setAttribute("aria-label", button.title);
+			button.querySelector("i")!.className =
+				`bi bi-chevron-${collapsed ? "right" : "down"}`;
+		}
 	}
 
 	/** Show the debug cursor: the flow up to it, and the state after it. */
@@ -444,6 +583,9 @@ export class ResultsPanel extends EventTarget {
 				const ti = Number(section.dataset.trace);
 				section.hidden = ti > traceIndex;
 				section.classList.toggle("is-current", ti === traceIndex);
+				if (ti === traceIndex) {
+					this.#setCollapsed(section, false);
+				}
 				section
 					.querySelectorAll<HTMLElement>(".sim-step")
 					.forEach((stepEl) => {
@@ -508,11 +650,17 @@ export class ResultsPanel extends EventTarget {
 		);
 	}
 
+	/**
+	 * Render the messages in a card that collapses, with a pill for each
+	 * message level that shows or hides its messages.
+	 */
 	#messages(messages: SimulationMessage[]): HTMLElement {
-		const list = element(
-			"div",
-			"list-group list-group-flush small mb-3 border rounded",
+		const card = element("section", "card mb-3 sim-messages");
+		const header = element(
+			"header",
+			"card-header d-flex flex-wrap align-items-center gap-2 py-1 px-2",
 		);
+		const list = element("div", "list-group list-group-flush small");
 		for (const m of messages) {
 			let link: { title: string; show: () => void } | undefined;
 			if (m.filterId) {
@@ -528,9 +676,157 @@ export class ResultsPanel extends EventTarget {
 					show: () => this.#scrollToDatum(seq),
 				};
 			}
-			list.append(messageItem(m, link));
+			const item = messageItem(m, link);
+			item.dataset.level = m.level;
+			list.append(item);
 		}
-		return list;
+		const applyLevels = () =>
+			list.querySelectorAll<HTMLElement>("[data-level]").forEach((item) =>
+				// a class, as the row's d-flex display overrides hidden
+				item.classList.toggle(
+					"is-filtered",
+					this.#hiddenLevels.has(item.dataset.level as MessageLevel),
+				),
+			);
+		const collapse = this.#collapseButton("the messages", (collapsed) => {
+			this.#messagesCollapsed = collapsed;
+			card.classList.toggle("is-collapsed", collapsed);
+		});
+		header.append(
+			collapse.button,
+			element("span", "fw-semibold small", "Messages"),
+		);
+		const pills = element(
+			"span",
+			"d-flex flex-wrap justify-content-end gap-2 ms-auto",
+		);
+		header.append(pills);
+		for (const [level, count] of countBy(messages.map((m) => m.level))) {
+			pills.append(
+				this.#filterPill(
+					level,
+					count,
+					LEVEL_CLASSES[level] ?? "text-bg-secondary",
+					this.#hiddenLevels,
+					applyLevels,
+				),
+			);
+		}
+		card.append(header, list);
+		collapse.set(this.#messagesCollapsed);
+		applyLevels();
+		return card;
+	}
+
+	/** Render the pills that show or hide datum by their outcome. */
+	#datumFilters(result: SimulationResult): HTMLElement {
+		const bar = element(
+			"div",
+			"d-flex flex-wrap align-items-center gap-2 mb-2 sim-datum-filters",
+		);
+		const pills = element(
+			"span",
+			"d-flex flex-wrap justify-content-end gap-2 ms-auto",
+		);
+		bar.append(element("span", "fw-semibold small", "Datum"), pills);
+		for (const [outcome, count] of countBy(
+			result.datum.map(datumOutcome),
+		)) {
+			pills.append(
+				this.#filterPill(
+					outcome,
+					count,
+					OUTCOME_CLASSES[outcome],
+					this.#hiddenOutcomes,
+					() => this.#applyDatumFilters(this.#el),
+				),
+			);
+		}
+		return bar;
+	}
+
+	/** Hide the datum whose outcome a filter pill hides. */
+	#applyDatumFilters(root: HTMLElement): void {
+		root.querySelectorAll<HTMLElement>(".sim-datum").forEach((section) =>
+			section.classList.toggle(
+				"is-filtered",
+				this.#hiddenOutcomes.has(
+					section.dataset.outcome as DatumOutcome,
+				),
+			),
+		);
+	}
+
+	/**
+	 * Render a pill that shows or hides a kind of row, with its count.
+	 *
+	 * @param name the kind, such as "Info"
+	 * @param count how many rows there are of the kind
+	 * @param className the pill's color class
+	 * @param hidden the hidden kinds, which the pill changes
+	 * @param apply show or hide the rows after a change
+	 */
+	#filterPill<K extends string>(
+		name: K,
+		count: number,
+		className: string,
+		hidden: Set<K>,
+		apply: () => void,
+	): HTMLButtonElement {
+		const pill = element(
+			"button",
+			`badge rounded-pill border-0 sim-filter-pill ${className}`,
+			`${name} ${count}`,
+		);
+		pill.type = "button";
+		const refresh = () => {
+			const shown = !hidden.has(name);
+			pill.setAttribute("aria-pressed", String(shown));
+			pill.title = `${shown ? "Hide" : "Show"} the ${name} rows`;
+		};
+		pill.addEventListener("click", () => {
+			if (hidden.has(name)) {
+				hidden.delete(name);
+			} else {
+				hidden.add(name);
+			}
+			refresh();
+			apply();
+		});
+		refresh();
+		return pill;
+	}
+
+	/**
+	 * Make a chevron button that collapses something.
+	 *
+	 * @param what what it collapses, for its title
+	 * @param onChange called with the new state
+	 * @returns the button, and a function that sets the state
+	 */
+	#collapseButton(
+		what: string,
+		onChange: (collapsed: boolean) => void,
+	): { button: HTMLButtonElement; set: (collapsed: boolean) => void } {
+		const button = element(
+			"button",
+			"btn btn-sm btn-link text-body-secondary p-0 sim-tool",
+		);
+		button.type = "button";
+		const chevron = element("i");
+		chevron.setAttribute("aria-hidden", "true");
+		button.append(chevron);
+		let state = false;
+		const set = (collapsed: boolean) => {
+			state = collapsed;
+			button.setAttribute("aria-expanded", String(!collapsed));
+			button.title = `${collapsed ? "Expand" : "Collapse"} ${what}`;
+			button.setAttribute("aria-label", button.title);
+			chevron.className = `bi bi-chevron-${collapsed ? "right" : "down"}`;
+			onChange(collapsed);
+		};
+		button.addEventListener("click", () => set(!state));
+		return { button, set };
 	}
 
 	/* === Datum === */
@@ -557,6 +853,7 @@ export class ResultsPanel extends EventTarget {
 	#datum(trace: DatumTrace): HTMLElement {
 		const section = element("section", "card mb-3 sim-datum");
 		section.id = `sim-datum-${trace.seq}`;
+		section.dataset.outcome = datumOutcome(trace);
 		section.dataset.trace = String(this.#result?.datum.indexOf(trace) ?? 0);
 
 		const header = element(
@@ -597,7 +894,25 @@ export class ResultsPanel extends EventTarget {
 					)
 				: element("span", "badge text-bg-secondary", "Discarded");
 		result.classList.add("ms-auto", "sim-datum-result");
+		const collapse = element(
+			"button",
+			"btn btn-sm btn-link text-body-secondary p-0 sim-tool sim-datum-collapse",
+		);
+		collapse.type = "button";
+		const chevron = element("i");
+		chevron.setAttribute("aria-hidden", "true");
+		collapse.append(chevron);
+		collapse.addEventListener("click", (e) => {
+			// not a click on the header, which selects the datum
+			e.stopPropagation();
+			this.#setCollapsed(
+				section,
+				!section.classList.contains("is-collapsed"),
+			);
+		});
+		collapse.addEventListener("keydown", (e) => e.stopPropagation());
 		header.append(
+			collapse,
 			element("span", "badge text-bg-dark", `#${trace.seq}`),
 			element(
 				"span",
@@ -700,6 +1015,9 @@ export class ResultsPanel extends EventTarget {
 			.forEach((el) => el.setAttribute("aria-pressed", "false"));
 		this.#selectedSeq = select ? trace.seq : null;
 		section.classList.toggle("is-selected", select);
+		if (select) {
+			this.#setCollapsed(section, false);
+		}
 		header.setAttribute("aria-pressed", String(select));
 		this.dispatchEvent(
 			new CustomEvent<DatumPath | null>("datum", {
@@ -769,7 +1087,24 @@ export class ResultsPanel extends EventTarget {
 				this.#moveTo(first);
 			}
 		}
+		const outcome = section?.dataset.outcome as DatumOutcome | undefined;
+		if (outcome && this.#hiddenOutcomes.has(outcome)) {
+			// show the datum's outcome again, so the datum shows
+			this.#hiddenOutcomes.delete(outcome);
+			this.#el
+				.querySelectorAll<HTMLButtonElement>(
+					".sim-datum-filters .sim-filter-pill",
+				)
+				.forEach((pill) => {
+					if (pill.textContent?.startsWith(`${outcome} `)) {
+						pill.setAttribute("aria-pressed", "true");
+						pill.title = `Hide the ${outcome} rows`;
+					}
+				});
+			this.#applyDatumFilters(this.#el);
+		}
 		if (section && !section.hidden) {
+			this.#setCollapsed(section, false);
 			section.scrollIntoView({ behavior: "smooth", block: "start" });
 			section.classList.remove("is-flashed");
 			void section.offsetWidth;

@@ -901,3 +901,40 @@ rect.sim-badge {
 .sim-legend-source.is-hidden .sim-legend-swatch {
 	filter: grayscale(1);
 }
+
+// a datum collapsed to its header
+.sim-datum.is-collapsed {
+	> .card-body {
+		display: none;
+	}
+
+	> .card-header {
+		border-bottom: 0;
+	}
+}
+
+.sim-messages.is-collapsed {
+	> .list-group {
+		display: none;
+	}
+
+	> .card-header {
+		border-bottom: 0;
+	}
+}
+
+// a message or datum hidden by its filter pill
+.sim-messages .is-filtered,
+.sim-datum.is-filtered {
+	display: none !important;
+}
+
+// a pill that shows or hides a kind of row
+.sim-filter-pill {
+	cursor: pointer;
+
+	&[aria-pressed="false"] {
+		opacity: 0.45;
+		text-decoration: line-through;
+	}
+}
