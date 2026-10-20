@@ -14,6 +14,7 @@ import {
 	type UserMetadataInput,
 } from "./inputs.ts";
 import { JsonEditor } from "./jsonEditor.ts";
+import { jsonLint, type JsonSchema } from "./jsonLint.ts";
 import type { SimulationState } from "./model.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -57,14 +58,14 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	nodeMetadata: "node-metadata",
 };
 
-/** The JSON inputs, which get a JSON editor. */
-const JSON_FIELDS: ReadonlySet<InputField> = new Set([
-	"datum",
-	"history",
-	"unfilteredHistory",
-	"nodeMetadata",
-	"datumMetadata",
-]);
+/** The JSON inputs, which get a JSON editor that checks their schema. */
+const JSON_FIELDS: Partial<Record<InputField, JsonSchema>> = {
+	datum: "datumList",
+	history: "datumList",
+	unfilteredHistory: "datumList",
+	nodeMetadata: "metadata",
+	datumMetadata: "datumMetadata",
+};
 
 /** The checks of the JSON inputs, which throw an error for a problem. */
 const FIELD_CHECKS: Partial<
@@ -233,6 +234,24 @@ export class InputPanel {
 		this.#refreshTabMarks();
 	}
 
+	/**
+	 * Mark a tab for the schema errors a JSON editor found, which the editor
+	 * itself underlines.
+	 *
+	 * @param field the input field, or the id of a User Metadata Service
+	 * @param tab the input's tab
+	 * @param errors the number of errors
+	 */
+	#setSchemaErrors(field: string, tab: InputTab, errors: number): void {
+		const key = `${field}#schema`;
+		if (errors > 0) {
+			this.#invalid.set(key, tab);
+		} else {
+			this.#invalid.delete(key);
+		}
+		this.#refreshTabMarks();
+	}
+
 	#refreshTabMarks(): void {
 		const tabs = new Set(this.#invalid.values());
 		document
@@ -275,11 +294,13 @@ export class InputPanel {
 		][]) {
 			const input = $<HTMLInputElement | HTMLTextAreaElement>(selector);
 			input.value = state[field];
-			if (
-				JSON_FIELDS.has(field) &&
-				input instanceof HTMLTextAreaElement
-			) {
-				new JsonEditor(input);
+			const schema = JSON_FIELDS[field];
+			if (schema && input instanceof HTMLTextAreaElement) {
+				new JsonEditor(input, [
+					jsonLint(schema, (errors) =>
+						this.#setSchemaErrors(field, FIELD_TABS[field], errors),
+					),
+				]);
 			}
 			const check = FIELD_CHECKS[field];
 			input.addEventListener("input", () => {
@@ -486,7 +507,11 @@ export class InputPanel {
 			this.#scheduleCheck(item.id, "user-metadata", check);
 		});
 		card.append(head, uidWarning, json, feedback);
-		new JsonEditor(json);
+		new JsonEditor(json, [
+			jsonLint("metadata", (errors) =>
+				this.#setSchemaErrors(item.id, "user-metadata", errors),
+			),
+		]);
 		try {
 			check();
 		} catch (e) {
