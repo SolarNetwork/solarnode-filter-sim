@@ -42,7 +42,17 @@ http://localhost:2008
 ```
 
 Pass `--server.port=8081` (or set the `SERVER_PORT` environment variable) to use a different
-port. The native executable logs only warnings and errors; pass `--logging.level.root=info` for
-the full log.
+port. The native executable listens only on the local machine (`127.0.0.1`); pass
+`--server.address=0.0.0.0` to accept connections from other machines. It logs only warnings and
+errors; pass `--logging.level.root=info` for the full log.
+
+## External commands
+
+The POA Calculator (pvlib) filter runs an external command, normally the `ghi-to-poa` script of
+the SolarNodeOS `sn-pvlib` package, to calculate POA irradiance. The simulator runs a command only
+when its full path is in the **Allowed Commands** list, on the Environment tab of the inputs.
+Allow only programs you trust, as they run on the computer running the simulator. A list of
+commands to allow in every simulation can also be set when starting the simulator, with
+`--sim.commands.allowed=/path/to/command,/another/command`.
 
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/

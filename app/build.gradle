@@ -376,9 +376,11 @@ abstract class NativeSmokeTest extends DefaultTask {
 			def failures = []
 			fixtureFiles().each { File f ->
 				def name = f.name - '.json'
+				// commands kept with the fixtures are referred to by this token
+				def body = f.text.replace('@FIXTURES@', f.parentFile.absolutePath)
 				def req = java.net.http.HttpRequest.newBuilder(URI.create("${base}/simulate"))
 						.header('Content-Type', 'application/json')
-						.POST(java.net.http.HttpRequest.BodyPublishers.ofFile(f.toPath()))
+						.POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
 						.build()
 				def res = http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString())
 				if ( res.statusCode() != 200 ) {
@@ -451,12 +453,23 @@ abstract class NativeSmokeTest extends DefaultTask {
 			if ( trace.output?.samples != null ) {
 				d.output = trace.output.samples
 			}
+			def commands = trace.steps.collectMany { s ->
+				(s.commands ?: []).collect { [filterId: s.filterId, ran: it.ran] }
+			}
+			if ( commands ) {
+				d.commands = commands
+			}
 			d
 		}
-		normalized([messages: result.messages.collect { it.code },
+		def summary = [messages: result.messages.collect { it.code },
 			stats: ['processed', 'generated', 'output', 'discarded'].collectEntries {
 				[(it): result.stats[it]] },
-			datum: datum])
+			datum: datum]
+		def metrics = (result.finalState?.metrics ?: []).collect { [name: it.name, value: it.value] }
+		if ( metrics ) {
+			summary.metrics = metrics
+		}
+		normalized(summary)
 	}
 
 	/** Normalize to strings, with numbers in plain notation without trailing zeros. */

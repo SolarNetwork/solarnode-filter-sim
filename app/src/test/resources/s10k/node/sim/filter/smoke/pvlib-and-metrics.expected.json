@@ -1,0 +1,71 @@
+{
+  "messages" : [ "FilterProblem" ],
+  "stats" : {
+    "processed" : "2",
+    "generated" : "0",
+    "output" : "2",
+    "discarded" : "0"
+  },
+  "datum" : [ {
+    "seq" : "1",
+    "sourceId" : "/weather/1",
+    "steps" : [ "main:Changed", "poa:Changed", "poa-loc:Changed", "blocked:Error", "mh:Unchanged" ],
+    "output" : {
+      "i" : {
+        "irradiance" : "500",
+        "irradiance_poa" : "812.5",
+        "direct" : "1200",
+        "settingsArgs" : "1",
+        "poa_location" : "812.5",
+        "locationArgs" : "1"
+      }
+    },
+    "commands" : [ {
+      "filterId" : "poa",
+      "ran" : "true"
+    }, {
+      "filterId" : "poa-loc",
+      "ran" : "true"
+    }, {
+      "filterId" : "blocked",
+      "ran" : "false"
+    } ]
+  }, {
+    "seq" : "2",
+    "sourceId" : "/weather/1",
+    "steps" : [ "main:Changed", "poa:Changed", "poa-loc:Changed", "blocked:Error", "mh:Unchanged" ],
+    "output" : {
+      "i" : {
+        "irradiance" : "520",
+        "irradiance_poa" : "812.5",
+        "direct" : "1200",
+        "settingsArgs" : "1",
+        "poa_location" : "812.5",
+        "locationArgs" : "1"
+      }
+    },
+    "commands" : [ {
+      "filterId" : "poa",
+      "ran" : "true"
+    }, {
+      "filterId" : "poa-loc",
+      "ran" : "true"
+    }, {
+      "filterId" : "blocked",
+      "ran" : "false"
+    } ]
+  } ],
+  "metrics" : [ {
+    "name" : "double",
+    "value" : "1000"
+  }, {
+    "name" : "poa",
+    "value" : "812.5"
+  }, {
+    "name" : "double",
+    "value" : "1040"
+  }, {
+    "name" : "poa",
+    "value" : "812.5"
+  } ]
+}

@@ -188,8 +188,9 @@ GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeCompi
 ```
 
 The executable is `app/build/native/nativeCompile/sn-filter-sim`. It listens on port 2008 by
-default (`FilterSimulatorApplication.NATIVE_DEFAULT_PORT`), while the JVM build keeps Spring
-Boot's 8080, which the Vite dev server proxies to.
+default (`FilterSimulatorApplication.NATIVE_DEFAULT_PORT`), and only on `127.0.0.1`
+(`NATIVE_DEFAULT_ADDRESS`), while the JVM build keeps Spring Boot's 8080 on every interface,
+which the Vite dev server proxies to.
 
 The build needs about 5 GB of memory for `native-image`. On a machine with less to spare, stop
 other JVMs (such as a `bootRun`) first, or cap the builder's heap with `-J-Xmx4g` in the
@@ -276,7 +277,11 @@ Ivy repository with `ant publish` in the bundle's directory (in the `solarnetwor
 ```
 
 The local Ivy repository defaults to `~/.ivy2/local`. Use `-PlocalIvyPath=/some/path` to change
-it.
+it. Publish with `ant publish -Dpublish.ivy=true`, so the repository has the bundle's Ivy
+descriptor, which Gradle needs to resolve it.
+
+Until `net.solarnetwork.node.datum.filter.pvlib` 2.2.0 is on Maven Central, every build needs
+`-PlocalIvy` (the `app` launch configuration in `.claude/launch.json` passes it).
 
 [bootstrap]: https://getbootstrap.com/
 [bootstrap-icons]: https://icons.getbootstrap.com/

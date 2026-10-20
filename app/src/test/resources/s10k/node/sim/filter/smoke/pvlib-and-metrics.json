@@ -1,0 +1,98 @@
+{
+	"config": {
+		"mainChainId": "main",
+		"filters": [
+			{
+				"id": "main",
+				"factoryUid": "net.solarnetwork.node.datum.xform.user",
+				"instanceKey": "Main",
+				"settings": { "uid": "Chain - Main" },
+				"filterIds": ["poa", "poa-loc", "blocked", "mh"]
+			},
+			{
+				"id": "poa",
+				"factoryUid": "net.solarnetwork.node.datum.filter.pvlib.poa",
+				"instanceKey": "1",
+				"settings": {
+					"uid": "POA Settings",
+					"command": "@FIXTURES@/ghi-to-poa.sh",
+					"lat": "-36.85",
+					"lon": "174.76",
+					"tilt": "30",
+					"azimuth": "0",
+					"timeZoneId": "Pacific/Auckland",
+					"transpositionModelName": "perez-driesse",
+					"tracking": "true",
+					"axisTilt": "5",
+					"expressionConfigsCount": "2",
+					"expressionConfigs[0].name": "direct",
+					"expressionConfigs[0].datumPropertyTypeKey": "i",
+					"expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+					"expressionConfigs[0].expression": "poa_direct * 2",
+					"expressionConfigs[1].name": "settingsArgs",
+					"expressionConfigs[1].datumPropertyTypeKey": "i",
+					"expressionConfigs[1].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+					"expressionConfigs[1].expression": "args.contains('--latitude -36.85') && args.contains('--zone Pacific/Auckland') && args.contains('--transpose perez-driesse') && args.contains('--tracking true') && args.contains('--axis-tilt 5') ? 1 : 0"
+				}
+			},
+			{
+				"id": "poa-loc",
+				"factoryUid": "net.solarnetwork.node.datum.filter.pvlib.poa",
+				"instanceKey": "2",
+				"settings": {
+					"uid": "POA Location",
+					"command": "@FIXTURES@/ghi-to-poa.sh",
+					"useNodeLocation": "true",
+					"metadataPath": "/pm/pv",
+					"poaPropertyName": "poa_location",
+					"expressionConfigsCount": "1",
+					"expressionConfigs[0].name": "locationArgs",
+					"expressionConfigs[0].datumPropertyTypeKey": "i",
+					"expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+					"expressionConfigs[0].expression": "args.contains('--latitude -41.29') && args.contains('--altitude 20') && args.contains('--array-tilt 15') && args.contains('--array-azimuth 180') ? 1 : 0"
+				}
+			},
+			{
+				"id": "blocked",
+				"factoryUid": "net.solarnetwork.node.datum.filter.pvlib.poa",
+				"instanceKey": "3",
+				"settings": {
+					"uid": "POA Blocked",
+					"command": "@FIXTURES@/not-allowed.sh",
+					"lat": "-36.85",
+					"lon": "174.76",
+					"poaPropertyName": "poa_blocked"
+				}
+			},
+			{
+				"id": "mh",
+				"factoryUid": "net.solarnetwork.node.metrics.service.harvester",
+				"instanceKey": "1",
+				"settings": {
+					"uid": "Metrics",
+					"propertyConfigsCount": "1",
+					"propertyConfigs[0].propertyKey": "irradiance_poa",
+					"propertyConfigs[0].propertyTypeKey": "i",
+					"propertyConfigs[0].metricName": "poa",
+					"expressionConfigsCount": "1",
+					"expressionConfigs[0].name": "double",
+					"expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+					"expressionConfigs[0].expression": "irradiance * 2"
+				}
+			}
+		]
+	},
+	"datum": [
+		{ "created": "2026-06-01 02:00:00Z", "sourceId": "/weather/1", "i": { "irradiance": 500 } },
+		{ "created": "2026-06-01 02:01:00Z", "sourceId": "/weather/1", "i": { "irradiance": 520 } }
+	],
+	"environment": {
+		"nodeLocation": { "latitude": -41.29, "longitude": 174.78, "elevation": 20 },
+		"datumMetadata": {
+			"/weather/1": { "pm": { "pv": { "pvArrayTilt": 15, "pvArrayAzimuth": 180 } } }
+		}
+	},
+	"options": {
+		"allowedCommands": ["@FIXTURES@/ghi-to-poa.sh"]
+	}
+}

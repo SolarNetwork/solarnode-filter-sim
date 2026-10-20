@@ -23,6 +23,7 @@ import static org.assertj.core.api.BDDAssertions.then;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -50,10 +51,12 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Each fixture {@code <name>.json} in the {@code smoke} resources is a
  * simulation request, and {@code <name>.expected.json} is a summary of its
- * result: the message codes, statistics, and each datum's source ID, step
- * statuses, and output samples, with every value as a string. The
- * {@code nativeSmokeTest} Gradle task posts the same fixtures to the native
- * executable and compares the same summary, which shows missing runtime hints.
+ * result: the message codes, statistics, each datum's source ID, step statuses,
+ * output samples, and external commands, and the final metrics, with every
+ * value as a string. A fixture's {@code @FIXTURES@} text is replaced by the
+ * fixtures directory, for commands kept there. The {@code nativeSmokeTest}
+ * Gradle task posts the same fixtures to the native executable and compares the
+ * same summary, which shows missing runtime hints.
  * </p>
  *
  * <p>
@@ -80,10 +83,25 @@ public class SmokeFixtureTests {
 				new SpelExpressionService());
 	}
 
+	/** The text in a fixture that is replaced by the fixtures directory. */
+	private static final String FIXTURES_TOKEN = "@FIXTURES@";
+
 	private static JsonNode resource(String name) throws IOException {
 		try (InputStream in = SmokeFixtureTests.class.getResourceAsStream(FIXTURES + name)) {
 			return JSON.readTree(in);
 		}
+	}
+
+	private static SimulationRequest request(String name) throws IOException {
+		final Path file;
+		try {
+			file = Path.of(SmokeFixtureTests.class.getResource(FIXTURES + name + ".json").toURI());
+		} catch ( URISyntaxException e ) {
+			throw new IOException(e);
+		}
+		final String json = Files.readString(file).replace(FIXTURES_TOKEN,
+				file.getParent().toAbsolutePath().toString());
+		return JSON.readValue(json, SimulationRequest.class);
 	}
 
 	/**
@@ -132,7 +150,21 @@ public class SmokeFixtureTests {
 					s -> steps.add(s.path("filterId").asString() + ":" + s.path("status").asString()));
 			d.set("error", trace.path("error"));
 			d.set("output", trace.path("output").path("samples"));
+			ArrayNode commands = JsonNodeFactory.instance.arrayNode();
+			for ( JsonNode s : trace.path("steps") ) {
+				s.path("commands").forEach(c -> commands.addObject()
+						.put("filterId", s.path("filterId").asString()).set("ran", c.path("ran")));
+			}
+			if ( !commands.isEmpty() ) {
+				d.set("commands", commands);
+			}
 			d.properties().removeIf(e -> e.getValue().isMissingNode() || e.getValue().isNull());
+		}
+		ArrayNode metrics = JsonNodeFactory.instance.arrayNode();
+		result.path("finalState").path("metrics").forEach(m -> metrics.addObject()
+				.put("name", m.path("name").asString()).set("value", m.path("value")));
+		if ( !metrics.isEmpty() ) {
+			summary.set("metrics", metrics);
 		}
 		return normalized(summary);
 	}
@@ -150,7 +182,7 @@ public class SmokeFixtureTests {
 	}
 
 	private SimulationResult simulateFixture(String name, JsonNode expected) throws IOException {
-		SimulationRequest req = JSON.treeToValue(resource(name + ".json"), SimulationRequest.class);
+		SimulationRequest req = request(name);
 		SimulationResult result = engine.simulate(req);
 		JsonNode actual = summary(JSON.valueToTree(result));
 		if ( !actual.equals(expected) ) {
@@ -207,6 +239,28 @@ public class SmokeFixtureTests {
 		then(expected.path("messages").valueStream().map(JsonNode::asString))
 			.as("No filter logged a problem or failed")
 			.doesNotContain("FilterLog", "FilterError")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void pvlibAndMetrics() throws IOException {
+		// GIVEN
+		final String name = "pvlib-and-metrics";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("Only the command that is not allowed is reported")
+			.containsExactly("FilterProblem")
+			;
+		then(expected.path("metrics").size())
+			.as("Two metrics for each datum")
+			.isEqualTo(4)
 			;
 		// @formatter:on
 	}
