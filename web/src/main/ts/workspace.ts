@@ -1110,6 +1110,16 @@ export class Workspace extends EventTarget {
 		});
 	}
 
+	/**
+	 * Start again with an empty workspace: only the Main chain, and no
+	 * External Settings. The change can be undone.
+	 *
+	 * @param label what changed, for example "New simulation"
+	 */
+	reset(label: string): void {
+		this.replaceState(this.#emptyState(), label);
+	}
+
 	/** Undo the last change. */
 	undo(): void {
 		const previous = this.#undo.pop();

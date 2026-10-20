@@ -417,6 +417,11 @@ export class RunInputs extends EventTarget {
 		});
 	}
 
+	/** Clear every input. */
+	clear(): void {
+		this.replace(emptyState());
+	}
+
 	/**
 	 * Change a text input.
 	 *

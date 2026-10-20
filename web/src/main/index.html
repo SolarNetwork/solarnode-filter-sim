@@ -61,6 +61,15 @@
 				<button
 					type="button"
 					class="btn btn-outline-secondary btn-sm text-nowrap"
+					id="new-simulation-button"
+					title="Start a new, empty simulation"
+				>
+					<i class="bi bi-file-earmark" aria-hidden="true"></i>
+					New
+				</button>
+				<button
+					type="button"
+					class="btn btn-outline-secondary btn-sm text-nowrap"
 					id="open-simulation-button"
 					title="Open a simulation file, such as one shared with you"
 				>
@@ -1062,17 +1071,18 @@
 
 		<div
 			class="modal fade"
-			id="open-dialog"
+			id="confirm-dialog"
 			tabindex="-1"
-			aria-labelledby="open-dialog-title"
+			aria-labelledby="confirm-dialog-title"
 			aria-hidden="true"
 		>
 			<div class="modal-dialog">
 				<div class="modal-content">
 					<div class="modal-header">
-						<h1 class="modal-title fs-5" id="open-dialog-title">
-							Open Simulation
-						</h1>
+						<h1
+							class="modal-title fs-5"
+							id="confirm-dialog-title"
+						></h1>
 						<button
 							type="button"
 							class="btn-close"
@@ -1081,20 +1091,11 @@
 						></button>
 					</div>
 					<div class="modal-body">
-						<p>
-							Replace this simulation with the one in
-							<strong
-								id="open-dialog-file"
-								class="text-break"
-							></strong
-							>?
-						</p>
-						<p class="small text-body-secondary mb-0">
-							This replaces the filters, External Settings, and
-							run inputs. You can undo the filter and External
-							Settings changes with Ctrl+Z, but not the run
-							inputs. To keep this simulation, save it first.
-						</p>
+						<p id="confirm-dialog-message"></p>
+						<p
+							class="small text-body-secondary mb-0"
+							id="confirm-dialog-detail"
+						></p>
 					</div>
 					<div class="modal-footer">
 						<button
@@ -1106,11 +1107,15 @@
 						</button>
 						<button
 							type="button"
+							class="btn btn-outline-primary"
+							data-confirm-save
+							hidden
+						></button>
+						<button
+							type="button"
 							class="btn btn-danger"
-							data-open-confirm
-						>
-							Replace
-						</button>
+							data-confirm
+						></button>
 					</div>
 				</div>
 			</div>

@@ -181,24 +181,64 @@ export function askImportMode(fileName: string): Promise<ImportMode | null> {
 	});
 }
 
+/** What a confirmation dialog asks. */
+export interface ConfirmDialog {
+	title: string;
+	/** The question, which can include elements, like a file name. */
+	message: (string | Node)[];
+	/** More about what confirming does, in smaller text. */
+	detail?: string;
+	/** The text of the button that confirms, which is styled as dangerous. */
+	confirm: string;
+	/**
+	 * The text of a button that saves the simulation first and then confirms,
+	 * if the dialog has one.
+	 */
+	saveFirst?: string;
+}
+
 /**
- * Ask whether to replace the simulation with the one in a simulation file.
- *
- * @param fileName the file name
- * @returns `true` to replace it
+ * The answer to a confirmation dialog: confirm, save first and then confirm,
+ * or `null` to cancel.
  */
-export function askOpenSimulation(fileName: string): Promise<boolean> {
-	const el = document.querySelector<HTMLElement>("#open-dialog")!;
+export type ConfirmResult = "confirm" | "saveFirst" | null;
+
+/**
+ * Ask to confirm an action that is hard to undo. The Cancel button has the
+ * focus, so Enter does not confirm by accident.
+ *
+ * @param options what to ask
+ * @returns the answer
+ */
+export function askConfirm(options: ConfirmDialog): Promise<ConfirmResult> {
+	const el = document.querySelector<HTMLElement>("#confirm-dialog")!;
 	const dialog = Modal.getOrCreateInstance(el);
-	el.querySelector("#open-dialog-file")!.textContent = fileName;
-	const button = el.querySelector<HTMLButtonElement>("[data-open-confirm]")!;
+	el.querySelector("#confirm-dialog-title")!.textContent = options.title;
+	el.querySelector("#confirm-dialog-message")!.replaceChildren(
+		...options.message,
+	);
+	const detail = el.querySelector<HTMLElement>("#confirm-dialog-detail")!;
+	detail.textContent = options.detail ?? "";
+	detail.hidden = !options.detail;
+	const button = el.querySelector<HTMLButtonElement>("[data-confirm]")!;
+	button.textContent = options.confirm;
+	const saveButton = el.querySelector<HTMLButtonElement>(
+		"[data-confirm-save]",
+	)!;
+	saveButton.textContent = options.saveFirst ?? "";
+	saveButton.hidden = !options.saveFirst;
 	return new Promise((resolve) => {
-		let confirmed = false;
+		let result: ConfirmResult = null;
 		const confirm = () => {
-			confirmed = true;
+			result = "confirm";
+			dialog.hide();
+		};
+		const saveFirst = () => {
+			result = "saveFirst";
 			dialog.hide();
 		};
 		button.addEventListener("click", confirm);
+		saveButton.addEventListener("click", saveFirst);
 		el.addEventListener(
 			"shown.bs.modal",
 			() =>
@@ -213,11 +253,47 @@ export function askOpenSimulation(fileName: string): Promise<boolean> {
 			"hidden.bs.modal",
 			() => {
 				button.removeEventListener("click", confirm);
-				resolve(confirmed);
+				saveButton.removeEventListener("click", saveFirst);
+				resolve(result);
 			},
 			{ once: true },
 		);
 		dialog.show();
+	});
+}
+
+/**
+ * Ask whether to replace the simulation with the one in a simulation file.
+ *
+ * @param fileName the file name
+ * @returns the answer
+ */
+export function askOpenSimulation(fileName: string): Promise<ConfirmResult> {
+	return askConfirm({
+		title: "Open Simulation",
+		message: [
+			"Replace this simulation with the one in ",
+			element("strong", "text-break", fileName),
+			"?",
+		],
+		detail: "This replaces the filters, External Settings, and run inputs. You can undo the filter and External Settings changes with Ctrl+Z, but not the run inputs. To keep this simulation, save it first.",
+		confirm: "Replace",
+		saveFirst: "Save, then replace",
+	});
+}
+
+/**
+ * Ask whether to start a new, empty simulation.
+ *
+ * @returns the answer
+ */
+export function askNewSimulation(): Promise<ConfirmResult> {
+	return askConfirm({
+		title: "New Simulation",
+		message: ["Start a new, empty simulation?"],
+		detail: "This removes the filters, External Settings, and run inputs, and closes the execution flow. You can undo the filter and External Settings changes with Ctrl+Z, but not the run inputs. To keep this simulation, save it first.",
+		confirm: "Start new",
+		saveFirst: "Save, then start new",
 	});
 }
 

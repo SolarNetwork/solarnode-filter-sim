@@ -11,6 +11,7 @@ import {
 import { Canvas } from "./canvas.ts";
 import {
 	askImportMode,
+	askNewSimulation,
 	askOpenSimulation,
 	showError,
 	showMessages,
@@ -245,11 +246,14 @@ class App {
 			showError("Simulation not opened", e);
 			return;
 		}
-		if (
-			!(this.#ws.isEmpty && this.#inputs.isEmpty) &&
-			!(await askOpenSimulation(file.name))
-		) {
-			return;
+		if (!(this.#ws.isEmpty && this.#inputs.isEmpty)) {
+			const answer = await askOpenSimulation(file.name);
+			if (!answer) {
+				return;
+			}
+			if (answer === "saveFirst") {
+				await this.saveSimulation();
+			}
 		}
 		this.#closeResults();
 		// the workspace first, so the Entry Point input finds its filter
@@ -259,6 +263,31 @@ class App {
 		this.#canvas.select(null);
 		this.#canvas.fit();
 		showToast(`Opened the simulation in ${file.name}.`);
+	}
+
+	/**
+	 * Start a new, empty simulation: clear the filters, External Settings, and
+	 * run inputs. Unless the simulation is already empty, this asks first.
+	 */
+	async newSimulation(): Promise<void> {
+		if (!(this.#ws.isEmpty && this.#inputs.isEmpty)) {
+			const answer = await askNewSimulation();
+			if (!answer) {
+				return;
+			}
+			if (answer === "saveFirst") {
+				await this.saveSimulation();
+			}
+		}
+		this.#closeResults();
+		this.#ws.reset("New simulation");
+		this.#inputs.clear();
+		this.#inputPanel.reload();
+		this.#canvas.select(null);
+		this.#canvas.fit();
+		showToast(
+			"Started a new simulation. Ctrl+Z brings back the filters, but not the run inputs.",
+		);
 	}
 
 	/**
@@ -588,6 +617,10 @@ class App {
 				void this.openSimulation(file);
 			}
 		});
+		$("#new-simulation-button").addEventListener(
+			"click",
+			() => void this.newSimulation(),
+		);
 		$("#save-simulation-button").addEventListener(
 			"click",
 			() => void this.saveSimulation(),
