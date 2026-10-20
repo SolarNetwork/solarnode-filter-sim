@@ -154,12 +154,7 @@ export class Workspace extends EventTarget {
 		try {
 			const json = localStorage.getItem(STORAGE_KEY);
 			if (json) {
-				const saved = migrate(
-					JSON.parse(json) as WorkspaceState | null,
-				);
-				if (isValidState(saved)) {
-					state = saved;
-				}
+				state = Workspace.parseState(JSON.parse(json));
 			}
 		} catch (e) {
 			console.warn("Unable to load the saved workspace", e);
@@ -167,7 +162,30 @@ export class Workspace extends EventTarget {
 		return new Workspace(types, state);
 	}
 
+	/**
+	 * Get a workspace state from saved data, such as a simulation file,
+	 * updated from an earlier version of the simulator.
+	 *
+	 * @param data the saved data
+	 * @returns the state, or `undefined` if the data is not a valid state
+	 */
+	static parseState(data: unknown): WorkspaceState | undefined {
+		try {
+			const state = migrate(
+				structuredClone(data) as WorkspaceState | null,
+			);
+			return isValidState(state) ? state : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
 	/* === Queries === */
+
+	/** A copy of the state, to save in a simulation file. */
+	get state(): WorkspaceState {
+		return structuredClone(this.#state);
+	}
 
 	/** The filter configurations, combined with the External Settings. */
 	get filters(): readonly FilterConfig[] {
@@ -1072,6 +1090,25 @@ export class Workspace extends EventTarget {
 		});
 	}
 
+	/**
+	 * Replace the whole state, such as with a simulation file's.
+	 *
+	 * @param state the new state
+	 * @param label what changed, for example "Open simulation"
+	 */
+	replaceState(state: WorkspaceState, label: string): void {
+		const next = structuredClone(state);
+		this.#commit(label, (s) => {
+			s.filters = next.filters;
+			s.mainChainId = next.mainChainId;
+			s.datumQueueComment = next.datumQueueComment;
+			s.positions = next.positions;
+			s.implicitMain = next.implicitMain;
+			s.externalFiles = next.externalFiles;
+			s.external = next.external;
+		});
+	}
+
 	/** Undo the last change. */
 	undo(): void {
 		const previous = this.#undo.pop();
@@ -1596,6 +1633,10 @@ function isValidState(
 		!!state &&
 		state.version === 1 &&
 		Array.isArray(state.filters) &&
+		state.filters.every(
+			(f) =>
+				typeof f?.id === "string" && typeof f.factoryUid === "string",
+		) &&
 		typeof state.mainChainId === "string" &&
 		state.filters.some(
 			(f) =>

@@ -206,6 +206,46 @@ export function askImportMode(fileName: string): Promise<ImportMode | null> {
 }
 
 /**
+ * Ask whether to replace the simulation with the one in a simulation file.
+ *
+ * @param fileName the file name
+ * @returns `true` to replace it
+ */
+export function askOpenSimulation(fileName: string): Promise<boolean> {
+	const el = document.querySelector<HTMLElement>("#open-dialog")!;
+	const dialog = Modal.getOrCreateInstance(el);
+	el.querySelector("#open-dialog-file")!.textContent = fileName;
+	const button = el.querySelector<HTMLButtonElement>("[data-open-confirm]")!;
+	return new Promise((resolve) => {
+		let confirmed = false;
+		const confirm = () => {
+			confirmed = true;
+			dialog.hide();
+		};
+		button.addEventListener("click", confirm);
+		el.addEventListener(
+			"shown.bs.modal",
+			() =>
+				el
+					.querySelector<HTMLButtonElement>(
+						'[data-bs-dismiss="modal"].btn',
+					)
+					?.focus(),
+			{ once: true },
+		);
+		el.addEventListener(
+			"hidden.bs.modal",
+			() => {
+				button.removeEventListener("click", confirm);
+				resolve(confirmed);
+			},
+			{ once: true },
+		);
+		dialog.show();
+	});
+}
+
+/**
  * Show a short message that disappears by itself.
  *
  * @param text the message

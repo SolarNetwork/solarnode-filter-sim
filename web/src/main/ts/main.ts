@@ -11,6 +11,7 @@ import {
 import { Canvas } from "./canvas.ts";
 import {
 	askImportMode,
+	askOpenSimulation,
 	showError,
 	showMessages,
 	showToast,
@@ -23,6 +24,7 @@ import { Inspector } from "./inspector.ts";
 import { MAIN_KEY, type FilterNode } from "./layout.ts";
 import {
 	UNKNOWN_FACTORY_UID,
+	type AppInfo,
 	type ExportStyle,
 	type FilterTypeInfo,
 	type SimulationResult,
@@ -34,6 +36,12 @@ import {
 	type DatumPath,
 	type DebugMark,
 } from "./results.ts";
+import {
+	isSimulationFile,
+	parseSimulation,
+	SIMULATION_FILE_NAME,
+	simulationJson,
+} from "./session.ts";
 import { initSplitter } from "./splitter.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -48,15 +56,18 @@ function $<T extends HTMLElement>(selector: string): T {
  * Show the application version, from the server.
  *
  * @param el the element to show the version in
+ * @returns the application info, or `null` if the server is unavailable
  */
-async function showAppInfo(el: HTMLElement): Promise<void> {
+async function showAppInfo(el: HTMLElement): Promise<AppInfo | null> {
 	try {
 		const info = await getInfo();
 		el.textContent = info.version ? `v${info.version}` : info.name;
+		return info;
 	} catch (e) {
 		console.error("Unable to get application info", e);
 		el.textContent = "Server unavailable";
 		el.classList.add("text-danger");
+		return null;
 	}
 }
 
@@ -102,10 +113,18 @@ class App {
 	readonly #inspector: Inspector;
 	readonly #inputPanel: InputPanel;
 	readonly #results: ResultsPanel;
+	readonly #info: Promise<AppInfo | null>;
 	#running = false;
 	#rerunTimer?: number;
 
-	constructor(types: FilterTypeInfo[]) {
+	/**
+	 * Constructor.
+	 *
+	 * @param types the supported filter types
+	 * @param info the application info, for simulation files
+	 */
+	constructor(types: FilterTypeInfo[], info: Promise<AppInfo | null>) {
+		this.#info = info;
 		const ws = Workspace.load(types);
 		const inputs = RunInputs.load();
 		this.#ws = ws;
@@ -155,7 +174,7 @@ class App {
 			this.#inspector.show((e as CustomEvent<FilterNode | null>).detail),
 		);
 		this.#canvas.addEventListener("filedrop", (e) =>
-			this.importFile((e as CustomEvent<File>).detail),
+			this.openFile((e as CustomEvent<File>).detail),
 		);
 		ws.addEventListener("change", () => {
 			this.#refreshControls();
@@ -176,6 +195,60 @@ class App {
 		this.#refreshControls();
 		this.#inspector.show(this.#canvas.selection);
 		this.#canvas.fit();
+	}
+
+	/**
+	 * Open a file: a simulation file, or else a settings CSV file to import.
+	 *
+	 * @param file the file
+	 */
+	async openFile(file: File): Promise<void> {
+		if (isSimulationFile(file)) {
+			await this.openSimulation(file);
+		} else {
+			await this.importFile(file);
+		}
+	}
+
+	/**
+	 * Save the whole simulation as a file, which can be opened in another
+	 * browser.
+	 */
+	async saveSimulation(): Promise<void> {
+		const json = simulationJson(this.#ws, this.#inputs, await this.#info);
+		download(json, SIMULATION_FILE_NAME, "application/json");
+		showToast(`The simulation was saved as ${SIMULATION_FILE_NAME}.`);
+	}
+
+	/**
+	 * Open a simulation file, replacing the simulation.
+	 *
+	 * Unless the simulation is empty, this asks first.
+	 *
+	 * @param file the file
+	 */
+	async openSimulation(file: File): Promise<void> {
+		let simulation;
+		try {
+			simulation = parseSimulation(await file.text());
+		} catch (e) {
+			showError("Simulation not opened", e);
+			return;
+		}
+		if (
+			!(this.#ws.isEmpty && this.#inputs.isEmpty) &&
+			!(await askOpenSimulation(file.name))
+		) {
+			return;
+		}
+		this.#closeResults();
+		// the workspace first, so the Entry Point input finds its filter
+		this.#ws.replaceState(simulation.workspace, "Open simulation");
+		this.#inputs.replace(simulation.inputs);
+		this.#inputPanel.reload();
+		this.#canvas.select(null);
+		this.#canvas.fit();
+		showToast(`Opened the simulation in ${file.name}.`);
 	}
 
 	/**
@@ -480,6 +553,22 @@ class App {
 		$("#export-button").addEventListener("click", () =>
 			this.exportFile("Organized"),
 		);
+		const simulationInput = $<HTMLInputElement>("#simulation-file");
+		$("#open-simulation-button").addEventListener("click", () =>
+			simulationInput.click(),
+		);
+		simulationInput.addEventListener("change", () => {
+			const file = simulationInput.files?.[0];
+			simulationInput.value = "";
+			if (file) {
+				void this.openSimulation(file);
+			}
+		});
+		$("#save-simulation-button").addEventListener(
+			"click",
+			() => void this.saveSimulation(),
+		);
+
 		const external = new ExternalSettingsDialog(ws);
 		$("#external-button").addEventListener("click", () => external.show());
 		document
@@ -500,7 +589,7 @@ class App {
 			if (file) {
 				emptyFile.value = "";
 				emptyUpload.disabled = true;
-				this.importFile(file);
+				this.openFile(file);
 			}
 		});
 
@@ -571,14 +660,14 @@ class App {
 }
 
 async function startApp(): Promise<void> {
-	showAppInfo($("#app-version"));
+	const info = showAppInfo($("#app-version"));
 	let types: FilterTypeInfo[] = [];
 	try {
 		types = await getFilterTypes();
 	} catch (e) {
 		showError("The simulator server is not available", e);
 	}
-	new App(types);
+	new App(types, info);
 }
 
 if (document.readyState === "loading") {

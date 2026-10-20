@@ -274,14 +274,47 @@ export class InputPanel {
 					);
 				}
 			});
-			if (check) {
-				try {
-					check(input.value);
-				} catch (e) {
-					this.#setInvalid(field, FIELD_TABS[field], message(e));
-				}
+		}
+		this.#checkTextInputs();
+	}
+
+	/** Check the text inputs that have checks, and mark their problems. */
+	#checkTextInputs(): void {
+		const state = this.#inputs.state;
+		for (const [field, check] of Object.entries(FIELD_CHECKS) as [
+			keyof typeof TEXT_INPUTS,
+			(text: string) => void,
+		][]) {
+			window.clearTimeout(this.#timers.get(field));
+			this.#timers.delete(field);
+			try {
+				check(state[field]);
+				this.#setInvalid(field, FIELD_TABS[field]);
+			} catch (e) {
+				this.#setInvalid(field, FIELD_TABS[field], message(e));
 			}
 		}
+	}
+
+	/**
+	 * Show inputs that were all replaced, such as by opening a simulation
+	 * file, and check them.
+	 */
+	reload(): void {
+		const state = this.#inputs.state;
+		for (const [field, selector] of Object.entries(TEXT_INPUTS) as [
+			keyof typeof TEXT_INPUTS,
+			string,
+		][]) {
+			$<HTMLInputElement | HTMLTextAreaElement>(selector).value =
+				state[field];
+		}
+		this.#checkTextInputs();
+		const same = $<HTMLInputElement>("#input-unfiltered-same");
+		same.checked = state.unfilteredSameAsHistory;
+		$("#unfiltered-section").hidden = same.checked;
+		this.#renderUserMetadata();
+		this.#renderEntryPoints();
 	}
 
 	/**

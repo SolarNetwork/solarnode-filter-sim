@@ -24,6 +24,32 @@
 				class="navbar-text small text-body-secondary"
 				id="app-version"
 			></span>
+			<div class="d-flex gap-2 ms-auto">
+				<button
+					type="button"
+					class="btn btn-outline-secondary btn-sm text-nowrap"
+					id="open-simulation-button"
+					title="Open a simulation file, such as one shared with you"
+				>
+					<i class="bi bi-folder2-open" aria-hidden="true"></i>
+					Open
+				</button>
+				<button
+					type="button"
+					class="btn btn-outline-secondary btn-sm text-nowrap"
+					id="save-simulation-button"
+					title="Save the whole simulation to a file, to share it or open it in another browser: the filters, External Settings, and run inputs"
+				>
+					<i class="bi bi-floppy" aria-hidden="true"></i>
+					Save
+				</button>
+			</div>
+			<input
+				type="file"
+				id="simulation-file"
+				accept=".json,application/json"
+				hidden
+			/>
 		</header>
 
 		<main class="sim-layout">
@@ -741,16 +767,17 @@
 					>
 						<div class="card-body">
 							<p class="card-text">
-								Upload node settings CSV to get started, or
-								start by dragging items onto this grid.
+								Upload node settings CSV or a simulation file to
+								get started, or start by dragging items onto
+								this grid.
 							</p>
 							<div class="input-group">
 								<input
 									type="file"
 									class="form-control"
 									id="empty-file"
-									accept=".csv,text/csv"
-									aria-label="Settings CSV file"
+									accept=".csv,text/csv,.json,application/json"
+									aria-label="Settings CSV or simulation file"
 								/>
 								<button
 									type="button"
@@ -978,6 +1005,62 @@
 							data-import-mode="add"
 						>
 							Add
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div
+			class="modal fade"
+			id="open-dialog"
+			tabindex="-1"
+			aria-labelledby="open-dialog-title"
+			aria-hidden="true"
+		>
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h1 class="modal-title fs-5" id="open-dialog-title">
+							Open Simulation
+						</h1>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="Close"
+						></button>
+					</div>
+					<div class="modal-body">
+						<p>
+							Replace this simulation with the one in
+							<strong
+								id="open-dialog-file"
+								class="text-break"
+							></strong
+							>?
+						</p>
+						<p class="small text-body-secondary mb-0">
+							This replaces the filters, External Settings, and
+							run inputs. You can undo the filter and External
+							Settings changes with Ctrl+Z, but not the run
+							inputs. To keep this simulation, save it first.
+						</p>
+					</div>
+					<div class="modal-footer">
+						<button
+							type="button"
+							class="btn btn-secondary"
+							data-bs-dismiss="modal"
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							class="btn btn-danger"
+							data-open-confirm
+						>
+							Replace
 						</button>
 					</div>
 				</div>

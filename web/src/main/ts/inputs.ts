@@ -337,12 +337,8 @@ export class RunInputs extends EventTarget {
 		try {
 			const json = localStorage.getItem(STORAGE_KEY);
 			if (json) {
-				const saved = JSON.parse(json) as Partial<InputsState>;
-				if (saved?.version === 1) {
-					const state = { ...emptyState(), ...saved };
-					if (!Array.isArray(state.userMetadata)) {
-						state.userMetadata = [];
-					}
+				const state = RunInputs.parseState(JSON.parse(json));
+				if (state) {
 					return new RunInputs(state);
 				}
 			}
@@ -352,9 +348,35 @@ export class RunInputs extends EventTarget {
 		return new RunInputs();
 	}
 
+	/**
+	 * Get inputs from saved data, such as a simulation file.
+	 *
+	 * @param data the saved data
+	 * @returns the inputs, with empty values for missing ones, or `undefined`
+	 *     if the data is not valid inputs
+	 */
+	static parseState(data: unknown): InputsState | undefined {
+		if (!isObject(data) || data.version !== 1) {
+			return undefined;
+		}
+		const state = {
+			...emptyState(),
+			...(structuredClone(data) as Partial<InputsState>),
+		};
+		if (!Array.isArray(state.userMetadata)) {
+			state.userMetadata = [];
+		}
+		return state;
+	}
+
 	/** The inputs. */
 	get state(): Readonly<InputsState> {
 		return this.#state;
+	}
+
+	/** `true` if every input is empty. */
+	get isEmpty(): boolean {
+		return JSON.stringify(this.#state) === JSON.stringify(emptyState());
 	}
 
 	/** The paths of the external commands filters may run. */
@@ -381,6 +403,17 @@ export class RunInputs extends EventTarget {
 		return this.#state.userMetadata
 			.map((m) => m.uid.trim())
 			.filter((uid) => uid.length > 0);
+	}
+
+	/**
+	 * Replace all the inputs, such as with a simulation file's.
+	 *
+	 * @param state the new inputs
+	 */
+	replace(state: InputsState): void {
+		this.#update((s) => {
+			Object.assign(s, structuredClone(state));
+		});
 	}
 
 	/**
