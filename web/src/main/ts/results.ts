@@ -246,6 +246,7 @@ function countBy<K>(keys: K[]): Map<K, number> {
  * - `usefinalstate`, to use the final state as the next starting state;
  * - `allowcommand`, with a command path detail, to allow a command that did
  *   not run;
+ * - `report`, to download the flow as a report;
  * - `close`, to close the panel;
  * - `stop`, to stop debug mode.
  *
@@ -418,7 +419,6 @@ export class ResultsPanel extends EventTarget {
 	/* === Header and messages === */
 
 	#header(result: SimulationResult): HTMLElement {
-		const s = result.stats;
 		const header = element(
 			"header",
 			"sim-results-header d-flex align-items-center gap-2 px-3 py-2 border-bottom bg-body-tertiary",
@@ -437,10 +437,7 @@ export class ResultsPanel extends EventTarget {
 		this.#stale.title =
 			"The filters or inputs changed after this run. Run again to see their effect.";
 		this.#stale.hidden = true;
-		const close = element(
-			"button",
-			`btn-close${result.datum.length < 2 ? " ms-auto" : ""}`,
-		);
+		const close = element("button", "btn-close");
 		close.type = "button";
 		close.title = "Close the execution flow";
 		close.setAttribute("aria-label", close.title);
@@ -452,6 +449,7 @@ export class ResultsPanel extends EventTarget {
 			summary,
 			this.#stale,
 			...this.#collapseAllButtons(result),
+			this.#reportButton(result),
 			close,
 		);
 		return header;
@@ -507,7 +505,7 @@ export class ResultsPanel extends EventTarget {
 		this.#stale.hidden = true;
 		const close = element(
 			"button",
-			`btn-close${(this.#result?.datum.length ?? 0) < 2 ? " ms-auto" : ""}`,
+			`btn-close${this.#result ? "" : " ms-auto"}`,
 		);
 		close.type = "button";
 		close.title = "Close the execution flow";
@@ -520,7 +518,12 @@ export class ResultsPanel extends EventTarget {
 			stop,
 			label,
 			this.#stale,
-			...(this.#result ? this.#collapseAllButtons(this.#result) : []),
+			...(this.#result
+				? [
+						...this.#collapseAllButtons(this.#result),
+						this.#reportButton(this.#result),
+					]
+				: []),
 			close,
 		);
 		return { el: header, label, buttons };
@@ -564,6 +567,58 @@ export class ResultsPanel extends EventTarget {
 				true,
 			),
 		];
+	}
+
+	/**
+	 * Get the button that downloads the flow as a report, which emits a
+	 * `report` event: with the `ms-auto` class if it is the first button.
+	 */
+	#reportButton(result: SimulationResult): HTMLButtonElement {
+		const b = element(
+			"button",
+			"btn btn-sm btn-link text-body-secondary p-0 sim-tool",
+		);
+		b.type = "button";
+		b.title = "Download the execution flow as an HTML report";
+		b.setAttribute("aria-label", b.title);
+		if (result.datum.length < 2) {
+			b.classList.add("ms-auto");
+		}
+		const glyph = element("i", "bi bi-file-earmark-arrow-down");
+		glyph.setAttribute("aria-hidden", "true");
+		b.append(glyph);
+		b.addEventListener("click", () =>
+			this.dispatchEvent(new Event("report")),
+		);
+		return b;
+	}
+
+	/**
+	 * Render the flow again for a report: the whole flow, as after a normal
+	 * run, with the same filters, and datum collapsed as they are shown.
+	 *
+	 * @returns the content, or `null` if no result is shown
+	 */
+	reportContent(): ReportContent | null {
+		const result = this.#result;
+		if (!result) {
+			return null;
+		}
+		const body = this.#body(result);
+		body.querySelectorAll<HTMLElement>(".sim-datum").forEach((section) => {
+			const shown = this.#el.querySelector(`#${section.id}`);
+			if (shown) {
+				this.#setCollapsed(
+					section,
+					shown.classList.contains("is-collapsed"),
+				);
+			}
+		});
+		return {
+			summary: summaryText(result),
+			body,
+			collapsible: result.datum.length > 1,
+		};
 	}
 
 	/**

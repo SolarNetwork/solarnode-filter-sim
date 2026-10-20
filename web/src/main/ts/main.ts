@@ -42,6 +42,7 @@ import {
 	SIMULATION_FILE_NAME,
 	simulationJson,
 } from "./session.ts";
+import { buildReport, REPORT_FILE_NAME } from "./report.ts";
 import { initSplitter } from "./splitter.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -359,6 +360,21 @@ class App {
 		}
 	}
 
+	/** Download the Execution Flow as a stand-alone HTML report. */
+	async downloadReport(): Promise<void> {
+		const content = this.#results.reportContent();
+		if (!content) {
+			return;
+		}
+		try {
+			const html = await buildReport(content, await this.#info);
+			download(html, REPORT_FILE_NAME, "text/html");
+			showToast(`The report was saved as ${REPORT_FILE_NAME}.`);
+		} catch (e) {
+			showError("Report not saved", e);
+		}
+	}
+
 	/**
 	 * Run the input datum through the filters, and show the result.
 	 *
@@ -514,6 +530,7 @@ class App {
 				`${command} is now in the Allowed Commands, on the Environment tab. Run again to use it.`,
 			);
 		});
+		results.addEventListener("report", () => void this.downloadReport());
 		results.addEventListener("close", () => this.#closeResults());
 		results.addEventListener("stop", () => this.#stopDebug());
 		$("#run-button").addEventListener("click", () => void this.run());
