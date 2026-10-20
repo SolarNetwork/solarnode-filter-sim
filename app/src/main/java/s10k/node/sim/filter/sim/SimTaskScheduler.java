@@ -37,11 +37,12 @@ import org.springframework.scheduling.Trigger;
  * A {@link TaskScheduler} that runs tasks on the simulated clock.
  *
  * <p>
- * SolarNode filters schedule tasks at a time computed from the system clock,
- * like {@code Instant.now().plus(timeout)}. The scheduler turns that time back
- * into a delay, and makes the task due that long after the simulated clock's
- * current time. The simulation then runs due tasks between datum, in due order,
- * with the simulated clock set to each task's due time.
+ * SolarNode filters schedule tasks at a time computed from the clock they were
+ * given, which in a simulation is the simulated clock, like
+ * {@code clock.instant().plus(timeout)}, so a task is due at the time it is
+ * scheduled for, or now if that time has passed. The simulation runs due tasks
+ * between datum, in due order, with the simulated clock set to each task's due
+ * time.
  * </p>
  *
  * <p>
@@ -49,7 +50,7 @@ import org.springframework.scheduling.Trigger;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class SimTaskScheduler implements TaskScheduler {
 
@@ -139,9 +140,6 @@ public final class SimTaskScheduler implements TaskScheduler {
 
 	}
 
-	/** How close to a whole second a delay snaps to it. */
-	private static final Duration SNAP = Duration.ofMillis(2);
-
 	private final Clock clock;
 	private final Supplier<@Nullable String> owner;
 	private final PriorityQueue<Task> tasks = new PriorityQueue<>();
@@ -222,23 +220,11 @@ public final class SimTaskScheduler implements TaskScheduler {
 	}
 
 	/**
-	 * Turn a system clock time into a simulated time.
-	 *
-	 * <p>
-	 * The delay is measured from the system clock a moment after the filter
-	 * read it, so it comes out slightly short. It is rounded to the nearest
-	 * millisecond, and to a whole second when within {@link #SNAP} of one,
-	 * which also covers filters that read the clock in milliseconds.
-	 * </p>
+	 * Get the time a task is due: its start time, or now if that has passed.
 	 */
-	private Instant simulated(Instant systemTime) {
-		long ms = Math.round(Duration.between(Instant.now(), systemTime).toNanos() / 1_000_000.0);
-		final long seconds = Math.round(ms / 1000.0) * 1000;
-		if ( Math.abs(ms - seconds) <= SNAP.toMillis() ) {
-			ms = seconds;
-		}
+	private Instant due(Instant startTime) {
 		final Instant now = clock.instant();
-		return (ms < 0 ? now : now.plusMillis(ms));
+		return (startTime.isBefore(now) ? now : startTime);
 	}
 
 	@Override
@@ -253,12 +239,12 @@ public final class SimTaskScheduler implements TaskScheduler {
 
 	@Override
 	public ScheduledFuture<?> schedule(Runnable task, Instant startTime) {
-		return add(task, simulated(startTime), null);
+		return add(task, due(startTime), null);
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Instant startTime, Duration period) {
-		return add(task, simulated(startTime), period);
+		return add(task, due(startTime), period);
 	}
 
 	@Override
@@ -268,7 +254,7 @@ public final class SimTaskScheduler implements TaskScheduler {
 
 	@Override
 	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Instant startTime, Duration delay) {
-		return add(task, simulated(startTime), delay);
+		return add(task, due(startTime), delay);
 	}
 
 	@Override
