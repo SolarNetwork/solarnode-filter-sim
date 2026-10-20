@@ -456,6 +456,22 @@ rect.sim-badge {
 	}
 }
 
+// a run or import message: its text can be selected, and copied with a button
+.sim-message {
+	&.list-group-item-action {
+		cursor: pointer;
+	}
+
+	.sim-copy {
+		opacity: 0.5;
+	}
+
+	&:hover .sim-copy,
+	.sim-copy:focus-visible {
+		opacity: 1;
+	}
+}
+
 .sim-group {
 	padding-top: 0.25rem;
 	border-top: 1px solid var(--bs-border-color);

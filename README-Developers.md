@@ -64,7 +64,7 @@ The main TypeScript modules are:
 | `inputPanel.ts` | The input tabs and the Entry Point select. |
 | `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
 | `debug.ts`     | Debug mode: the cursor positions, the node state rebuilt at each filter step, and the state tabs. |
-| `view.ts`      | Rendering helpers shared by the execution flow and debug views. |
+| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
 | `session.ts`   | Simulation files: the workspace and run inputs saved as JSON, to share a simulation or open it in another browser. |

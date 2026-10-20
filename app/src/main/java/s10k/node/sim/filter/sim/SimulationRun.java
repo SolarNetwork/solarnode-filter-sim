@@ -114,9 +114,6 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	/** A limit on how far back to look in the datum history. */
 	private static final int MAX_HISTORY_OFFSET = 1000;
 
-	/** The maximum length of a logged message. */
-	private static final int MAX_LOG_LENGTH = 600;
-
 	/** A limit on the number of scheduled task runs. */
 	private static final int MAX_TASK_RUNS = 10_000;
 
@@ -374,10 +371,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final SimTaskScheduler.Task task = firing;
 		final String filterId = (step != null ? step.filterId : task != null ? task.owner() : creating);
 		final QueuedDatum datum = this.current;
-		final String text = (message.length() > MAX_LOG_LENGTH
-				? message.substring(0, MAX_LOG_LENGTH) + "…"
-				: message);
-		final String key = filterId + "\n" + text;
+		final String text = LogMessages.shorten(message);
+		// repeats of a problem are counted together, with the first one's text
+		final String key = filterId + "\n" + LogMessages.problem(text);
 		final LogRecord existing = logs.get(key);
 		if ( existing != null ) {
 			existing.count++;

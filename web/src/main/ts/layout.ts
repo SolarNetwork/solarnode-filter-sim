@@ -22,7 +22,7 @@ const COLUMN = 150;
 const UNASSIGNED_COLUMN = 100;
 
 /** The vertical distance between rows. */
-const ROW = 150;
+const ROW = 160;
 
 /** How far right of a nested chain its filters start, on the row below it. */
 const NESTED_OFFSET = 70;
@@ -30,8 +30,12 @@ const NESTED_OFFSET = 70;
 /** How far a line runs out of a port before it turns. */
 const TURN = 18;
 
-/** How far above a nested chain's row its line back to the parent runs. */
-const RETURN_GAP = 25;
+/**
+ * How far above a nested chain's row its line back to the parent runs: clear
+ * of the run badges above the row's filters, and of the labels below the
+ * parent's row.
+ */
+const RETURN_GAP = 40;
 
 /** The horizontal space an end connector takes in a row. */
 const END_COLUMN = 80;

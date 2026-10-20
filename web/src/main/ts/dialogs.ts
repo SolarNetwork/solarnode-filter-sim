@@ -1,10 +1,7 @@
 import { Modal, Toast } from "bootstrap";
 import { ApiError } from "./api.ts";
-import type {
-	IgnoredComponent,
-	MessageLevel,
-	SimulationMessage,
-} from "./model.ts";
+import type { IgnoredComponent, SimulationMessage } from "./model.ts";
+import { messageItem } from "./view.ts";
 
 /** What a message dialog shows. */
 export interface MessageDialog {
@@ -19,12 +16,6 @@ export interface MessageDialog {
 	onFilter?: (filterId: string) => void;
 }
 
-const LEVEL_CLASSES: Record<MessageLevel, string> = {
-	Info: "text-bg-secondary",
-	Warning: "text-bg-warning",
-	Error: "text-bg-danger",
-};
-
 function element<K extends keyof HTMLElementTagNameMap>(
 	tag: K,
 	className?: string,
@@ -38,36 +29,6 @@ function element<K extends keyof HTMLElementTagNameMap>(
 		el.textContent = text;
 	}
 	return el;
-}
-
-function messageItem(
-	m: SimulationMessage,
-	dialog: Modal,
-	onFilter?: (filterId: string) => void,
-): HTMLElement {
-	const clickable = !!(m.filterId && onFilter);
-	const item = element(
-		clickable ? "button" : "li",
-		"list-group-item d-flex gap-2 align-items-start" +
-			(clickable ? " list-group-item-action" : ""),
-	);
-	if (item instanceof HTMLButtonElement) {
-		item.type = "button";
-		item.title = "Show the filter";
-		item.addEventListener("click", () => {
-			dialog.hide();
-			onFilter!(m.filterId!);
-		});
-	}
-	item.append(
-		element(
-			"span",
-			`badge ${LEVEL_CLASSES[m.level] ?? "text-bg-secondary"}`,
-			m.level,
-		),
-		element("span", "flex-grow-1", m.message),
-	);
-	return item;
 }
 
 /**
@@ -95,7 +56,22 @@ export function showMessages(options: MessageDialog): void {
 	if (messages.length > 0) {
 		const list = element("div", "list-group mb-3");
 		for (const m of messages) {
-			list.append(messageItem(m, dialog, options.onFilter));
+			const onFilter = options.onFilter;
+			const filterId = m.filterId;
+			list.append(
+				messageItem(
+					m,
+					filterId && onFilter
+						? {
+								title: "Show the filter",
+								show: () => {
+									dialog.hide();
+									onFilter(filterId);
+								},
+							}
+						: undefined,
+				),
+			);
 		}
 		body.append(list);
 	}

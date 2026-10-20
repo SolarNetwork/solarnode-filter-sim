@@ -1,8 +1,18 @@
 /**
- * Rendering helpers shared by the execution flow and debug views.
+ * Rendering helpers shared by the execution flow, debug views, and dialogs.
  */
 
-import type { SamplesInfo } from "./model.ts";
+import type { MessageLevel, SamplesInfo, SimulationMessage } from "./model.ts";
+
+/** The badge class of each message level. */
+const LEVEL_CLASSES: Record<MessageLevel, string> = {
+	Info: "text-bg-secondary",
+	Warning: "text-bg-warning",
+	Error: "text-bg-danger",
+};
+
+/** How long, in milliseconds, a copy button shows that it copied. */
+const COPIED_TIME = 1500;
 
 /** The sample property types, in display order. */
 export const SAMPLE_TYPES = ["i", "a", "s"] as const;
@@ -200,4 +210,105 @@ export function commandName(command: string): string {
 	return i >= 0 && i < command.length - 1
 		? command.substring(i + 1)
 		: command;
+}
+
+/**
+ * Copy text to the clipboard.
+ *
+ * @param text the text
+ * @param fallback an element showing the text, which is selected and copied
+ *     if the clipboard API is unavailable (outside a secure context)
+ * @returns `true` if the text was copied
+ */
+export async function copyText(
+	text: string,
+	fallback: HTMLElement,
+): Promise<boolean> {
+	try {
+		if (navigator.clipboard) {
+			await navigator.clipboard.writeText(text);
+			return true;
+		}
+	} catch (e) {
+		console.warn("Unable to copy to the clipboard", e);
+	}
+	const selection = window.getSelection();
+	if (!selection) {
+		return false;
+	}
+	selection.selectAllChildren(fallback);
+	return document.execCommand("copy");
+}
+
+/**
+ * Render a simulation message as a list group item: its level, its text,
+ * which can be selected, and a button that copies the text.
+ *
+ * @param m the message
+ * @param link what clicking the item does, if anything: a click that ends a
+ *     text selection does nothing
+ * @returns the item
+ */
+export function messageItem(
+	m: SimulationMessage,
+	link?: { title: string; show: () => void },
+): HTMLElement {
+	const item = element(
+		"div",
+		"list-group-item d-flex gap-2 align-items-start sim-message" +
+			(link ? " list-group-item-action" : ""),
+	);
+	const text = element("span", "flex-grow-1 text-break", m.message);
+	const copy = element(
+		"button",
+		"btn btn-sm btn-link text-body-secondary p-0 sim-tool sim-copy",
+	);
+	copy.type = "button";
+	copy.title = "Copy the message";
+	copy.setAttribute("aria-label", copy.title);
+	const icon = element("i", "bi bi-copy");
+	icon.setAttribute("aria-hidden", "true");
+	copy.append(icon);
+	copy.addEventListener("click", async (e) => {
+		e.stopPropagation();
+		if (await copyText(m.message, text)) {
+			icon.className = "bi bi-check-lg";
+			copy.title = "Copied";
+			window.setTimeout(() => {
+				icon.className = "bi bi-copy";
+				copy.title = "Copy the message";
+			}, COPIED_TIME);
+		}
+	});
+	if (link) {
+		item.title = link.title;
+		item.tabIndex = 0;
+		item.addEventListener("click", () => {
+			const selection = window.getSelection();
+			if (
+				selection &&
+				!selection.isCollapsed &&
+				item.contains(selection.anchorNode)
+			) {
+				return;
+			}
+			link.show();
+		});
+		item.addEventListener("keydown", (e) => {
+			if (e.target === item && (e.key === "Enter" || e.key === " ")) {
+				e.preventDefault();
+				link.show();
+			}
+		});
+	}
+	item.append(
+		element(
+			"span",
+			`badge ${LEVEL_CLASSES[m.level] ?? "text-bg-secondary"}`,
+			m.level,
+		),
+		text,
+		copy,
+	);
+	return item;
 }

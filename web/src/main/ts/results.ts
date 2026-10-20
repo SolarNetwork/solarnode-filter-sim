@@ -15,7 +15,6 @@ import type {
 	DatumTrace,
 	FilterStep,
 	FilterStepStatus,
-	MessageLevel,
 	SimulationMessage,
 	SimulationResult,
 	SimulationState,
@@ -28,6 +27,7 @@ import {
 	formatDuration,
 	formatTimestamp,
 	formatValue,
+	messageItem,
 	SAMPLE_TYPES,
 	samplesLine,
 	sameValue,
@@ -92,12 +92,6 @@ const STATUS_HELP: Record<FilterStepStatus, string> = {
 	Error: "The filter threw an error.",
 	Unsupported:
 		"The simulator does not support this filter, so the datum passed through unchanged.",
-};
-
-const LEVEL_CLASSES: Record<MessageLevel, string> = {
-	Info: "text-bg-secondary",
-	Warning: "text-bg-warning",
-	Error: "text-bg-danger",
 };
 
 /**
@@ -509,32 +503,21 @@ export class ResultsPanel extends EventTarget {
 			"list-group list-group-flush small mb-3 border rounded",
 		);
 		for (const m of messages) {
-			const target = m.filterId ?? m.datumSeq;
-			const item = element(
-				target !== undefined ? "button" : "div",
-				"list-group-item d-flex gap-2 align-items-start" +
-					(target !== undefined ? " list-group-item-action" : ""),
-			);
-			if (item instanceof HTMLButtonElement) {
-				item.type = "button";
-				item.title = m.filterId ? "Show the filter" : "Show the datum";
-				item.addEventListener("click", () => {
-					if (m.filterId) {
-						this.#emitFilter(m.filterId);
-					} else if (m.datumSeq !== undefined) {
-						this.#scrollToDatum(m.datumSeq);
-					}
-				});
+			let link: { title: string; show: () => void } | undefined;
+			if (m.filterId) {
+				const filterId = m.filterId;
+				link = {
+					title: "Show the filter",
+					show: () => this.#emitFilter(filterId),
+				};
+			} else if (m.datumSeq !== undefined) {
+				const seq = m.datumSeq;
+				link = {
+					title: "Show the datum",
+					show: () => this.#scrollToDatum(seq),
+				};
 			}
-			item.append(
-				element(
-					"span",
-					`badge ${LEVEL_CLASSES[m.level] ?? "text-bg-secondary"}`,
-					m.level,
-				),
-				element("span", "flex-grow-1", m.message),
-			);
-			list.append(item);
+			list.append(messageItem(m, link));
 		}
 		return list;
 	}
