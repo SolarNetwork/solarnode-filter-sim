@@ -746,14 +746,44 @@ rect.sim-badge {
 	color: var(--bs-secondary-color);
 }
 
-// datum routes, drawn under the links and filters
+// datum routes: lines under the links and filters, number badges over them
 .sim-route {
 	fill: none;
-	stroke-width: 8;
-	stroke-opacity: 0.45;
+	stroke-opacity: 0.75;
 	stroke-linecap: round;
 	stroke-linejoin: round;
 	pointer-events: none;
+
+	// back through the Datum Queue, from the filter that generated the datum
+	&.is-queued {
+		stroke-opacity: 0.5;
+		stroke-dasharray: 6 5;
+		stroke-linecap: butt;
+	}
+}
+
+.sim-route-end {
+	pointer-events: none;
+}
+
+.sim-route.is-dim,
+.sim-route-end.is-dim {
+	opacity: 0.2;
+}
+
+.sim-route-badge {
+	cursor: default;
+
+	&.is-dim {
+		opacity: 0.35;
+	}
+}
+
+.sim-route-badge-text {
+	font-size: 10px;
+	font-weight: 600;
+	text-anchor: middle;
+	dominant-baseline: central;
 }
 
 .is-stale .sim-routes {

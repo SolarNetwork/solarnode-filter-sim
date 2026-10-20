@@ -601,6 +601,16 @@ class App {
 			canvas.zoom(1 / 1.2),
 		);
 		$("#fit-button").addEventListener("click", () => canvas.fit());
+		const routesButton = $<HTMLButtonElement>("#routes-button");
+		const showRoutes = (show: boolean) => {
+			canvas.showRoutes = show;
+			routesButton.classList.toggle("active", show);
+			routesButton.setAttribute("aria-pressed", String(show));
+		};
+		showRoutes(canvas.showRoutes);
+		routesButton.addEventListener("click", () =>
+			showRoutes(!canvas.showRoutes),
+		);
 
 		document.addEventListener("keydown", (e) => {
 			if (document.querySelector(".modal.show")) {

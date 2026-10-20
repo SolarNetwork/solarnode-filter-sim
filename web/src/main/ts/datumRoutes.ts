@@ -133,7 +133,7 @@ export class DatumRoutes {
 			let key: string | undefined;
 			if (depth === 0) {
 				open.length = 0;
-				key = this.#entryKey(step.filterId);
+				key = this.nodeKey(step.filterId);
 			} else {
 				open.length = depth;
 				const chain = open[depth - 1];
@@ -182,10 +182,13 @@ export class DatumRoutes {
 	}
 
 	/**
-	 * Get the node a datum starts at for a filter it entered the Datum Queue's
-	 * filters at: the Main chain, or else the filter's first node.
+	 * Get the node of a filter: the Main chain's node, or else the filter's
+	 * first node.
+	 *
+	 * @param filterId the filter id
+	 * @returns the node key, or `undefined` if the filter is not drawn
 	 */
-	#entryKey(filterId: string): string | undefined {
+	nodeKey(filterId: string): string | undefined {
 		if (filterId === this.#ws.mainChainId && this.#nodes.has(MAIN_KEY)) {
 			return MAIN_KEY;
 		}
