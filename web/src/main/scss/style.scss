@@ -159,6 +159,24 @@ body {
 	}
 }
 
+// the image of a palette item being dragged, which browsers draw from this
+// element out of view; without a background, the links under it show
+.sim-drag-image {
+	position: fixed;
+	top: -10rem;
+	left: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 3rem;
+	height: 3rem;
+	border: 2px dashed var(--bs-primary);
+	border-radius: 0.6rem;
+	background: transparent;
+	color: var(--bs-primary);
+	font-size: 1.4rem;
+}
+
 // the canvas, above the execution flow after a run
 .sim-center {
 	display: grid;

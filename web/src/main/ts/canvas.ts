@@ -466,17 +466,22 @@ export class Canvas extends EventTarget {
 	}
 
 	/**
-	 * Zoom around the middle of the canvas.
+	 * Zoom around the top left corner of the visible part of the flow chart,
+	 * so what is in view stays in view, or else around the middle of the
+	 * canvas.
 	 *
 	 * @param factor the zoom factor, over 1 to zoom in
 	 */
 	zoom(factor: number): void {
-		const r = this.#el.getBoundingClientRect();
-		const center = this.paper.clientToLocalPoint(
-			r.left + r.width / 2,
-			r.top + r.height / 2,
+		const view = this.paper.clientToLocalRect(
+			this.#el.getBoundingClientRect(),
 		);
-		this.#zoomAt(this.paper.scale().sx * factor, center);
+		const content = this.paper.getContentArea({ useModelGeometry: true });
+		const visible = content.width > 0 ? view.intersect(content) : null;
+		this.#zoomAt(
+			this.paper.scale().sx * factor,
+			visible ? visible.topLeft() : view.center(),
+		);
 	}
 
 	/* === Cells === */
@@ -648,6 +653,10 @@ export class Canvas extends EventTarget {
 				source: { id: link.source.key, port: link.source.port },
 				target: { id: link.target.key, port: link.target.port },
 				attrs: { line: { stroke: this.#colors.flow } },
+				// the layout routes the lines between rows itself
+				...(link.vertices
+					? { vertices: link.vertices, router: { name: "normal" } }
+					: {}),
 				sim: link,
 			});
 		}

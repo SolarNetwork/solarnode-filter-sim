@@ -27,6 +27,12 @@ const ROW = 150;
 /** How far right of a nested chain its filters start, on the row below it. */
 const NESTED_OFFSET = 70;
 
+/** How far a line runs out of a port before it turns. */
+const TURN = 18;
+
+/** How far above a nested chain's row its line back to the parent runs. */
+const RETURN_GAP = 25;
+
 /** The horizontal space an end connector takes in a row. */
 const END_COLUMN = 80;
 
@@ -86,6 +92,8 @@ export interface FlowLink {
 	target: PortRef;
 	/** Where a filter dropped on the link is inserted. */
 	slot: ChainSlot;
+	/** The points the line goes through, if it is not routed automatically. */
+	vertices?: Point[];
 }
 
 /** A line from a nested chain to the filter after it in its parent chain. */
@@ -106,11 +114,13 @@ export interface Drawing {
 /**
  * Lay out the workspace.
  *
- * The Main chain and its filters form the top row. A nested chain's filters
- * form a row below the chain, ending in the chain's end connector, which links
- * back up to the next filter of the parent chain. Filters that are not in a
- * chain are drawn at their saved position, or else in a row below everything
- * else. A filter in several chains is drawn once for each.
+ * The Main chain and its filters form the top row. A nested chain takes one
+ * place in its parent's row, and its filters form a row below, ending in the
+ * chain's end connector, which links back up to the next filter of the parent
+ * chain. Each nested chain's rows form a band below its parent's row, with
+ * later nested chains nearer the parent, so the lines never cross. Filters
+ * that are not in a chain are drawn at their saved position, or else in a row
+ * below everything else. A filter in several chains is drawn once for each.
  *
  * @param ws the workspace
  * @returns the drawing
@@ -120,14 +130,22 @@ export function layout(ws: Workspace): Drawing {
 	const drawn = new Set<string>();
 	let bottom = ORIGIN.y;
 
-	const flow = (source: PortRef, target: PortRef, slot: ChainSlot) => {
-		drawing.links.push({
+	const flow = (
+		source: PortRef,
+		target: PortRef,
+		slot: ChainSlot,
+		vertices?: Point[],
+	): FlowLink => {
+		const link: FlowLink = {
 			kind: "flow",
 			key: `${source.key}>${target.key}`,
 			source,
 			target,
 			slot,
-		});
+			vertices,
+		};
+		drawing.links.push(link);
+		return link;
 	};
 
 	const continuation = (sourceKey: string, targetKey: string) => {
@@ -139,10 +157,21 @@ export function layout(ws: Workspace): Drawing {
 		});
 	};
 
+	/** The space a chain's drawing takes. */
+	interface Extent {
+		/** The x position after the drawing. */
+		right: number;
+		/** The y position of the drawing's lowest row. */
+		bottom: number;
+		/** The x position of the chain's end connector. */
+		endX: number;
+	}
+
 	/**
-	 * Draw a chain's filters in a row, followed by its end connector.
+	 * Draw a chain's filters in a row, followed by its end connector, with the
+	 * rows of its nested chains below.
 	 *
-	 * @returns the x position after the end connector
+	 * @returns the space the chain's drawing takes
 	 */
 	const drawChain = (
 		chainId: string,
@@ -152,12 +181,45 @@ export function layout(ws: Workspace): Drawing {
 		y: number,
 		path: string[],
 		endOutSlot?: ChainSlot,
-	): number => {
+	): Extent => {
 		const members = ws.members(chainId);
+		/** The middle of the row, where the ports are. */
+		const portY = y + NODE_SIZE / 2;
+		/** A nested chain to draw below the row. */
+		interface Nested {
+			memberId: string;
+			key: string;
+			x: number;
+			next: ChainSlot;
+			/** The link from the chain's end to the next filter in this row. */
+			back?: FlowLink;
+		}
+		const nested: Nested[] = [];
 		let prev = start;
 		let x = x0;
 		let continuationFrom: string | undefined;
 		bottom = Math.max(bottom, y);
+
+		// a nested chain's line runs down from its filters port to the row
+		const vertices =
+			start.port === "filters"
+				? [{ x: x0 - NESTED_OFFSET + NODE_SIZE / 2, y: portY }]
+				: undefined;
+		/** Link to the next item in the row. */
+		const flowTo = (key: string, slot: ChainSlot) => {
+			const link = flow(
+				prev,
+				{ key, port: "in" },
+				slot,
+				prev === start ? vertices : undefined,
+			);
+			if (continuationFrom) {
+				continuation(continuationFrom, key);
+				continuationFrom = undefined;
+				nested[nested.length - 1].back = link;
+			}
+		};
+
 		members.forEach((memberId, index) => {
 			const key = `${chainKey}/${index}`;
 			const slot: ChainSlot = { chainId, index };
@@ -176,11 +238,7 @@ export function layout(ws: Workspace): Drawing {
 					loop: false,
 					parentKey: chainKey,
 				});
-				flow(prev, { key, port: "in" }, slot);
-				if (continuationFrom) {
-					continuation(continuationFrom, key);
-					continuationFrom = undefined;
-				}
+				flowTo(key, slot);
 				prev = { key, port: "out" };
 				x += UNASSIGNED_COLUMN;
 				return;
@@ -206,28 +264,15 @@ export function layout(ws: Workspace): Drawing {
 				parentKey: chainKey,
 			});
 			drawn.add(memberId);
-			flow(prev, { key, port: "in" }, slot);
-			if (continuationFrom) {
-				continuation(continuationFrom, key);
-				continuationFrom = undefined;
-			}
+			flowTo(key, slot);
 			if (expand) {
-				const endX = drawChain(
-					memberId,
-					key,
-					{ key, port: "filters" },
-					x + NESTED_OFFSET,
-					y + ROW,
-					[...path, memberId],
-					next,
-				);
+				nested.push({ memberId, key, x, next });
 				prev = { key: `${key}/end`, port: "out" };
 				continuationFrom = key;
-				x = Math.max(x + COLUMN, endX);
 			} else {
 				prev = { key, port: "out" };
-				x += COLUMN;
 			}
+			x += COLUMN;
 		});
 		const endKey = `${chainKey}/end`;
 		drawing.ends.push({
@@ -239,15 +284,42 @@ export function layout(ws: Workspace): Drawing {
 			outSlot: endOutSlot,
 			parentKey: chainKey,
 		});
-		flow(
-			prev,
-			{ key: endKey, port: "in" },
-			{ chainId, index: members.length },
-		);
-		if (continuationFrom) {
-			continuation(continuationFrom, endKey);
+		flowTo(endKey, { chainId, index: members.length });
+
+		// the nested chains, the last one nearest this row
+		let right = x + END_COLUMN;
+		let rowY = y + ROW;
+		let lowest = y;
+		for (const n of [...nested].reverse()) {
+			const extent = drawChain(
+				n.memberId,
+				n.key,
+				{ key: n.key, port: "filters" },
+				n.x + NESTED_OFFSET,
+				rowY,
+				[...path, n.memberId],
+				n.next,
+			);
+			if (n.back) {
+				// from the end, up above the chain's row, and over to the next item
+				const out = extent.endX + END_SIZE + TURN;
+				const into = drawing.nodes.find(
+					(f) => f.key === n.back!.target.key,
+				);
+				const target = into?.position.x ?? x;
+				const turnY = rowY - RETURN_GAP;
+				n.back.vertices = [
+					{ x: out, y: rowY + NODE_SIZE / 2 },
+					{ x: out, y: turnY },
+					{ x: target - TURN, y: turnY },
+					{ x: target - TURN, y: portY },
+				];
+			}
+			right = Math.max(right, extent.right);
+			lowest = extent.bottom;
+			rowY = extent.bottom + ROW;
 		}
-		return x + END_COLUMN;
+		return { right, bottom: lowest, endX: x };
 	};
 
 	/**
@@ -286,7 +358,7 @@ export function layout(ws: Workspace): Drawing {
 				position.x + NESTED_OFFSET,
 				position.y + ROW,
 				[filterId],
-			),
+			).right,
 		);
 	};
 

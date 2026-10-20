@@ -108,8 +108,35 @@ function paletteItem(
 		if (e.dataTransfer) {
 			e.dataTransfer.setData(mime, data);
 			e.dataTransfer.effectAllowed = "copy";
+			const ghost = dragImage(iconName);
+			e.dataTransfer.setDragImage(
+				ghost,
+				ghost.offsetWidth / 2,
+				ghost.offsetHeight / 2,
+			);
 		}
 	});
 	item.addEventListener("click", onAdd);
 	return item;
+}
+
+/**
+ * Get the image to drag a palette item with: its icon in an outline without a
+ * background, so the canvas links under it stay visible, with the pointer in
+ * the middle.
+ *
+ * @param iconName the icon name
+ * @returns the image element, which is in the document but out of view
+ */
+function dragImage(iconName: string): HTMLElement {
+	let ghost = document.querySelector<HTMLElement>(".sim-drag-image");
+	if (!ghost) {
+		ghost = document.createElement("div");
+		ghost.className = "sim-drag-image";
+		ghost.setAttribute("aria-hidden", "true");
+		ghost.append(document.createElement("i"));
+		document.body.append(ghost);
+	}
+	ghost.firstElementChild!.className = `bi bi-${iconName}`;
+	return ghost;
 }
