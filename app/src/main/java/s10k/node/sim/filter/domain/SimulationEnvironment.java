@@ -47,11 +47,15 @@ import tools.jackson.databind.JsonNode;
  * @param datumMetadata
  *        datum stream (source) metadata, as a map of source IDs to JSON objects
  *        in the SolarNetwork metadata format, or {@code null} for none
+ * @param nodeLocation
+ *        the node's location, which the Location Service provides, or
+ *        {@code null} for none
  * @author matt
  * @version 1.0
  */
 public record SimulationEnvironment(@Nullable List<String> opModes, @Nullable String localStateCsv,
 		@Nullable JsonNode nodeMetadata, @Nullable List<UserMetadataConfig> userMetadata,
-		@Nullable Map<String, String> placeholders, @Nullable Map<String, JsonNode> datumMetadata) {
+		@Nullable Map<String, String> placeholders, @Nullable Map<String, JsonNode> datumMetadata,
+		@Nullable NodeLocation nodeLocation) {
 
 }

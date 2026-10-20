@@ -20,6 +20,7 @@
 package s10k.node.sim.filter.sim;
 
 import java.util.Iterator;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Level;
@@ -38,10 +39,11 @@ import ch.qos.logback.core.spi.FilterReply;
  *
  * <p>
  * Filters only log these problems, so without this a simulation result would
- * not show them. A Logback appender on the {@code net.solarnetwork} logger
- * passes events from a thread running a simulation to that simulation. A filter
- * on the root logger's appenders, such as the console, drops those events, as
- * the simulation result reports them instead.
+ * not show them. A Logback appender on the {@code net.solarnetwork} logger, and
+ * on the logger of the simulator's own filter subclasses (whose loggers are
+ * named after their classes), passes events from a thread running a simulation
+ * to that simulation. A filter on the root logger's appenders, such as the
+ * console, drops those events, as the simulation result reports them instead.
  * </p>
  *
  * @author matt
@@ -65,8 +67,9 @@ public final class FilterLogCapture {
 
 	}
 
-	/** The logger the appender is added to. */
-	private static final String LOGGER_NAME = "net.solarnetwork";
+	/** The loggers the appender is added to. */
+	private static final List<String> LOGGER_NAMES = List.of("net.solarnetwork",
+			"s10k.node.sim.filter.registry");
 
 	/** The appender name. */
 	private static final String APPENDER_NAME = "simulation-capture";
@@ -89,7 +92,15 @@ public final class FilterLogCapture {
 			return false;
 		}
 		final String name = event.getLoggerName();
-		return (name != null && (name.equals(LOGGER_NAME) || name.startsWith(LOGGER_NAME + ".")));
+		if ( name == null ) {
+			return false;
+		}
+		for ( String logger : LOGGER_NAMES ) {
+			if ( name.equals(logger) || name.startsWith(logger + ".") ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static final class CaptureAppender extends AppenderBase<ILoggingEvent> {
@@ -141,13 +152,15 @@ public final class FilterLogCapture {
 		if ( !(LoggerFactory.getILoggerFactory() instanceof LoggerContext ctx) ) {
 			return;
 		}
-		final Logger logger = ctx.getLogger(LOGGER_NAME);
-		if ( logger.getAppender(APPENDER_NAME) == null ) {
-			final CaptureAppender appender = new CaptureAppender();
-			appender.setName(APPENDER_NAME);
-			appender.setContext(ctx);
-			appender.start();
-			logger.addAppender(appender);
+		for ( String name : LOGGER_NAMES ) {
+			final Logger logger = ctx.getLogger(name);
+			if ( logger.getAppender(APPENDER_NAME) == null ) {
+				final CaptureAppender appender = new CaptureAppender();
+				appender.setName(APPENDER_NAME);
+				appender.setContext(ctx);
+				appender.start();
+				logger.addAppender(appender);
+			}
 		}
 		final Logger root = ctx.getLogger(Logger.ROOT_LOGGER_NAME);
 		for ( Iterator<Appender<ILoggingEvent>> itr = root.iteratorForAppenders(); itr.hasNext(); ) {

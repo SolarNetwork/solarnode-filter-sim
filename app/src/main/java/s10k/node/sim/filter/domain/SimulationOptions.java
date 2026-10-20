@@ -21,6 +21,7 @@ package s10k.node.sim.filter.domain;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,12 +50,17 @@ import org.jspecify.annotations.Nullable;
  *        how long the simulated clock keeps running after the last input datum,
  *        so that scheduled tasks due by then run, or {@code null} to stop after
  *        the last datum
+ * @param allowedCommands
+ *        the external commands filters may run, as the exact command paths, in
+ *        addition to those the simulator is configured to allow, or
+ *        {@code null} for none
  * @author matt
  * @version 1.0
  */
 public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer maxGenerationDepth,
 		@Nullable Long timeoutMs, @Nullable Detail detail, @Nullable Instant startDate,
-		@Nullable Duration datumInterval, @Nullable Duration runAfter) {
+		@Nullable Duration datumInterval, @Nullable Duration runAfter,
+		@Nullable List<String> allowedCommands) {
 
 	/** The default {@code maxDatum} value. */
 	public static final int DEFAULT_MAX_DATUM = 1000;
@@ -70,7 +76,7 @@ public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer ma
 
 	/** The default options. */
 	public static final SimulationOptions DEFAULTS = new SimulationOptions(null, null, null, null, null,
-			null, null);
+			null, null, null);
 
 	/**
 	 * The level of detail to include in a simulation result.

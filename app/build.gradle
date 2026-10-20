@@ -103,6 +103,7 @@ dependencies {
 		exclude group: 'commons-io', module: 'commons-io'
 		exclude group: 'com.fasterxml.jackson.dataformat', module: 'jackson-dataformat-cbor'
 		exclude group: 'net.solarnetwork.common', module: 'net.solarnetwork.common.osgi'
+		exclude group: 'net.solarnetwork.node', module: 'net.solarnetwork.node.dao.jdbc'
 		exclude group: 'org.apache.commons', module: 'commons-compress'
 		exclude group: 'org.greenbytes.http', module: 'structured-fields'
 		exclude group: 'org.osgi', module: 'org.osgi.namespace.implementation'
@@ -120,6 +121,9 @@ dependencies {
 	implementation(libs.sn.node, snExcludes)
 	implementation(libs.sn.node.datum.filter.standard, snExcludes)
 	implementation(libs.sn.node.datum.filter.tariff, snExcludes)
+	implementation(libs.sn.node.datum.filter.pvlib, snExcludes)
+	implementation(libs.sn.node.metrics, snExcludes)
+	implementation(libs.sn.node.metrics.harvester, snExcludes)
 
 	// used by the SolarNetwork bundles (which declare older versions) and for settings CSV
 	implementation libs.fastcsv

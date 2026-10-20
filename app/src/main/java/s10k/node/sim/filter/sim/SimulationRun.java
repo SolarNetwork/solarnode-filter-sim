@@ -44,11 +44,13 @@ import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
+import net.solarnetwork.domain.SimpleLocation;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamplesOperations;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.domain.LocalState;
 import net.solarnetwork.node.domain.datum.NodeDatum;
+import net.solarnetwork.node.metrics.domain.Metric;
 import net.solarnetwork.node.runtime.DatumHistory;
 import net.solarnetwork.node.runtime.DefaultLocalStateService;
 import net.solarnetwork.node.runtime.DefaultOperationalModesService;
@@ -63,6 +65,8 @@ import s10k.node.sim.filter.domain.DatumInfo;
 import s10k.node.sim.filter.domain.DatumOrigin;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.LocalStateInfo;
+import s10k.node.sim.filter.domain.MetricInfo;
+import s10k.node.sim.filter.domain.NodeLocation;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationEnvironment;
 import s10k.node.sim.filter.domain.SimulationHistory;
@@ -179,13 +183,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 *        the filter type registry
 	 * @param expressionService
 	 *        the expression service
+	 * @param allowedCommands
+	 *        the external commands filters may run, in addition to those the
+	 *        request allows
 	 * @param request
 	 *        the request
 	 * @throws SimulationException
 	 *         if the request input datum or metadata are not valid
 	 */
 	SimulationRun(FilterTypeRegistry registry, ExpressionService expressionService,
-			SimulationRequest request) {
+			List<String> allowedCommands, SimulationRequest request) {
 		super();
 		this.registry = registry;
 		this.request = request;
@@ -193,9 +200,14 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		this.input = parseInput();
 		final NodeDatum first = (input.isEmpty() ? null : input.getFirst());
 		final Instant firstDate = (first != null ? first.getTimestamp() : null);
+		final List<String> commands = new ArrayList<>(allowedCommands);
+		if ( options.allowedCommands() != null ) {
+			commands.addAll(options.allowedCommands());
+		}
 		this.context = new SimulationContext(firstDate != null ? firstDate : defaultStartDate(),
-				expressionService, this, nodeMetadata());
+				expressionService, this, nodeMetadata(), commands);
 		registerUserMetadataServices();
+		loadNodeLocation();
 		loadPlaceholders();
 		loadDatumMetadata();
 		this.tracer = new FilterTracer(context.opModesService());
@@ -205,6 +217,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		});
 		context.localStateDao().setChangeListener(tracer::localStateChanged);
 		context.instructionService().setListener(tracer::instructionIssued);
+		context.metricDao().setListener(m -> tracer.metricSaved(metricInfo(m)));
+		context.commandExecutor().setListener(tracer::commandRun);
 	}
 
 	/**
@@ -714,6 +728,19 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		}
 	}
 
+	private void loadNodeLocation() {
+		final SimulationEnvironment env = request.environment();
+		final NodeLocation loc = (env != null ? env.nodeLocation() : null);
+		if ( loc == null ) {
+			return;
+		}
+		final SimpleLocation location = new SimpleLocation();
+		location.setLatitude(loc.latitude());
+		location.setLongitude(loc.longitude());
+		location.setElevation(loc.elevation());
+		context.locationService().updateNodeLocation(location);
+	}
+
 	private void loadPlaceholders() {
 		final SimulationEnvironment env = request.environment();
 		final Map<String, String> placeholders = (env != null ? env.placeholders() : null);
@@ -988,8 +1015,17 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			localState.add(new LocalStateInfo(s.getKey(), s.getType().name(), s.getValue(),
 					s.getCreated(), s.getModified()));
 		}
-		return new SimulationState(modes, localState, includeCsv ? localStateCsv() : null,
+		final Collection<Metric> savedMetrics = context.metricDao().getAll(null);
+		final List<MetricInfo> metrics = new ArrayList<>(savedMetrics.size());
+		for ( Metric m : savedMetrics ) {
+			metrics.add(metricInfo(m));
+		}
+		return new SimulationState(modes, localState, metrics, includeCsv ? localStateCsv() : null,
 				history(context.datumService()), history(context.datumService().unfiltered()), queued);
+	}
+
+	private static MetricInfo metricInfo(Metric m) {
+		return new MetricInfo(m.getTimestamp(), m.getType(), m.getName(), m.getValue());
 	}
 
 	private String localStateCsv() {

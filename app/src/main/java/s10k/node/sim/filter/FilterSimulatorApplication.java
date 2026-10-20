@@ -16,6 +16,12 @@ public class FilterSimulatorApplication {
 	 */
 	public static final int NATIVE_DEFAULT_PORT = 2008;
 
+	/**
+	 * The address the native executable listens on by default: only the local
+	 * machine, as simulations can run external commands.
+	 */
+	public static final String NATIVE_DEFAULT_ADDRESS = "127.0.0.1";
+
 	public static void main(String[] args) {
 		InterfaceInitializer.initialize();
 		SpringApplication app = new SpringApplication(FilterSimulatorApplication.class);
@@ -23,10 +29,11 @@ public class FilterSimulatorApplication {
 		app.setBannerMode(Banner.Mode.OFF);
 		if ( NativeDetector.inNativeImage() ) {
 			// default properties have the lowest precedence, so --server.port,
-			// --logging.level.root, and the like still override these; the root level
-			// stays at WARN, not OFF, as FilterLogCapture needs filter warnings logged
-			app.setDefaultProperties(
-					Map.of("server.port", NATIVE_DEFAULT_PORT, "logging.level.root", "WARN"));
+			// --server.address, --logging.level.root, and the like still override these;
+			// the root level stays at WARN, not OFF, as FilterLogCapture needs filter
+			// warnings logged
+			app.setDefaultProperties(Map.of("server.port", NATIVE_DEFAULT_PORT, "server.address",
+					NATIVE_DEFAULT_ADDRESS, "logging.level.root", "WARN"));
 		}
 		app.run(args);
 	}

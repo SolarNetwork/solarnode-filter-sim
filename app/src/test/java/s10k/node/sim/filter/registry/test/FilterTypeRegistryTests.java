@@ -54,8 +54,8 @@ public class FilterTypeRegistryTests {
 		// THEN
 		// @formatter:off
 		then(types)
-			.as("All standard user filters, the filter chain, and the Tariff filter are supported")
-			.hasSize(17)
+			.as("All user filters, and the filter chain, are supported")
+			.hasSize(19)
 			.allSatisfy(t -> {
 				then(t.name())
 					.as("Name from message source %s", t.factoryUid())

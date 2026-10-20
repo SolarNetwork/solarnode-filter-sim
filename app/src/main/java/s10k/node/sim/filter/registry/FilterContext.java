@@ -22,7 +22,9 @@ package s10k.node.sim.filter.registry;
 import java.time.Clock;
 import java.util.List;
 import org.springframework.scheduling.TaskScheduler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import net.solarnetwork.node.dao.TransientSettingDao;
+import net.solarnetwork.node.metrics.dao.MetricDao;
 import net.solarnetwork.node.reactor.InstructionExecutionService;
 import net.solarnetwork.node.reactor.ReactorService;
 import net.solarnetwork.node.service.DatumMetadataService;
@@ -95,6 +97,28 @@ public interface FilterContext {
 	 * @return the DAO
 	 */
 	TransientSettingDao transientSettingDao();
+
+	/**
+	 * Get the metric DAO, for filters that save metrics.
+	 *
+	 * @return the DAO
+	 */
+	MetricDao metricDao();
+
+	/**
+	 * Get the executor for external commands that filters run.
+	 *
+	 * @return the executor
+	 */
+	CommandExecutor commandExecutor();
+
+	/**
+	 * Get the node's Jackson 2 object mapper, like the SolarNode
+	 * {@code ObjectMapperService} with the {@code function=node} property.
+	 *
+	 * @return the object mapper
+	 */
+	ObjectMapper nodeObjectMapper();
 
 	/**
 	 * Get all the filters of the simulation, for filter chains to find their

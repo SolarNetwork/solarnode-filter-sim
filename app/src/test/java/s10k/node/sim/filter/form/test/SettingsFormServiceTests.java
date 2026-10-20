@@ -319,10 +319,48 @@ public class SettingsFormServiceTests {
 	}
 
 	@Test
+	public void poaCalculator() {
+		// WHEN
+		SettingsForm form = form(StandardFilterTypes.PVLIB_POA, "uid", "POA");
+
+		// THEN
+		// @formatter:off
+		then(field(form.fields(), "command"))
+			.as("Default command where the sn-pvlib package installs it on a node")
+			.returns("/var/lib/solarnode/bin/ghi-to-poa", from(SettingField::defaultValue))
+			.returns("Command", from(SettingField::label))
+			;
+		then(field(form.fields(), "commandTimeoutSeconds"))
+			.as("Command timeout from pvlib 2.2")
+			.returns("60", from(SettingField::defaultValue))
+			.returns("Command Timeout", from(SettingField::label))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void metricHarvester() {
+		// WHEN
+		SettingsForm form = form(StandardFilterTypes.METRIC_HARVESTER, "uid", "MH",
+				"propertyConfigsCount", "1");
+
+		// THEN
+		// @formatter:off
+		then(field(form.fields(), "propertyConfigs[0].metricName"))
+			.as("Property config label from the prefixed message source")
+			.extracting(SettingField::label)
+			.asString()
+			.isNotBlank()
+			.isNotEqualTo("propertyConfigs[0].metricName")
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void unsupportedFilterType() {
 		// THEN
 		// @formatter:off
-		thenThrownBy(() -> form("net.solarnetwork.node.datum.filter.pvlib.poa"))
+		thenThrownBy(() -> form("net.solarnetwork.node.datum.filter.example"))
 			.as("Unsupported filter type")
 			.isInstanceOf(SimulationException.class)
 			.hasMessageContaining("not supported")

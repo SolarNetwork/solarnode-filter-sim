@@ -170,7 +170,7 @@ public class SimulationEngineTests {
 	private static SimulationEnvironment metadataEnvironment(JsonNode nodeMetadata,
 			UserMetadataConfig... userMetadata) {
 		return new SimulationEnvironment(null, null, nodeMetadata,
-				userMetadata.length > 0 ? List.of(userMetadata) : null, null, null);
+				userMetadata.length > 0 ? List.of(userMetadata) : null, null, null, null);
 	}
 
 	private static Object rate(DatumTrace trace) {
@@ -261,7 +261,7 @@ public class SimulationEngineTests {
 		SimulationEnvironment env = new SimulationEnvironment(null, """
 				Key,Created,Modified,Type,Value
 				counter,,,Int64,41
-				""", null, null, null, null);
+				""", null, null, null, null, null);
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						expression("exp", "EXP", "count",
@@ -312,7 +312,7 @@ public class SimulationEngineTests {
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
 				List.of(json(METER_DATUM)), null,
-				new SimulationEnvironment(List.of(), null, null, null, null, null), null);
+				new SimulationEnvironment(List.of(), null, null, null, null, null, null), null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -343,7 +343,7 @@ public class SimulationEngineTests {
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
 				List.of(json(METER_DATUM)), null,
-				new SimulationEnvironment(List.of(" BOOST "), null, null, null, null, null), null);
+				new SimulationEnvironment(List.of(" BOOST "), null, null, null, null, null, null), null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -482,7 +482,7 @@ public class SimulationEngineTests {
 		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "splitA", "splitB"),
 				splitTo("splitA", "/meter/1", "/meter/2"), splitTo("splitB", "/meter/2", "/meter/1")),
 				List.of(json(METER_DATUM)), null, null,
-				new SimulationOptions(null, 3, null, null, null, null, null));
+				new SimulationOptions(null, 3, null, null, null, null, null, null));
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -508,9 +508,9 @@ public class SimulationEngineTests {
 	@Test
 	public void unsupportedFilter() {
 		// GIVEN
-		SimulationRequest req = request(List.of(chain("main", "Chain - Main", "poa"),
-				new FilterConfig("poa", "net.solarnetwork.node.datum.filter.pvlib.poa", null,
-						Map.of("uid", "POA"), null)),
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "poa"), new FilterConfig("poa",
+						"net.solarnetwork.node.datum.filter.example", null, Map.of("uid", "POA"), null)),
 				METER_DATUM);
 
 		// WHEN
@@ -623,7 +623,7 @@ public class SimulationEngineTests {
 				List.of(chain("main", "Chain - Main", "exp"), expression("exp", "EXP", "x", "1")),
 				List.of(json(METER_DATUM), json(METER_DATUM.replace("00:00:00Z", "00:01:00Z"))), null,
 				null, new SimulationOptions(null, null, null, SimulationOptions.Detail.Debug, null, null,
-						null));
+						null, null));
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -921,7 +921,7 @@ public class SimulationEngineTests {
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "timeout"), timeout("timeout", 60_000)),
 				List.of(json(meterDatum("2025-10-01 00:00:00Z"))), null, null,
-				new SimulationOptions(null, null, null, null, null, null, Duration.ofMinutes(2)));
+				new SimulationOptions(null, null, null, null, null, null, Duration.ofMinutes(2), null));
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -949,7 +949,7 @@ public class SimulationEngineTests {
 		ObjectNode meta = JSON.createObjectNode();
 		meta.putObject("pm").putObject("panel").put("efficiency", 0.2);
 		SimulationEnvironment env = new SimulationEnvironment(null, null, null, null,
-				Map.of("factor", "2"), Map.of("/meter/1", meta));
+				Map.of("factor", "2"), Map.of("/meter/1", meta), null);
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						expression("exp", "EXP", "doubled", "watts * factor", "panel",

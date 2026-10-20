@@ -19,6 +19,7 @@
 
 package s10k.node.sim.filter.sim;
 
+import java.util.List;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
@@ -39,6 +40,19 @@ public class SimulationEngine {
 
 	private final FilterTypeRegistry registry;
 	private final ExpressionService expressionService;
+	private final List<String> allowedCommands;
+
+	/**
+	 * Constructor, allowing only the external commands each request allows.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param expressionService
+	 *        the expression service filters use
+	 */
+	public SimulationEngine(FilterTypeRegistry registry, ExpressionService expressionService) {
+		this(registry, expressionService, List.of());
+	}
 
 	/**
 	 * Constructor.
@@ -47,11 +61,16 @@ public class SimulationEngine {
 	 *        the filter type registry
 	 * @param expressionService
 	 *        the expression service filters use
+	 * @param allowedCommands
+	 *        the paths of the external commands filters may run in every
+	 *        simulation, in addition to those a request allows
 	 */
-	public SimulationEngine(FilterTypeRegistry registry, ExpressionService expressionService) {
+	public SimulationEngine(FilterTypeRegistry registry, ExpressionService expressionService,
+			List<String> allowedCommands) {
 		super();
 		this.registry = registry;
 		this.expressionService = expressionService;
+		this.allowedCommands = List.copyOf(allowedCommands);
 	}
 
 	/**
@@ -67,7 +86,7 @@ public class SimulationEngine {
 		if ( request.config() == null ) {
 			throw new SimulationException("The filter configuration is required.");
 		}
-		return new SimulationRun(registry, expressionService, request).run();
+		return new SimulationRun(registry, expressionService, allowedCommands, request).run();
 	}
 
 }

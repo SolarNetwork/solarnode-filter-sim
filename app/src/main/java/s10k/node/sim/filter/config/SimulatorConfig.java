@@ -19,6 +19,8 @@
 
 package s10k.node.sim.filter.config;
 
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportRuntimeHints;
@@ -68,12 +70,17 @@ public class SimulatorConfig {
 	 *        the filter type registry
 	 * @param expressionService
 	 *        the expression service
+	 * @param allowedCommands
+	 *        the paths of the external commands filters may run in every
+	 *        simulation, from the {@code sim.commands.allowed} property, in
+	 *        addition to those each request allows
 	 * @return the engine
 	 */
 	@Bean
 	public SimulationEngine simulationEngine(FilterTypeRegistry registry,
-			SpelExpressionService expressionService) {
-		return new SimulationEngine(registry, expressionService);
+			SpelExpressionService expressionService,
+			@Value("${sim.commands.allowed:}") List<String> allowedCommands) {
+		return new SimulationEngine(registry, expressionService, allowedCommands);
 	}
 
 	/**

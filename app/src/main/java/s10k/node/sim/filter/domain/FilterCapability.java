@@ -42,4 +42,13 @@ public enum FilterCapability {
 	 */
 	ScheduledTasks,
 
+	/** The filter saves metrics, which do not change the datum. */
+	Metrics,
+
+	/**
+	 * The filter runs an external command, which the simulator runs only when
+	 * it is allowed.
+	 */
+	Commands,
+
 }

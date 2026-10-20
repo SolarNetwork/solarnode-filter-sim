@@ -31,6 +31,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
 import net.solarnetwork.domain.tariff.TemporalTariffEvaluator;
+import net.solarnetwork.node.Constants;
 import net.solarnetwork.node.datum.filter.control.ControlUpdaterDatumFilterService;
 import net.solarnetwork.node.datum.filter.expr.ExpressionDatumFilterService;
 import net.solarnetwork.node.datum.filter.instr.InstructorDatumFilterService;
@@ -48,6 +49,7 @@ import net.solarnetwork.node.datum.filter.std.UnchangedDatumFilterService;
 import net.solarnetwork.node.datum.filter.std.UnchangedPropertyDatumFilterService;
 import net.solarnetwork.node.datum.filter.tariff.TariffDatumFilterService;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterDatumFilterService;
+import net.solarnetwork.node.metrics.harvester.MetricHarvesterDatumFilterService;
 import net.solarnetwork.node.service.MetadataService;
 import net.solarnetwork.node.service.support.DatumFilterChainService;
 import net.solarnetwork.service.DatumFilterService;
@@ -57,8 +59,11 @@ import s10k.node.sim.filter.domain.FilterCapability;
 /**
  * The user datum filters from the SolarNode
  * {@code net.solarnetwork.node.datum.filter.standard} bundle, plus the filter
- * chain from the core {@code net.solarnetwork.node} bundle and the Tariff
- * filter from the {@code net.solarnetwork.node.datum.filter.tariff} bundle.
+ * chain from the core {@code net.solarnetwork.node} bundle, the Tariff filter
+ * from the {@code net.solarnetwork.node.datum.filter.tariff} bundle, the POA
+ * Calculator filter from the {@code net.solarnetwork.node.datum.filter.pvlib}
+ * bundle, and the Metric Harvester filter from the
+ * {@code net.solarnetwork.node.metrics.harvester} bundle.
  *
  * <p>
  * Each definition is a port of the filter's wiring in its bundle's
@@ -123,14 +128,35 @@ public final class StandardFilterTypes {
 	/** The Time-based Tariff Datum Filter factory UID. */
 	public static final String TARIFF = "net.solarnetwork.node.datum.filter.tariff";
 
+	/** The POA Calculator (pvlib) Datum Filter factory UID. */
+	public static final String PVLIB_POA = "net.solarnetwork.node.datum.filter.pvlib.poa";
+
+	/** The Metric Harvester Datum Filter factory UID. */
+	public static final String METRIC_HARVESTER = "net.solarnetwork.node.metrics.service.harvester";
+
 	/**
-	 * The SolarNode user datum filters from other bundles, which the simulator
-	 * does not support, as factory UIDs and titles: the PVLib and Metric
-	 * Harvester filters.
+	 * SolarNode user datum filters that the simulator does not support, as
+	 * factory UIDs and titles.
+	 *
+	 * <p>
+	 * Imports keep their settings, and simulations pass datum through them
+	 * unchanged. The simulator supports every user datum filter in the
+	 * SolarNode repository, so this is empty, until a new filter is added
+	 * there.
+	 * </p>
 	 */
-	public static final Map<String, String> UNSUPPORTED = Map.of(
-			"net.solarnetwork.node.datum.filter.pvlib.poa", "POA Irradiance Calculator (pvlib)",
-			"net.solarnetwork.node.metrics.service.harvester", "Metric Harvester");
+	public static final Map<String, String> UNSUPPORTED = Map.of();
+
+	/**
+	 * The SolarNode home directory on a node, which the {@code sn.home} system
+	 * property gives, unless the simulator is started with another value.
+	 *
+	 * <p>
+	 * The POA Calculator filter's default command is in its {@code bin}
+	 * directory, where the {@code sn-pvlib} package installs it.
+	 * </p>
+	 */
+	public static final String NODE_HOME = "/var/lib/solarnode";
 
 	/**
 	 * The factory UIDs of the global datum filters in the standard bundle,
@@ -170,7 +196,11 @@ public final class StandardFilterTypes {
 	 * @return the definitions
 	 */
 	public static List<FilterTypeDefinition> definitions() {
-		final List<FilterTypeDefinition> result = new ArrayList<>(16);
+		// before any filter class reads it, for the POA Calculator's default command
+		if ( System.getProperty(Constants.SYSTEM_PROP_NODE_HOME) == null ) {
+			System.setProperty(Constants.SYSTEM_PROP_NODE_HOME, NODE_HOME);
+		}
+		final List<FilterTypeDefinition> result = new ArrayList<>(18);
 
 		result.add(def(CHAIN, "Datum Filter Chain", DatumFilterChainService.class,
 				messageSource("net.solarnetwork.node.service.support.UserDatumFilterChainService",
@@ -297,7 +327,45 @@ public final class StandardFilterTypes {
 				null, null, Set.of(), _ -> tariffTimeZoneLimitation())
 						.withCheck(new TariffScheduleCheck()));
 
+		result.add(def(PVLIB_POA, "POA Calculator Filter", SimPvlibPoaDatumFilterService.class,
+				messageSource("net.solarnetwork.node.datum.pvlib.PvlibPoaDatumFilterService",
+						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
+				ctx -> new SimPvlibPoaDatumFilterService(ctx.nodeObjectMapper(),
+						ctx.datumMetadataService(), ctx.serviceTracker(MetadataService.class, false),
+						ctx.commandExecutor()),
+				null, null, EnumSet.of(FilterCapability.Commands),
+				StandardFilterTypes::pvlibTimeoutLimitation).withCheck(new CommandCheck()));
+
+		result.add(def(METRIC_HARVESTER, "Metric Harvester", MetricHarvesterDatumFilterService.class,
+				messageSource("propertyConfigsItem.",
+						messageSource(
+								"net.solarnetwork.node.metrics.harvester.MetricHarvesterPropertyConfig",
+								"net.solarnetwork.domain.datum.NumberDatumSamplePropertyConfig"),
+						"net.solarnetwork.node.metrics.harvester.MetricHarvesterDatumFilterService",
+						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
+				ctx -> new MetricHarvesterDatumFilterService(ctx.metricDao()), null, null,
+				EnumSet.of(FilterCapability.Metrics), null));
+
 		return result;
+	}
+
+	private static @Nullable String pvlibTimeoutLimitation(Map<String, String> settings) {
+		final String value = settings.get("commandTimeoutSeconds");
+		if ( value == null || value.isBlank() ) {
+			return null;
+		}
+		int timeout;
+		try {
+			timeout = Integer.parseInt(value.trim());
+		} catch ( NumberFormatException e ) {
+			return null;
+		}
+		if ( timeout > 0 && timeout <= SimPvlibPoaDatumFilterService.MAX_COMMAND_TIMEOUT_SECONDS ) {
+			return null;
+		}
+		return ("The simulator waits at most %d seconds for the command to finish, so it uses that "
+				+ "instead of the Command Timeout.")
+						.formatted(SimPvlibPoaDatumFilterService.MAX_COMMAND_TIMEOUT_SECONDS);
 	}
 
 	private static String tariffTimeZoneLimitation() {

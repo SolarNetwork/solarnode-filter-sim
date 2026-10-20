@@ -31,6 +31,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the active operational modes
  * @param localState
  *        the Local State entries
+ * @param metrics
+ *        the metrics filters saved, oldest first
  * @param localStateCsv
  *        the Local State in the SolarNode Local State CSV format, or
  *        {@code null}
@@ -48,7 +50,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SimulationState(List<String> opModes, List<LocalStateInfo> localState,
-		@Nullable String localStateCsv, @Nullable Map<String, List<DatumInfo>> history,
+		List<MetricInfo> metrics, @Nullable String localStateCsv,
+		@Nullable Map<String, List<DatumInfo>> history,
 		@Nullable Map<String, List<DatumInfo>> unfilteredHistory, @Nullable List<Integer> queue) {
 
 }

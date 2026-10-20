@@ -30,9 +30,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *
  * <p>
  * The {@code parameters}, {@code opModes}, {@code localState},
- * {@code generated}, and {@code instructions} properties describe what the
- * filter itself changed. For a filter chain they are left empty, because its
- * member steps report them.
+ * {@code generated}, {@code instructions}, {@code metrics}, and
+ * {@code commands} properties describe what the filter itself did. For a filter
+ * chain they are left empty, because its member steps report them.
  * </p>
  *
  * @param id
@@ -66,6 +66,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the sequence numbers of datum the filter generated
  * @param instructions
  *        the instructions the filter issued
+ * @param metrics
+ *        the metrics the filter saved
+ * @param commands
+ *        the external commands the filter ran
  * @param error
  *        the error the filter threw, or {@code null}
  * @param durationMicros
@@ -79,7 +83,8 @@ public record FilterStep(int id, String filterId, @Nullable String uid, String f
 		@Nullable Instant outputTimestamp, @Nullable Map<String, Object> parameters,
 		@Nullable OpModeChange opModes, @Nullable List<LocalStateChange> localState,
 		@Nullable List<Integer> generated, @Nullable List<InstructionInfo> instructions,
-		@Nullable String error, long durationMicros) {
+		@Nullable List<MetricInfo> metrics, @Nullable List<CommandInfo> commands, @Nullable String error,
+		long durationMicros) {
 
 	/**
 	 * Filter step outcomes.

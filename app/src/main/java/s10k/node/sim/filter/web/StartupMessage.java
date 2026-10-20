@@ -98,7 +98,8 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 	 */
 	public static String url(Environment env, int port) {
 		String host = env.getProperty("server.address", "").trim();
-		if ( host.isEmpty() || "0.0.0.0".equals(host) || "::".equals(host) ) {
+		if ( host.isEmpty() || "0.0.0.0".equals(host) || "::".equals(host)
+				|| "127.0.0.1".equals(host) ) {
 			host = "localhost";
 		} else if ( host.indexOf(':') >= 0 && !host.startsWith("[") ) {
 			host = "[" + host + "]";

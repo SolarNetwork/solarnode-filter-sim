@@ -22,6 +22,7 @@ package s10k.node.sim.filter.sim;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -87,6 +88,9 @@ public final class SimulationContext implements FilterContext {
 	private final SimulatedDatumQueue datumQueue;
 	private final SimTaskScheduler taskScheduler;
 	private final SettingsPlaceholderService placeholderService;
+	private final SimMetricDao metricDao;
+	private final SimLocationService locationService;
+	private final SimCommandExecutor commandExecutor;
 	private @Nullable Supplier<@Nullable String> taskOwner;
 	private final SimMetadataService nodeMetadataService;
 	private final List<Object> services = new ArrayList<>(16);
@@ -95,7 +99,7 @@ public final class SimulationContext implements FilterContext {
 	private final List<DatumFilterService> filterServices = new ArrayList<>(16);
 
 	/**
-	 * Constructor.
+	 * Constructor, allowing no external commands.
 	 *
 	 * @param startDate
 	 *        the initial time of the simulated clock
@@ -108,6 +112,26 @@ public final class SimulationContext implements FilterContext {
 	 */
 	public SimulationContext(Instant startDate, ExpressionService expressionService,
 			SimulatedDatumQueue.Sink datumSink, GeneralDatumMetadata nodeMetadata) {
+		this(startDate, expressionService, datumSink, nodeMetadata, List.of());
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param startDate
+	 *        the initial time of the simulated clock
+	 * @param expressionService
+	 *        the expression service
+	 * @param datumSink
+	 *        the sink for datum that filters offer to the Datum Queue
+	 * @param nodeMetadata
+	 *        the metadata of the Node Metadata Service
+	 * @param allowedCommands
+	 *        the paths of the external commands filters may run
+	 */
+	public SimulationContext(Instant startDate, ExpressionService expressionService,
+			SimulatedDatumQueue.Sink datumSink, GeneralDatumMetadata nodeMetadata,
+			Collection<String> allowedCommands) {
 		super();
 		this.clock = new SimulatedClock(startDate);
 		this.localStateDao = new SimLocalStateDao(clock);
@@ -143,6 +167,9 @@ public final class SimulationContext implements FilterContext {
 		this.expressionServices = new StaticOptionalServiceCollection<>(List.of(expressionService));
 		this.tariffScheduleProviders = new SimServiceTracker<>(TariffScheduleProvider.class, services,
 				true);
+		this.metricDao = new SimMetricDao();
+		this.locationService = new SimLocationService();
+		this.commandExecutor = new SimCommandExecutor(allowedCommands);
 	}
 
 	/**
@@ -174,6 +201,7 @@ public final class SimulationContext implements FilterContext {
 			// the standard filters' (function=node) MetadataService, for expressions
 			f.setMetadataService(new StaticOptionalService<>(nodeMetadataService));
 			f.setPlaceholderService(new StaticOptionalService<>(placeholderService));
+			f.setLocationService(new StaticOptionalService<>(locationService));
 		}
 		if ( filter instanceof BaseDatumFilterSupport f ) {
 			f.setDatumService(new StaticOptionalService<>(datumService));
@@ -261,6 +289,30 @@ public final class SimulationContext implements FilterContext {
 	@Override
 	public TransientSettingDao transientSettingDao() {
 		return transientSettingDao;
+	}
+
+	@Override
+	public SimMetricDao metricDao() {
+		return metricDao;
+	}
+
+	@Override
+	public SimCommandExecutor commandExecutor() {
+		return commandExecutor;
+	}
+
+	@Override
+	public com.fasterxml.jackson.databind.ObjectMapper nodeObjectMapper() {
+		return NODE_OBJECT_MAPPER;
+	}
+
+	/**
+	 * Get the Location Service, which has the node location.
+	 *
+	 * @return the service
+	 */
+	public SimLocationService locationService() {
+		return locationService;
 	}
 
 	@Override

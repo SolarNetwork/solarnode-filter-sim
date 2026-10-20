@@ -31,12 +31,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.domain.CommandInfo;
 import s10k.node.sim.filter.domain.DatumInfo;
 import s10k.node.sim.filter.domain.DatumOrigin;
 import s10k.node.sim.filter.domain.DatumTrace;
 import s10k.node.sim.filter.domain.FilterStep;
 import s10k.node.sim.filter.domain.InstructionInfo;
 import s10k.node.sim.filter.domain.LocalStateChange;
+import s10k.node.sim.filter.domain.MetricInfo;
 import s10k.node.sim.filter.domain.OpModeChange;
 import s10k.node.sim.filter.domain.SamplesInfo;
 import s10k.node.sim.filter.domain.SimulationState;
@@ -51,9 +53,9 @@ import net.solarnetwork.service.DatumFilterStats;
  * Records filter invocations while the simulation processes a datum.
  *
  * <p>
- * Changes the simulated services observe, like Local State changes and issued
- * instructions, are attributed to the innermost filter step running at the
- * time.
+ * Changes the simulated services observe, like Local State changes, issued
+ * instructions, saved metrics, and external commands, are attributed to the
+ * innermost filter step running at the time.
  * </p>
  *
  * <p>
@@ -234,6 +236,32 @@ public final class FilterTracer {
 		}
 	}
 
+	/**
+	 * Handle a saved metric.
+	 *
+	 * @param metric
+	 *        the metric
+	 */
+	void metricSaved(MetricInfo metric) {
+		final StepRecord step = currentStep();
+		if ( step != null ) {
+			step.metrics.add(metric);
+		}
+	}
+
+	/**
+	 * Handle an external command a filter asked to run.
+	 *
+	 * @param command
+	 *        the command
+	 */
+	void commandRun(CommandInfo command) {
+		final StepRecord step = currentStep();
+		if ( step != null ) {
+			step.commands.add(command);
+		}
+	}
+
 	private Set<String> activeModes() {
 		Set<String> modes = opModesService.activeOperationalModes();
 		return (modes != null ? new TreeSet<>(modes) : new TreeSet<>());
@@ -345,6 +373,8 @@ public final class FilterTracer {
 		final List<LocalStateChange> localState = new ArrayList<>(2);
 		final List<Integer> generated = new ArrayList<>(2);
 		final List<InstructionInfo> instructions = new ArrayList<>(2);
+		final List<MetricInfo> metrics = new ArrayList<>(2);
+		final List<CommandInfo> commands = new ArrayList<>(1);
 		FilterStep.Status status = FilterStep.Status.Unchanged;
 		@Nullable
 		SamplesInfo output;
@@ -370,8 +400,8 @@ public final class FilterTracer {
 
 		FilterStep toStep() {
 			return new FilterStep(id, filterId, uid, factoryUid, depth, status, input, output,
-					outputTimestamp, parameters, opModes, localState, generated, instructions, error,
-					durationMicros);
+					outputTimestamp, parameters, opModes, localState, generated, instructions, metrics,
+					commands, error, durationMicros);
 		}
 
 	}

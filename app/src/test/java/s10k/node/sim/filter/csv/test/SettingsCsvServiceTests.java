@@ -319,16 +319,16 @@ public class SettingsCsvServiceTests {
 		// THEN
 		// @formatter:off
 		final String throttle = StandardFilterTypes.THROTTLE + ".1";
-		final String pvlib = "net.solarnetwork.node.datum.filter.pvlib.poa.P1";
+		final String pvlib = StandardFilterTypes.PVLIB_POA + ".P1";
 		final String bad = StandardFilterTypes.EXPRESSION + ".Bad:Name";
 		final String unknown = FilterConfig.UNKNOWN_FACTORY_UID + ":Somewhere Else";
 		then(result.config().filtersOrEmpty())
-			.as("Filters, including the unsupported filter, then the unknown filter")
+			.as("Filters, then the unknown filter")
 			.extracting(FilterConfig::id, FilterConfig::factoryUid)
 			.containsExactly(
 					tuple(MAIN_ID, StandardFilterTypes.CHAIN),
 					tuple(throttle, StandardFilterTypes.THROTTLE),
-					tuple(pvlib, "net.solarnetwork.node.datum.filter.pvlib.poa"),
+					tuple(pvlib, StandardFilterTypes.PVLIB_POA),
 					tuple(bad, StandardFilterTypes.EXPRESSION),
 					tuple(unknown, FilterConfig.UNKNOWN_FACTORY_UID))
 			;
@@ -352,7 +352,7 @@ public class SettingsCsvServiceTests {
 					from(FilterConfig::comment))
 			;
 		then(filter(result.config(), pvlib).settings())
-			.as("Unsupported filter settings kept")
+			.as("Filter settings kept, including one the filter does not have")
 			.isEqualTo(Map.of("uid", "POA", "parameters", "a,b"))
 			;
 		then(result.config())
@@ -367,7 +367,6 @@ public class SettingsCsvServiceTests {
 					tuple(SimulationMessage.CODE_SETTING_SKIPPED, null),
 					tuple(SimulationMessage.CODE_MISSING_FACTORY, throttle),
 					tuple(SimulationMessage.CODE_SETTING_FLAGS, throttle),
-					tuple(SimulationMessage.CODE_UNSUPPORTED_FILTER, pvlib),
 					tuple(SimulationMessage.CODE_INVALID_INSTANCE_ID, bad),
 					tuple(SimulationMessage.CODE_UNKNOWN_FILTER, unknown),
 					tuple(SimulationMessage.CODE_GLOBAL_FILTER, null))
@@ -406,7 +405,7 @@ public class SettingsCsvServiceTests {
 			.contains("net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle,,,Limit everything\r\n")
 			.as("FACTORY row added")
 			.contains("net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,\r\n")
-			.as("Unsupported filter settings as they are")
+			.as("Setting the filter does not have kept as it is")
 			.contains("net.solarnetwork.node.datum.filter.pvlib.poa.P1,parameters,\"a,b\",,,\r\n")
 			.as("Comments kept, and ignored components left out")
 			.contains("#net.solarnetwork.node.datum.samplefilter.limiter.1,sourceId,/meter/\r\n")

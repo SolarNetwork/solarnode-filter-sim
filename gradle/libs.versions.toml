@@ -8,8 +8,11 @@ junit-jupiter = "6.0.1"
 sn-common = "4.55.0"
 sn-common-expr-spel = "4.2.2"
 sn-node = "4.10.0"
+sn-node-datum-filter-pvlib = "2.2.0"
 sn-node-datum-filter-standard = "4.7.1"
 sn-node-datum-filter-tariff = "4.1.0"
+sn-node-metrics = "2.2.0"
+sn-node-metrics-harvester = "2.1.0"
 
 [libraries]
 fastcsv = { module = "de.siegmar:fastcsv", version.ref = "fastcsv" }
@@ -18,5 +21,8 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jun
 sn-common = { module = "net.solarnetwork.common:net.solarnetwork.common", version.ref = "sn-common" }
 sn-common-expr-spel = { module = "net.solarnetwork.common:net.solarnetwork.common.expr.spel", version.ref = "sn-common-expr-spel" }
 sn-node = { module = "net.solarnetwork.node:net.solarnetwork.node", version.ref = "sn-node" }
+sn-node-datum-filter-pvlib = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.pvlib", version.ref = "sn-node-datum-filter-pvlib" }
 sn-node-datum-filter-standard = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.standard", version.ref = "sn-node-datum-filter-standard" }
 sn-node-datum-filter-tariff = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.tariff", version.ref = "sn-node-datum-filter-tariff" }
+sn-node-metrics = { module = "net.solarnetwork.node:net.solarnetwork.node.metrics", version.ref = "sn-node-metrics" }
+sn-node-metrics-harvester = { module = "net.solarnetwork.node:net.solarnetwork.node.metrics.harvester", version.ref = "sn-node-metrics-harvester" }
