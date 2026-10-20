@@ -386,8 +386,25 @@ export interface FilterStep {
 	instructions?: InstructionInfo[];
 	metrics?: MetricInfo[];
 	commands?: CommandInfo[];
+	/** For a `Skipped` step, why the filter ignored the datum. */
+	skipReasons?: SkipReason[];
 	error?: string;
 	durationMicros?: number;
+}
+
+/**
+ * Why a filter ignored a datum: a condition the datum did not meet, with what
+ * the condition requires and what the datum or node had instead.
+ */
+export interface SkipReason {
+	condition: "SourceId" | "RequiredMode" | "RequiredTag" | "Other";
+	/** The Source ID pattern, Required Mode, or Required Tag expression. */
+	expected?: string;
+	/**
+	 * The datum's source ID, the active modes, or the datum's tags, both
+	 * comma-delimited and empty for none.
+	 */
+	actual?: string;
 }
 
 /** The trace of one datum through the Datum Queue. */

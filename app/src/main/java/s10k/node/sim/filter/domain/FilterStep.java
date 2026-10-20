@@ -70,12 +70,14 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the metrics the filter saved
  * @param commands
  *        the external commands the filter ran
+ * @param skipReasons
+ *        for a {@link Status#Skipped} step, why the filter ignored the datum
  * @param error
  *        the error the filter threw, or {@code null}
  * @param durationMicros
  *        the time the filter took, in microseconds
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record FilterStep(int id, String filterId, @Nullable String uid, String factoryUid, int depth,
@@ -83,8 +85,8 @@ public record FilterStep(int id, String filterId, @Nullable String uid, String f
 		@Nullable Instant outputTimestamp, @Nullable Map<String, Object> parameters,
 		@Nullable OpModeChange opModes, @Nullable List<LocalStateChange> localState,
 		@Nullable List<Integer> generated, @Nullable List<InstructionInfo> instructions,
-		@Nullable List<MetricInfo> metrics, @Nullable List<CommandInfo> commands, @Nullable String error,
-		long durationMicros) {
+		@Nullable List<MetricInfo> metrics, @Nullable List<CommandInfo> commands,
+		@Nullable List<SkipReason> skipReasons, @Nullable String error, long durationMicros) {
 
 	/**
 	 * Filter step outcomes.

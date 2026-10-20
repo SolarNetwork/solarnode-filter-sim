@@ -925,8 +925,46 @@ rect.sim-badge {
 
 // a message or datum hidden by its filter pill
 .sim-messages .is-filtered,
-.sim-datum.is-filtered {
+.sim-datum.is-filtered,
+.sim-step.is-filtered {
 	display: none !important;
+}
+
+// a soft filter pill: a tint of its status color, less prominent than a solid one
+.sim-pill-soft {
+	--sim-pill-bg: var(--bs-secondary-bg-subtle);
+	--sim-pill-color: var(--bs-secondary-text-emphasis);
+	--sim-pill-border: var(--bs-secondary-bg-subtle);
+
+	border: 1px solid var(--sim-pill-border) !important;
+	background-color: var(--sim-pill-bg);
+	color: var(--sim-pill-color);
+	font-weight: 500;
+
+	&.sim-pill-changed {
+		--sim-pill-bg: var(--bs-primary-bg-subtle);
+		--sim-pill-color: var(--bs-primary-text-emphasis);
+		--sim-pill-border: var(--bs-primary-bg-subtle);
+	}
+
+	&.sim-pill-unchanged {
+		--sim-pill-bg: var(--bs-tertiary-bg);
+		--sim-pill-color: var(--bs-secondary-color);
+		--sim-pill-border: var(--bs-border-color);
+	}
+
+	&.sim-pill-dropped,
+	&.sim-pill-error {
+		--sim-pill-bg: var(--bs-danger-bg-subtle);
+		--sim-pill-color: var(--bs-danger-text-emphasis);
+		--sim-pill-border: var(--bs-danger-bg-subtle);
+	}
+
+	&.sim-pill-unsupported {
+		--sim-pill-bg: var(--bs-warning-bg-subtle);
+		--sim-pill-color: var(--bs-warning-text-emphasis);
+		--sim-pill-border: var(--bs-warning-bg-subtle);
+	}
 }
 
 // a pill that shows or hides a kind of row

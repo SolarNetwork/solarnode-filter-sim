@@ -41,6 +41,7 @@ import s10k.node.sim.filter.domain.LocalStateChange;
 import s10k.node.sim.filter.domain.MetricInfo;
 import s10k.node.sim.filter.domain.OpModeChange;
 import s10k.node.sim.filter.domain.SamplesInfo;
+import s10k.node.sim.filter.domain.SkipReason;
 import s10k.node.sim.filter.domain.SimulationState;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamplesOperations;
@@ -66,7 +67,7 @@ import net.solarnetwork.service.DatumFilterStats;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class FilterTracer {
 
@@ -166,7 +167,7 @@ public final class FilterTracer {
 			} else if ( out == null ) {
 				step.status = FilterStep.Status.Dropped;
 			} else {
-				finishOutput(step, filter, datum, out, ignoredBefore);
+				finishOutput(step, filter, datum, samples, out, ignoredBefore);
 			}
 			if ( leaf ) {
 				Map<String, Object> paramsAfter = sanitize(parameters);
@@ -186,7 +187,7 @@ public final class FilterTracer {
 	}
 
 	private void finishOutput(StepRecord step, TracingDatumFilterService filter, Datum datum,
-			DatumSamplesOperations out, long ignoredBefore) {
+			DatumSamplesOperations samples, DatumSamplesOperations out, long ignoredBefore) {
 		final SamplesInfo output = SamplesInfo.from(out);
 		if ( out instanceof Datum d && d.getTimestamp() != null
 				&& !d.getTimestamp().equals(datum.getTimestamp()) ) {
@@ -195,6 +196,7 @@ public final class FilterTracer {
 		final long ignoredAfter = ignoredCount(filter.delegate());
 		if ( ignoredBefore >= 0 && ignoredAfter > ignoredBefore ) {
 			step.status = FilterStep.Status.Skipped;
+			step.skipReasons = SkipReasons.of(filter.delegate(), datum, samples);
 		} else if ( output.equals(step.input) && step.outputTimestamp == null ) {
 			step.status = FilterStep.Status.Unchanged;
 		} else {
@@ -375,6 +377,7 @@ public final class FilterTracer {
 		final List<InstructionInfo> instructions = new ArrayList<>(2);
 		final List<MetricInfo> metrics = new ArrayList<>(2);
 		final List<CommandInfo> commands = new ArrayList<>(1);
+		List<SkipReason> skipReasons = List.of();
 		FilterStep.Status status = FilterStep.Status.Unchanged;
 		@Nullable
 		SamplesInfo output;
@@ -401,7 +404,7 @@ public final class FilterTracer {
 		FilterStep toStep() {
 			return new FilterStep(id, filterId, uid, factoryUid, depth, status, input, output,
 					outputTimestamp, parameters, opModes, localState, generated, instructions, metrics,
-					commands, error, durationMicros);
+					commands, skipReasons, error, durationMicros);
 		}
 
 	}

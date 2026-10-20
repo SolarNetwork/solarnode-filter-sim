@@ -19,6 +19,7 @@ import type {
 	SimulationMessage,
 	SimulationResult,
 	SimulationState,
+	SkipReason,
 } from "./model.ts";
 import {
 	commandLine,
@@ -192,6 +193,99 @@ function datumOutcome(trace: DatumTrace): DatumOutcome {
 	return "Discarded";
 }
 
+/** The short name of each skip condition, for a step's note chip. */
+const SKIP_LABELS: Record<SkipReason["condition"], string> = {
+	SourceId: "source ID",
+	RequiredMode: "Required Mode",
+	RequiredTag: "Required Tag",
+	Other: "",
+};
+
+/**
+ * Explain why a filter ignored a datum: each condition the datum did not
+ * meet, with the values involved as code.
+ *
+ * @param reasons the reasons
+ * @returns the explanation
+ */
+function skipReasonsElement(reasons: SkipReason[]): HTMLElement {
+	const code = (text: string) => element("code", undefined, text);
+	const list = (
+		values: string | undefined,
+		none: string,
+	): (string | Node)[] =>
+		values
+			? values
+					.split(", ")
+					.flatMap((v, i) => (i > 0 ? [", ", code(v)] : [code(v)]))
+			: [none];
+	const sentence = (r: SkipReason): (string | Node)[] => {
+		const expected = r.expected ?? "";
+		switch (r.condition) {
+			case "SourceId":
+				return r.actual
+					? [
+							"its source ID ",
+							code(r.actual),
+							" does not match the Source ID pattern ",
+							code(expected),
+						]
+					: [
+							"it has no source ID to match the Source ID pattern ",
+							code(expected),
+						];
+			case "RequiredMode":
+				return expected.startsWith("!")
+					? [
+							"the Required Mode ",
+							code(expected),
+							" needs ",
+							code(expected.substring(1)),
+							" to be inactive, but it is active",
+						]
+					: [
+							"the Required Mode ",
+							code(expected),
+							" is not active; the active modes are: ",
+							...list(r.actual, "none"),
+						];
+			case "RequiredTag":
+				return [
+					"its tags (",
+					...list(r.actual, "none"),
+					") do not match the Required Tag ",
+					code(expected),
+				];
+			default:
+				return [
+					"of a reason of its own, which the simulator cannot tell: the datum met its source ID, Required Mode, and Required Tag conditions, but a filter can ignore a datum for any reason, such as a setting it requires that is not configured",
+				];
+		}
+	};
+	const el = element("div", "text-body-secondary mb-1");
+	if (reasons.length === 1) {
+		const p = element("p", "mb-0");
+		p.append(
+			"The filter ignored the datum because ",
+			...sentence(reasons[0]),
+			".",
+		);
+		el.append(p);
+	} else {
+		const ul = element("ul", "mb-0 ps-3");
+		for (const r of reasons) {
+			const li = element("li");
+			li.append(...sentence(r));
+			ul.append(li);
+		}
+		el.append(
+			element("p", "mb-0", "The filter ignored the datum because:"),
+			ul,
+		);
+	}
+	return el;
+}
+
 /**
  * Summarize a result's statistics, such as "3 datum processed · 1 output".
  *
@@ -264,6 +358,11 @@ export class ResultsPanel extends EventTarget {
 	readonly #hiddenLevels = new Set<MessageLevel>();
 	/** The datum outcomes hidden by their filter pills, kept between runs. */
 	readonly #hiddenOutcomes = new Set<DatumOutcome>();
+	/**
+	 * The filter step statuses each datum's filter pills hide, by datum
+	 * sequence number, for the result shown.
+	 */
+	readonly #hiddenStatuses = new Map<number, Set<FilterStepStatus>>();
 	/** `true` if the messages are collapsed, kept between runs. */
 	#messagesCollapsed = false;
 	#debug: DebugSession | null = null;
@@ -291,6 +390,9 @@ export class ResultsPanel extends EventTarget {
 	 * @param result the result
 	 */
 	show(result: SimulationResult): void {
+		if (result !== this.#result) {
+			this.#hiddenStatuses.clear();
+		}
 		this.#result = result;
 		this.#selectedSeq = null;
 		this.#debug = null;
@@ -341,6 +443,9 @@ export class ResultsPanel extends EventTarget {
 		if (!pos) {
 			this.show(result);
 			return;
+		}
+		if (result !== this.#result) {
+			this.#hiddenStatuses.clear();
 		}
 		this.#result = result;
 		this.#selectedSeq = null;
@@ -402,6 +507,9 @@ export class ResultsPanel extends EventTarget {
 		});
 		body.append(this.#finalState(result.finalState));
 		this.#applyDatumFilters(body);
+		body.querySelectorAll<HTMLElement>(".sim-datum").forEach((section) =>
+			this.#applyStepFilters(section),
+		);
 		return body;
 	}
 
@@ -825,6 +933,54 @@ export class ResultsPanel extends EventTarget {
 		return bar;
 	}
 
+	/** Hide the filter steps whose status a filter pill hides. */
+	/** Hide the filter steps of a datum whose status its filter pills hide. */
+	#applyStepFilters(section: HTMLElement): void {
+		const hidden = this.#statusesHiddenIn(Number(section.dataset.seq));
+		section
+			.querySelectorAll<HTMLElement>(".sim-step[data-status]")
+			.forEach((step) =>
+				step.classList.toggle(
+					"is-filtered",
+					hidden.has(step.dataset.status as FilterStepStatus),
+				),
+			);
+	}
+
+	/** Get the filter step statuses a datum's filter pills hide. */
+	#statusesHiddenIn(seq: number): Set<FilterStepStatus> {
+		let hidden = this.#hiddenStatuses.get(seq);
+		if (!hidden) {
+			hidden = new Set();
+			this.#hiddenStatuses.set(seq, hidden);
+		}
+		return hidden;
+	}
+
+	/** Render the pills that show or hide a datum's filter steps by status. */
+	#stepFilters(trace: DatumTrace, section: HTMLElement): HTMLElement {
+		const bar = element(
+			"div",
+			"d-flex flex-wrap align-items-center justify-content-end gap-1 mb-1 sim-step-filters",
+		);
+		for (const [status, count] of countBy(
+			(trace.steps ?? []).map((s) => s.status),
+		)) {
+			bar.append(
+				this.#filterPill(
+					"status",
+					status,
+					count,
+					// soft, so they do not compete with the steps' own badges
+					`sim-pill-soft sim-pill-${status.toLowerCase()}`,
+					this.#statusesHiddenIn(trace.seq),
+					() => this.#applyStepFilters(section),
+				),
+			);
+		}
+		return bar;
+	}
+
 	/** Hide the datum whose outcome a filter pill hides. */
 	#applyDatumFilters(root: HTMLElement): void {
 		root.querySelectorAll<HTMLElement>(".sim-datum").forEach((section) =>
@@ -847,7 +1003,7 @@ export class ResultsPanel extends EventTarget {
 	 * @param apply show or hide the rows after a change
 	 */
 	#filterPill<K extends string>(
-		group: "level" | "outcome",
+		group: "level" | "outcome" | "status",
 		name: K,
 		count: number,
 		className: string,
@@ -873,7 +1029,21 @@ export class ResultsPanel extends EventTarget {
 			} else {
 				hidden.add(name);
 			}
-			refresh();
+			// the pills of the same kind in the same scope stay in step: a
+			// datum's own step status pills, or else the whole flow's
+			const shown = !hidden.has(name);
+			(
+				pill.closest(".sim-datum") ??
+				pill.closest(".sim-results-body") ??
+				this.#el
+			)
+				.querySelectorAll<HTMLElement>(
+					`.sim-filter-pill[data-filter-group="${group}"][data-filter-value="${CSS.escape(name)}"]`,
+				)
+				.forEach((p) => {
+					p.setAttribute("aria-pressed", String(shown));
+					p.title = `${shown ? "Hide" : "Show"} the ${name} rows`;
+				});
 			apply();
 		});
 		refresh();
@@ -937,6 +1107,7 @@ export class ResultsPanel extends EventTarget {
 		const section = element("section", "card mb-3 sim-datum");
 		section.id = `sim-datum-${trace.seq}`;
 		section.dataset.outcome = datumOutcome(trace);
+		section.dataset.seq = String(trace.seq);
 		section.dataset.trace = String(this.#result?.datum.indexOf(trace) ?? 0);
 
 		const header = element(
@@ -1031,6 +1202,9 @@ export class ResultsPanel extends EventTarget {
 		});
 
 		const body = element("div", "card-body p-2");
+		if (trace.steps?.length) {
+			body.append(this.#stepFilters(trace, section));
+		}
 		body.append(samplesLine("In", trace.input.samples));
 		const steps = element("div", "sim-steps my-1");
 		(trace.steps ?? []).forEach((step, i) => {
@@ -1205,6 +1379,7 @@ export class ResultsPanel extends EventTarget {
 
 	#step(step: FilterStep): HTMLElement {
 		const details = element("details", "sim-step");
+		details.dataset.status = step.status;
 		details.style.setProperty("--sim-depth", String(step.depth ?? 0));
 		const summary = element(
 			"summary",
@@ -1362,7 +1537,13 @@ export class ResultsPanel extends EventTarget {
 				Skipped: "ignored the datum",
 				Unsupported: "passed the datum through",
 			};
-			const note = text[step.status];
+			const reasons = (step.skipReasons ?? []).filter(
+				(r) => r.condition !== "Other",
+			);
+			const note =
+				step.status === "Skipped" && reasons.length
+					? `ignored: ${reasons.map((r) => SKIP_LABELS[r.condition]).join(", ")} not matched`
+					: text[step.status];
 			if (note) {
 				chip(note, "is-note");
 			}
@@ -1372,13 +1553,17 @@ export class ResultsPanel extends EventTarget {
 
 	#stepDetails(step: FilterStep): HTMLElement {
 		const body = element("div", "sim-step-details small");
-		body.append(
-			element(
-				"p",
-				"text-body-secondary mb-1",
-				STATUS_HELP[step.status] ?? "",
-			),
-		);
+		if (step.status === "Skipped" && step.skipReasons?.length) {
+			body.append(skipReasonsElement(step.skipReasons));
+		} else {
+			body.append(
+				element(
+					"p",
+					"text-body-secondary mb-1",
+					STATUS_HELP[step.status] ?? "",
+				),
+			);
+		}
 		const input = step.input ?? {};
 		const output = step.status === "Changed" ? step.output : undefined;
 		const table = element("table", "table table-sm mb-1 sim-samples-table");

@@ -23,6 +23,7 @@ import static org.assertj.core.api.BDDAssertions.from;
 import static org.assertj.core.api.BDDAssertions.then;
 import static org.assertj.core.api.BDDAssertions.thenThrownBy;
 import static org.assertj.core.api.BDDAssertions.within;
+import static org.assertj.core.api.InstanceOfAssertFactories.list;
 import static org.assertj.core.groups.Tuple.tuple;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,6 +47,8 @@ import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationOptions;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
+import s10k.node.sim.filter.domain.SkipReason;
+import s10k.node.sim.filter.domain.SkipReason.Condition;
 import s10k.node.sim.filter.domain.UserMetadataConfig;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
@@ -330,6 +333,65 @@ public class SimulationEngineTests {
 		then(trace.output().samples().i())
 			.as("Expression property not added")
 			.doesNotContainKey("x")
+			;
+		then(trace.steps().getLast().skipReasons())
+			.as("Skipped because the required mode is not active, with no modes active")
+			.containsExactly(new SkipReason(Condition.RequiredMode, "Boost", ""))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void skipReasons_sourceIdAndTag() {
+		// GIVEN
+		Map<String, String> settings = expressions("EXP", "x", "1");
+		settings.put("sourceId", "^/other$");
+		settings.put("requiredTag", "needed, !present");
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "exp"),
+						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
+				METER_DATUM.replace("\"a\":", "\"t\":[\"present\"],\"a\":"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum().getFirst().steps().getLast())
+			.as("Expression skipped")
+			.returns(Status.Skipped, from(FilterStep::status))
+			.extracting(FilterStep::skipReasons, list(SkipReason.class))
+			.as("Every condition the datum did not meet, with the datum's values")
+			.containsExactly(
+					new SkipReason(Condition.SourceId, "^/other$", "/meter/1"),
+					new SkipReason(Condition.RequiredTag, "needed, !present", "present"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void skipReasons_other() {
+		// GIVEN
+		Map<String, String> settings = new LinkedHashMap<>();
+		settings.put("uid", "Timeout");
+		settings.put("sourceId", "^/meter/1$");
+		settings.put("timeoutMillis", "60000");
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "timeout"),
+						new FilterConfig("timeout", StandardFilterTypes.TIMEOUT, null, settings, null)),
+				METER_DATUM);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum().getFirst().steps().getLast())
+			.as("Timeout without an output source ID ignores the datum")
+			.returns(Status.Skipped, from(FilterStep::status))
+			.extracting(FilterStep::skipReasons, list(SkipReason.class))
+			.as("The datum met every standard condition, so the reason is the filter's own")
+			.containsExactly(new SkipReason(Condition.Other, null, null))
 			;
 		// @formatter:on
 	}

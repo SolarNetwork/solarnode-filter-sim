@@ -62,13 +62,21 @@ const REPORT_SCRIPT = `(() => {
 			document.querySelectorAll(".sim-datum").forEach((s) => setCollapsed(s, collapsed));
 		} else if (t.dataset.filterGroup) {
 			const shown = t.getAttribute("aria-pressed") !== "true";
+			const group = t.dataset.filterGroup;
 			const value = t.dataset.filterValue;
-			t.setAttribute("aria-pressed", String(shown));
-			t.title = (shown ? "Hide" : "Show") + " the " + value + " rows";
-			const rows = t.dataset.filterGroup === "level"
-				? ".sim-messages [data-level=\\"" + CSS.escape(value) + "\\"]"
-				: ".sim-datum[data-outcome=\\"" + CSS.escape(value) + "\\"]";
-			document.querySelectorAll(rows).forEach((r) => r.classList.toggle("is-filtered", !shown));
+			const v = CSS.escape(value);
+			// a datum's step status pills apply only to that datum
+			const scope = (group === "status" && t.closest(".sim-datum")) || document;
+			scope.querySelectorAll(".sim-filter-pill[data-filter-group=\\"" + group + "\\"][data-filter-value=\\"" + v + "\\"]").forEach((p) => {
+				p.setAttribute("aria-pressed", String(shown));
+				p.title = (shown ? "Hide" : "Show") + " the " + value + " rows";
+			});
+			const rows = group === "level"
+				? ".sim-messages [data-level=\\"" + v + "\\"]"
+				: group === "status"
+					? ".sim-step[data-status=\\"" + v + "\\"]"
+					: ".sim-datum[data-outcome=\\"" + v + "\\"]";
+			scope.querySelectorAll(rows).forEach((r) => r.classList.toggle("is-filtered", !shown));
 		} else if (t.matches(".sim-copy")) {
 			const text = t.closest(".sim-message").querySelector(".flex-grow-1");
 			if (await copy(text.textContent, text)) {
