@@ -9,6 +9,7 @@ import {
 	type FilterTypeInfo,
 	type SimConfig,
 } from "./model.ts";
+import { quoted } from "./view.ts";
 
 /** A point on the canvas. */
 export interface Point {
@@ -283,7 +284,7 @@ export class Workspace extends EventTarget {
 			return undefined;
 		}
 		const chain = this.filter(slot.chainId);
-		return `The External Settings file ${file} puts this filter in ${chain ? this.label(chain) : "the chain"}, so it can be overridden, but not removed.`;
+		return `The External Settings file ${quoted(file)} puts this filter in ${chain ? quoted(this.label(chain)) : "the chain"}, so it can be overridden, but not removed.`;
 	}
 
 	/**
@@ -514,7 +515,7 @@ export class Workspace extends EventTarget {
 				f.instanceKey === key,
 		);
 		return same
-			? `${this.label(same)} has the same instance ID, and instance IDs must be unique for each filter type.`
+			? `${quoted(this.label(same))} has the same instance ID, and instance IDs must be unique for each filter type.`
 			: undefined;
 	}
 
@@ -980,7 +981,7 @@ export class Workspace extends EventTarget {
 			implicitMain = true;
 		} else if (main.factoryUid !== CHAIN_FACTORY_UID) {
 			notes.push(
-				`The Datum Queue's filter ${this.label(main)} is not a filter chain, so it is now the only filter of a new Main chain.`,
+				`The Datum Queue's filter ${quoted(this.label(main))} is not a filter chain, so it is now the only filter of a new Main chain.`,
 			);
 			mainChainId = undefined;
 		}
@@ -1022,7 +1023,7 @@ export class Workspace extends EventTarget {
 			mainChainId = undefined;
 		} else if (main.factoryUid !== CHAIN_FACTORY_UID) {
 			notes.push(
-				`The Datum Queue's filter ${this.label(main)} is not a filter chain, so it is now the only filter of a new Main chain.`,
+				`The Datum Queue's filter ${quoted(this.label(main))} is not a filter chain, so it is now the only filter of a new Main chain.`,
 			);
 			mainChainId = undefined;
 		}

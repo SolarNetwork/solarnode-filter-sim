@@ -19,6 +19,8 @@
 
 package s10k.node.sim.filter.domain;
 
+import java.util.Collection;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -39,7 +41,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param datumSeq
  *        the sequence number of the datum the message is about, or {@code null}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record SimulationMessage(Level level, String code, String message, @Nullable String filterId,
@@ -191,6 +193,29 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	public static SimulationMessage warning(String code, String message, @Nullable String filterId,
 			@Nullable Integer datumSeq) {
 		return new SimulationMessage(Level.Warning, code, message, filterId, datumSeq);
+	}
+
+	/**
+	 * Quote a name in a message, such as a Service Name, which can have spaces
+	 * and words like "and" that would otherwise read as part of the sentence.
+	 *
+	 * @param name
+	 *        the name
+	 * @return the quoted name
+	 */
+	public static String quoted(@Nullable Object name) {
+		return "\"" + name + "\"";
+	}
+
+	/**
+	 * Quote each of a list of names in a message, and join them with commas.
+	 *
+	 * @param names
+	 *        the names
+	 * @return the quoted names
+	 */
+	public static String quoted(Collection<?> names) {
+		return names.stream().map(SimulationMessage::quoted).collect(Collectors.joining(", "));
 	}
 
 	/**

@@ -10,6 +10,7 @@ import type {
 	SimulationOptions,
 	UserMetadataConfig,
 } from "./model.ts";
+import { quoted } from "./view.ts";
 
 /** The Service Name of SolarNode's node metadata service. */
 export const NODE_METADATA_SERVICE_UID = "Node Metadata Service";
@@ -539,7 +540,7 @@ export class RunInputs extends EventTarget {
 				metadata: parse("user-metadata", m.id, () =>
 					parseMetadata(
 						m.metadata,
-						`The metadata of ${m.uid.trim() || `User Metadata Service ${i + 1}`}`,
+						`The metadata of ${m.uid.trim() ? quoted(m.uid.trim()) : `User Metadata Service ${i + 1}`}`,
 					),
 				),
 			}),

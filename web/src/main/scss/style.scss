@@ -786,6 +786,113 @@ rect.sim-badge {
 	dominant-baseline: central;
 }
 
-.is-stale .sim-routes {
+.is-stale .sim-routes,
+#canvas.is-stale ~ .sim-routes-legend {
 	display: none;
+}
+
+// the pointer takes a route by its invisible, wider line
+.sim-route-hit {
+	fill: none;
+	stroke: transparent;
+	pointer-events: stroke;
+	cursor: pointer;
+}
+
+.sim-route-badge {
+	cursor: pointer;
+}
+
+// a route the pointer is over, or its legend row, stands out
+.sim-routes.is-hovering {
+	.sim-route:not(.is-hover),
+	.sim-route-end:not(.is-hover) {
+		opacity: 0.15;
+	}
+
+	.sim-route.is-hover,
+	.sim-route-end.is-hover {
+		opacity: 1;
+		stroke-opacity: 1;
+	}
+
+	.sim-route.is-hover:not(.is-queued) {
+		stroke-width: 3px;
+	}
+
+	.sim-route-badge:not(.is-hover) {
+		opacity: 0.3;
+	}
+
+	.sim-route-badge.is-hover {
+		opacity: 1;
+	}
+}
+
+.sim-routes-legend {
+	position: absolute;
+	bottom: 0.75rem;
+	left: 0.75rem;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	width: min(17rem, 60%);
+	max-height: calc(60% - 1.5rem);
+}
+
+.sim-routes-legend-body {
+	overflow-y: auto;
+	padding: 0.25rem 0;
+}
+
+.sim-legend-source,
+.sim-legend-item {
+	min-width: 0;
+	padding: 0.125rem 0.5rem;
+	white-space: nowrap;
+	cursor: pointer;
+	user-select: none;
+
+	&:hover,
+	&.is-hover {
+		background-color: var(--bs-tertiary-bg);
+	}
+
+	&.is-hidden {
+		opacity: 0.45;
+	}
+}
+
+.sim-legend-item {
+	&.is-nested {
+		padding-left: 1.5rem;
+	}
+
+	&.is-selected {
+		background-color: var(--bs-primary-bg-subtle);
+	}
+}
+
+.sim-legend-swatch {
+	flex: none;
+	width: 0.75rem;
+	height: 0.75rem;
+	border-radius: 0.2rem;
+}
+
+.sim-legend-chip {
+	flex: none;
+	min-width: 1.5rem;
+	padding: 0 0.3rem;
+	border-radius: 1rem;
+	color: #fff;
+	font-size: 0.7rem;
+	font-weight: 600;
+	text-align: center;
+	text-shadow: 0 0 2px rgb(0 0 0 / 60%);
+}
+
+.sim-legend-item.is-hidden .sim-legend-chip,
+.sim-legend-source.is-hidden .sim-legend-swatch {
+	filter: grayscale(1);
 }

@@ -21,6 +21,7 @@ import {
 	element,
 	formatTimestamp,
 	formatValue,
+	quoted,
 	SAMPLE_TYPES,
 	samplesLine,
 	sameValue,
@@ -425,8 +426,8 @@ export class DebugView {
 		if (s.step) {
 			intro.append(
 				s.entering
-					? ` — entering ${label(s.step.filterId)}; its filters run next.`
-					: ` — after ${label(s.step.filterId)} (${s.step.status}).`,
+					? ` — entering ${quoted(label(s.step.filterId))}; its filters run next.`
+					: ` — after ${quoted(label(s.step.filterId))} (${s.step.status}).`,
 			);
 		} else {
 			intro.append(" — no filters were applied.");
@@ -547,7 +548,7 @@ export class DebugView {
 				keyValueTable(
 					Object.entries(instruction.parameters ?? {}),
 					[
-						`${instruction.topic} from ${label(filterId)}${instruction.state ? ` (${instruction.state})` : ""}`,
+						`${instruction.topic} from ${quoted(label(filterId))}${instruction.state ? ` (${instruction.state})` : ""}`,
 						"",
 					],
 					"No parameters.",

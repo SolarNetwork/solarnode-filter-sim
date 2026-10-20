@@ -719,7 +719,7 @@ public class SimulationEngineTests {
 			.extracting(SimulationMessage::message)
 			.asString()
 			.as("Message names the Service Name and the metadata services")
-			.contains("\"Tarifs\"", "Node Metadata Service, Tariffs")
+			.contains("\"Tarifs\"", "\"Node Metadata Service\", \"Tariffs\"")
 			;
 		then(result.datum().getFirst().steps())
 			.as("Filter changed nothing")
@@ -858,7 +858,7 @@ public class SimulationEngineTests {
 					tuple(SimulationMessage.CODE_IGNORED_METADATA,
 							"Node metadata has the property nodeId, which SolarNode ignores. Metadata has only m, pm, and t properties."),
 					tuple(SimulationMessage.CODE_DUPLICATE_UID,
-							"More than one metadata service has the Service Name Node Metadata Service, so filters use the first one."),
+							"More than one metadata service has the Service Name \"Node Metadata Service\", so filters use the first one."),
 					tuple(SimulationMessage.CODE_MISSING_UID,
 							"User Metadata Service 2 has no Service Name, so filters cannot find it."))
 			;
@@ -1056,7 +1056,7 @@ public class SimulationEngineTests {
 			.returns(1, from(SimulationMessage::datumSeq))
 			.extracting(SimulationMessage::message)
 			.asString()
-			.startsWith("EXP logged: ")
+			.startsWith("\"EXP\" logged: ")
 			.contains("nope.notThere", "(2 times)")
 			;
 		// @formatter:on

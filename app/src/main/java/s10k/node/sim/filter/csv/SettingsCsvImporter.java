@@ -286,7 +286,7 @@ final class SettingsCsvImporter {
 
 		private String label() {
 			final String uid = settings.get(UID);
-			return (uid != null && !uid.isBlank() ? uid : id());
+			return SimulationMessage.quoted(uid != null && !uid.isBlank() ? uid : id());
 		}
 
 	}
@@ -918,7 +918,8 @@ final class SettingsCsvImporter {
 		for ( Map.Entry<String, List<String>> e : duplicateUids.entrySet() ) {
 			messages.add(warning(SimulationMessage.CODE_DUPLICATE_UID,
 					"The Service Name %s is used by %d filters (%s), so filter chains use only the first one."
-							.formatted(e.getKey(), e.getValue().size(), String.join(", ", e.getValue())),
+							.formatted(SimulationMessage.quoted(e.getKey()), e.getValue().size(),
+									SimulationMessage.quoted(e.getValue())),
 					e.getValue().getFirst(), null));
 		}
 
@@ -950,7 +951,8 @@ final class SettingsCsvImporter {
 							unknowns.put(uid, unknown);
 							messages.add(warning(SimulationMessage.CODE_UNKNOWN_FILTER,
 									"The chain %s uses the filter %s, which is not in %s. It is kept as an unknown filter, which datum pass through unchanged."
-											.formatted(instance.label(), uid, scope),
+											.formatted(instance.label(), SimulationMessage.quoted(uid),
+													scope),
 									unknown.id(), null));
 						}
 						memberId = unknown.id();
@@ -971,8 +973,8 @@ final class SettingsCsvImporter {
 			mainChainId = idsByUid.get(mainUid);
 			if ( mainChainId == null ) {
 				messages.add(warning(SimulationMessage.CODE_MAIN_CHAIN,
-						"The Datum Queue uses the filter %s, which is not in %s.".formatted(mainUid,
-								scope),
+						"The Datum Queue uses the filter %s, which is not in %s."
+								.formatted(SimulationMessage.quoted(mainUid), scope),
 						null, null));
 			}
 		}
@@ -1007,12 +1009,14 @@ final class SettingsCsvImporter {
 		if ( instance.skipped ) {
 			messages.add(warning(SimulationMessage.CODE_INVALID_INSTANCE_ID,
 					"SolarNode skips the settings of the filter %s, because its instance ID %s is not allowed. Change the instance ID before you export the settings."
-							.formatted(instance.label(), instance.instanceKey()),
+							.formatted(instance.label(),
+									SimulationMessage.quoted(instance.instanceKey())),
 					instance.id(), null));
 		} else if ( problem != null ) {
 			messages.add(warning(SimulationMessage.CODE_INVALID_INSTANCE_ID,
 					"The instance ID %s of the filter %s is not allowed: %s Change it before you export the settings."
-							.formatted(instance.instanceKey(), instance.label(), problem),
+							.formatted(SimulationMessage.quoted(instance.instanceKey()),
+									instance.label(), problem),
 					instance.id(), null));
 		}
 		if ( !instance.factoryRow ) {

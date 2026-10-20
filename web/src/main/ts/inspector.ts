@@ -10,7 +10,7 @@ import {
 	type SettingProblem,
 	type SettingsForm,
 } from "./model.ts";
-import { externalFilesText } from "./view.ts";
+import { externalFilesText, quoted } from "./view.ts";
 import type { ChainSlot, SettingChanges, Workspace } from "./workspace.ts";
 
 /** What the inspector's buttons do. */
@@ -318,7 +318,7 @@ export class Inspector {
 			element(
 				"div",
 				"small text-body-secondary sim-about",
-				`Place ${slot.index} of ${chain ? ws.label(chain) : "the chain"}, without a filter. SolarNode skips it, and an export gives it the Service Name ${UNASSIGNED_UID}, so the filters after it keep their places (their transformUids indexes). Drop a filter on it to put the filter here.`,
+				`Place ${slot.index} of ${chain ? quoted(ws.label(chain)) : "the chain"}, without a filter. SolarNode skips it, and an export gives it the Service Name ${quoted(UNASSIGNED_UID)}, so the filters after it keep their places (their transformUids indexes). Drop a filter on it to put the filter here.`,
 			),
 		);
 		const buttons = element("div", "d-flex gap-2 mt-3");

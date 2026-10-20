@@ -31,6 +31,13 @@ const NESTED_OFFSET = 70;
 const TURN = 18;
 
 /**
+ * How far before the next filter a nested chain's line back up turns into it:
+ * far enough that every datum route lane alongside it reaches the filter from
+ * the left.
+ */
+const APPROACH = 48;
+
+/**
  * How far above a nested chain's row its line back to the parent runs: clear
  * of the run badges above the row's filters, and of the labels below the
  * parent's row.
@@ -315,8 +322,8 @@ export function layout(ws: Workspace): Drawing {
 				n.back.vertices = [
 					{ x: out, y: rowY + NODE_SIZE / 2 },
 					{ x: out, y: turnY },
-					{ x: target - TURN, y: turnY },
-					{ x: target - TURN, y: portY },
+					{ x: target - APPROACH, y: turnY },
+					{ x: target - APPROACH, y: portY },
 				];
 			}
 			right = Math.max(right, extent.right);

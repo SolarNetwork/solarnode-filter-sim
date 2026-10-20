@@ -28,6 +28,7 @@ import static s10k.node.sim.filter.csv.SettingsCsv.MAIN_INSTANCE_KEY;
 import static s10k.node.sim.filter.csv.SettingsCsv.UID;
 import static s10k.node.sim.filter.domain.SimulationMessage.error;
 import static s10k.node.sim.filter.domain.SimulationMessage.info;
+import static s10k.node.sim.filter.domain.SimulationMessage.quoted;
 import static s10k.node.sim.filter.domain.SimulationMessage.warning;
 import java.io.IOException;
 import java.io.StringWriter;
@@ -214,7 +215,7 @@ final class SettingsCsvExporter {
 		if ( !legacy.isEmpty() ) {
 			messages.add(warning(SimulationMessage.CODE_LEGACY_INSTANCE_ID,
 					"SolarNode releases before Core Settings Support 4.2.1 do not import the settings of instance IDs with characters other than A-Z, a-z, and 0-9: %s."
-							.formatted(String.join(", ", legacy)),
+							.formatted(quoted(legacy)),
 					null, null));
 		}
 		return new SettingsExport(write(sections, style), messages);
@@ -303,13 +304,13 @@ final class SettingsCsvExporter {
 			final String problem = InstanceIds.problem(key);
 			if ( problem != null ) {
 				errors.add(error(SimulationMessage.CODE_INVALID_INSTANCE_ID,
-						"The instance ID %s of the filter %s is not allowed: %s".formatted(key, label(c),
-								problem),
+						"The instance ID %s of the filter %s is not allowed: %s".formatted(quoted(key),
+								label(c), problem),
 						c.id()));
 			} else if ( !used.computeIfAbsent(c.factoryUid(), _ -> new LinkedHashSet<>(4)).add(key) ) {
 				errors.add(error(SimulationMessage.CODE_DUPLICATE_INSTANCE_ID,
 						"The instance ID %s of the filter %s is used by another filter of the same type."
-								.formatted(key, label(c)),
+								.formatted(quoted(key), label(c)),
 						c.id()));
 			} else {
 				result.put(c.id(), key);
@@ -328,7 +329,7 @@ final class SettingsCsvExporter {
 			result.put(c.id(), assigned);
 			messages.add(info(SimulationMessage.CODE_INSTANCE_ID_ASSIGNED,
 					"The filter %s has no instance ID, so it is exported as %s.".formatted(label(c),
-							assigned),
+							quoted(assigned)),
 					c.id()));
 		}
 		return result;
@@ -346,8 +347,8 @@ final class SettingsCsvExporter {
 			if ( e.getValue().size() > 1 ) {
 				messages.add(warning(SimulationMessage.CODE_DUPLICATE_UID,
 						"The Service Name %s is used by %d filters (%s), so filter chains use only the first one."
-								.formatted(e.getKey(), e.getValue().size(),
-										String.join(", ", e.getValue())),
+								.formatted(quoted(e.getKey()), e.getValue().size(),
+										quoted(e.getValue())),
 						e.getValue().getFirst(), null));
 			}
 		}
@@ -363,7 +364,7 @@ final class SettingsCsvExporter {
 		if ( main == null ) {
 			messages.add(warning(SimulationMessage.CODE_MAIN_CHAIN,
 					"The Main chain %s does not exist, so the Datum Queue setting is not exported."
-							.formatted(mainId),
+							.formatted(quoted(mainId)),
 					null, null));
 			return null;
 		}
@@ -371,7 +372,7 @@ final class SettingsCsvExporter {
 		if ( uid == null ) {
 			messages.add(warning(SimulationMessage.CODE_MAIN_CHAIN,
 					"The Main chain %s has no Service Name, so the Datum Queue setting is not exported."
-							.formatted(main.id()),
+							.formatted(quoted(main.id())),
 					main.id(), null));
 			return null;
 		}
@@ -524,7 +525,7 @@ final class SettingsCsvExporter {
 				if ( report ) {
 					messages.add(warning(SimulationMessage.CODE_UNKNOWN_CHAIN_MEMBER,
 							"The chain %s refers to the filter %s, which does not exist, so it is left out."
-									.formatted(label(chain), memberId),
+									.formatted(label(chain), quoted(memberId)),
 							chain.id(), null));
 				}
 				continue;
@@ -534,7 +535,7 @@ final class SettingsCsvExporter {
 				if ( report ) {
 					messages.add(warning(SimulationMessage.CODE_MISSING_UID,
 							"The filter %s in the chain %s has no Service Name, so the chain cannot use it."
-									.formatted(member.id(), label(chain)),
+									.formatted(quoted(member.id()), label(chain)),
 							member.id(), null));
 				}
 				continue;
@@ -618,7 +619,7 @@ final class SettingsCsvExporter {
 
 	private static String label(FilterConfig c) {
 		final String uid = uid(c);
-		return (uid != null ? uid : c.id());
+		return quoted(uid != null ? uid : c.id());
 	}
 
 	/**

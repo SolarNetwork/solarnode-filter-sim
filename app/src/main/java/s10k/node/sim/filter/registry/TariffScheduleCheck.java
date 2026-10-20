@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.domain.SimulationMessage;
 import net.solarnetwork.domain.tariff.TariffSchedule;
 import net.solarnetwork.domain.tariff.TariffUtils;
 import net.solarnetwork.node.datum.filter.tariff.TariffDatumFilterService;
@@ -73,16 +74,16 @@ public final class TariffScheduleCheck implements FilterCheck {
 		if ( service == null ) {
 			return NO_SCHEDULE
 					+ ": no metadata service has the Service Name \"%s\". The metadata services are: %s."
-							.formatted(uid,
-									context.services(MetadataService.class).stream()
-											.map(MetadataService::getUid).filter(Objects::nonNull)
-											.collect(Collectors.joining(", ")));
+							.formatted(uid, context.services(MetadataService.class).stream()
+									.map(MetadataService::getUid).filter(Objects::nonNull)
+									.map(SimulationMessage::quoted).collect(Collectors.joining(", ")));
 		}
 
 		final String path = f.getTariffMetadataPath();
 		final Object data = service.metadataAtPath(path);
 		if ( data == null ) {
-			return NO_SCHEDULE + ": %s has no metadata at %s.".formatted(service.getUid(), path);
+			return NO_SCHEDULE + ": %s has no metadata at %s."
+					.formatted(SimulationMessage.quoted(service.getUid()), path);
 		}
 		try {
 			if ( TariffUtils.parseCsvTemporalRangeSchedule(f.getLocale(), f.isPreserveRateCase(),

@@ -18,6 +18,9 @@ const LINE_WIDTH = 2;
  */
 const LANE = LINE_WIDTH + 4.5;
 
+/** The narrowest a route's click area gets. */
+const MIN_HIT_WIDTH = 7;
+
 /** The closest lanes get, when there are many. */
 const MIN_LANE = LINE_WIDTH + 1;
 
@@ -46,7 +49,7 @@ export interface RouteLine {
 	color: string;
 	/** For a generated datum, the node key of the filter that generated it. */
 	fromKey?: string;
-	/** A description, for the badges' tooltips. */
+	/** A description, for the route's and its badges' tooltips. */
 	title: string;
 	/** `true` to draw it faded, behind an emphasized route. */
 	dim: boolean;
@@ -100,6 +103,13 @@ function pathData(points: Point[]): string {
 		.join(" ");
 }
 
+/** Test if a point is on the way from one point to another, in a straight line. */
+function straight(a: Point, b: Point, c: Point): boolean {
+	const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+	const dot = (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y);
+	return Math.abs(cross) < 1e-6 && dot > 0;
+}
+
 /**
  * Offset a line sideways, keeping each segment parallel to the original, so
  * lines that share a path run side by side.
@@ -120,7 +130,7 @@ export function offsetLine(points: Point[], d: number): Point[] {
 		const len = Math.hypot(dx, dy) || 1;
 		normals.push({ x: -dy / len, y: dx / len });
 	}
-	return points.map((p, i) => {
+	const off = points.map((p, i) => {
 		const n1 = normals[Math.max(0, i - 1)];
 		const n2 = normals[Math.min(normals.length - 1, i)];
 		const mx = n1.x + n2.x;
@@ -136,6 +146,23 @@ export function offsetLine(points: Point[], d: number): Point[] {
 		const len = d / cos;
 		return { x: p.x + (mx / ml) * len, y: p.y + (my / ml) * len };
 	});
+	// a segment shorter than the offset on the inside of turns would point
+	// backwards, so it shrinks to a point instead
+	for (let i = 1; i < off.length - 1; i++) {
+		const dx = points[i + 1].x - points[i].x;
+		const dy = points[i + 1].y - points[i].y;
+		const odx = off[i + 1].x - off[i].x;
+		const ody = off[i + 1].y - off[i].y;
+		if (dx * odx + dy * ody < 0) {
+			const mid = {
+				x: (off[i].x + off[i + 1].x) / 2,
+				y: (off[i].y + off[i + 1].y) / 2,
+			};
+			off[i] = mid;
+			off[i + 1] = mid;
+		}
+	}
+	return off;
 }
 
 /**
@@ -187,18 +214,42 @@ function routePoints(
 	} else {
 		points = [{ x: entry.x - LEAD_IN, y: center.y }, center];
 	}
+	// a point in the middle of a straight run is left out, as offsetting it
+	// would fold a lane back on itself where the run ends in a tight turn
+	const fixed = points.length;
 	const add = (p: Point) => {
 		const prev = points[points.length - 1];
-		if (prev.x !== p.x || prev.y !== p.y) {
+		if (prev.x === p.x && prev.y === p.y) {
+			return;
+		}
+		if (
+			points.length > fixed &&
+			straight(points[points.length - 2], prev, p)
+		) {
+			points[points.length - 1] = { x: p.x, y: p.y };
+		} else {
 			points.push({ x: p.x, y: p.y });
 		}
 	};
-	for (const key of line.route.links) {
-		const linkPoints = geo.linkPoints(key);
-		if (!linkPoints) {
+	const { links, keys } = line.route;
+	for (let i = 0; i < links.length; i++) {
+		const linkPoints = geo.linkPoints(links[i]);
+		if (!linkPoints || linkPoints.length === 0) {
 			break;
 		}
 		linkPoints.forEach(add);
+		// a continuation line stops short of the next filter, but routes reach
+		// its edge, like every other route into it
+		const last = linkPoints[linkPoints.length - 1];
+		const next = geo.box(keys[i + 1]);
+		if (
+			next &&
+			last.x < next.x &&
+			last.y >= next.y &&
+			last.y <= next.y + next.height
+		) {
+			add({ x: next.x, y: last.y });
+		}
 	}
 	return { points, queued };
 }
@@ -238,6 +289,8 @@ export function drawRoutes(
 
 	const dimmed: SVGElement[] = [];
 	const shown: SVGElement[] = [];
+	/** The invisible, wider lines that take the pointer for each route. */
+	const hits: SVGElement[] = [];
 	lines.forEach((line, lane) => {
 		const { route } = line;
 		const d = (lane - (n - 1) / 2) * spacing;
@@ -247,6 +300,7 @@ export function drawRoutes(
 		const style = {
 			stroke: line.color,
 			"stroke-width": width,
+			"data-seq": route.seq,
 		};
 		if (points.length >= 2) {
 			const off = offsetLine(points, d);
@@ -265,6 +319,19 @@ export function drawRoutes(
 			}
 			const main = off.slice(Math.max(0, queued - 1));
 			out.push(svg("path", { ...style, d: pathData(main) }, cls));
+			const hit = svg(
+				"path",
+				{
+					d: pathData(off),
+					"stroke-width": Math.max(MIN_HIT_WIDTH, spacing),
+					"data-seq": route.seq,
+				},
+				"sim-route-hit",
+			);
+			const title = svg("title");
+			title.textContent = line.title;
+			hit.append(title);
+			hits.push(hit);
 			if (
 				(route.end === "dropped" || route.end === "stopped") &&
 				main.length >= 2
@@ -281,6 +348,7 @@ export function drawRoutes(
 							cy: p.y - ((p.y - q.y) / len) * back,
 							r: Math.max(3, width * 1.5),
 							fill: line.color,
+							"data-seq": route.seq,
 						},
 						`sim-route-end${line.dim ? " is-dim" : ""}`,
 					),
@@ -336,7 +404,7 @@ export function drawRoutes(
 			}).chips.push(item);
 		}
 	});
-	layers.lines.append(...dimmed, ...shown);
+	layers.lines.append(...dimmed, ...shown, ...hits);
 
 	for (const group of groups.values()) {
 		drawChips(layers.badges, group);
@@ -362,7 +430,7 @@ function drawChips(layer: SVGGElement, group: ChipGroup): void {
 			: group.origin.y + dy;
 		const g = svg(
 			"g",
-			{ transform: `translate(${x} ${y})` },
+			{ transform: `translate(${x} ${y})`, "data-seq": c.seq },
 			`sim-route-badge${c.dim ? " is-dim" : ""}`,
 		);
 		const title = svg("title");

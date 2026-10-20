@@ -355,7 +355,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			scheduler.runNext();
 		} catch ( RuntimeException e ) {
 			warn(SimulationMessage.CODE_FILTER_ERROR, "Error in a scheduled task of the filter %s: %s"
-					.formatted(task.owner(), e.toString()), task.owner(), null);
+					.formatted(SimulationMessage.quoted(task.owner()), e.toString()), task.owner(),
+					null);
 		} finally {
 			firing = null;
 		}
@@ -542,9 +543,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		try {
 			method.accept(filter);
 		} catch ( RuntimeException e ) {
-			warn(SimulationMessage.CODE_FILTER_ERROR,
-					"Error trying to %s the filter %s: %s".formatted(action, filterId, e.toString()),
-					filterId, null);
+			warn(SimulationMessage.CODE_FILTER_ERROR, "Error trying to %s the filter %s: %s".formatted(
+					action, SimulationMessage.quoted(filterId), e.toString()), filterId, null);
 		}
 	}
 
@@ -566,7 +566,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				if ( member == null ) {
 					warn(SimulationMessage.CODE_UNKNOWN_CHAIN_MEMBER,
 							"The chain %s refers to the filter %s, which does not exist."
-									.formatted(label(traced), memberId),
+									.formatted(label(traced), SimulationMessage.quoted(memberId)),
 							config.id(), null);
 					continue;
 				}
@@ -574,7 +574,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				if ( uid == null || uid.isBlank() ) {
 					warn(SimulationMessage.CODE_MISSING_UID,
 							"The filter %s in the chain %s has no Service Name, so the chain cannot use it."
-									.formatted(memberId, label(traced)),
+									.formatted(SimulationMessage.quoted(memberId), label(traced)),
 							memberId, null);
 					continue;
 				}
@@ -596,8 +596,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( e.getValue().size() > 1 ) {
 				warn(SimulationMessage.CODE_DUPLICATE_UID,
 						"The Service Name %s is used by %d filters (%s), so filter chains use only the first one."
-								.formatted(e.getKey(), e.getValue().size(),
-										String.join(", ", e.getValue())),
+								.formatted(SimulationMessage.quoted(e.getKey()), e.getValue().size(),
+										SimulationMessage.quoted(e.getValue())),
 						e.getValue().getFirst(), null);
 			}
 		}
@@ -633,7 +633,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				if ( reported.add(memberId) ) {
 					warn(SimulationMessage.CODE_CHAIN_CYCLE,
 							"The chain %s contains itself (%s). SolarNode stops a chain when it calls itself."
-									.formatted(label(member), String.join(" → ", cycle)),
+									.formatted(label(member),
+											String.join(" → ", cycle.stream()
+													.map(SimulationMessage::quoted).toList())),
 							memberId, null);
 				}
 				continue;
@@ -655,7 +657,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		}
 		final TracingDatumFilterService entry = filters.get(id);
 		if ( entry == null ) {
-			throw new SimulationException("The entry point filter %s does not exist.".formatted(id));
+			throw new SimulationException(
+					"The entry point filter %s does not exist.".formatted(SimulationMessage.quoted(id)));
 		}
 		return entry;
 	}
@@ -671,12 +674,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 
 	private static String label(String filterId, Map<String, String> settings) {
 		String uid = settings.get(UID_SETTING);
-		return (uid != null && !uid.isBlank() ? uid : filterId);
+		return SimulationMessage.quoted(uid != null && !uid.isBlank() ? uid : filterId);
 	}
 
 	private static String label(TracingDatumFilterService filter) {
 		String uid = filter.getUid();
-		return (uid != null && !uid.isBlank() ? uid : filter.filterId());
+		return SimulationMessage.quoted(uid != null && !uid.isBlank() ? uid : filter.filterId());
 	}
 
 	/* === Metadata === */
@@ -717,7 +720,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			} else if ( !uids.add(uid) ) {
 				warn(SimulationMessage.CODE_DUPLICATE_UID,
 						"More than one metadata service has the Service Name %s, so filters use the first one."
-								.formatted(uid),
+								.formatted(SimulationMessage.quoted(uid)),
 						null, null);
 			}
 			context.registerService(new SimMetadataService(uid, meta));
@@ -764,7 +767,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( sourceId == null || sourceId.isBlank() ) {
 				continue;
 			}
-			final String label = "Datum metadata \"%s\"".formatted(sourceId);
+			final String label = "Datum metadata %s".formatted(sourceId);
 			final GeneralDatumMetadata meta = DatumJson.metadata(e.getValue(), label);
 			ignoredMetadata(e.getValue(), label);
 			context.simulatedDatumMetadataService().addSourceMetadata(sourceId, meta);
@@ -994,8 +997,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		for ( DepthLimit limit : depthLimits.values() ) {
 			warn(SimulationMessage.CODE_GENERATION_DEPTH_LIMIT,
 					"Stopped a possible infinite loop: %d datum generated by the filter %s (first for the source %s) were discarded, because they exceeded the generation depth limit of %d. Generation path: %s"
-							.formatted(limit.count(), limit.filterId(), limit.sourceId(),
-									options.maxGenerationDepthValue(), limit.path()),
+							.formatted(limit.count(), SimulationMessage.quoted(limit.filterId()),
+									limit.sourceId(), options.maxGenerationDepthValue(), limit.path()),
 					limit.filterId(), limit.datumSeq());
 		}
 	}

@@ -61,6 +61,7 @@ The main TypeScript modules are:
 | `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
 | `datumRoutes.ts` | The route each datum took through the drawing, from its steps, for the canvas to draw. |
 | `routeOverlay.ts` | Draws datum routes on the canvas: lanes, the lines back through the queue, and number badges. |
+| `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
 | `inputs.ts`    | The run inputs (datum, histories, starting state, and metadata), saved in the browser, which make up a `/api/simulate` request. |
 | `inputPanel.ts` | The input tabs and the Entry Point select. |

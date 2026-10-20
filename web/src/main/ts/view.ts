@@ -4,6 +4,17 @@
 
 import type { MessageLevel, SamplesInfo, SimulationMessage } from "./model.ts";
 
+/**
+ * Quote a name in a sentence, such as a Service Name, which can have spaces
+ * and words like "and" that would otherwise read as part of the sentence.
+ *
+ * @param name the name
+ * @returns the quoted name
+ */
+export function quoted(name: string): string {
+	return `"${name}"`;
+}
+
 /** The badge class of each message level. */
 const LEVEL_CLASSES: Record<MessageLevel, string> = {
 	Info: "text-bg-secondary",

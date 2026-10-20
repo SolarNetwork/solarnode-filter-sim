@@ -129,7 +129,7 @@ class App {
 		const inputs = RunInputs.load();
 		this.#ws = ws;
 		this.#inputs = inputs;
-		this.#canvas = new Canvas($("#canvas"), ws);
+		this.#canvas = new Canvas($("#canvas"), ws, $("#routes-legend"));
 		this.#inspector = new Inspector($("#inspector"), ws, {
 			disconnect: (node) => {
 				if (node.slot) {
@@ -172,6 +172,12 @@ class App {
 
 		this.#canvas.addEventListener("select", (e) =>
 			this.#inspector.show((e as CustomEvent<FilterNode | null>).detail),
+		);
+		this.#canvas.addEventListener("datumselect", (e) =>
+			this.#results.showDatum((e as CustomEvent<number>).detail),
+		);
+		this.#canvas.addEventListener("blankclick", () =>
+			this.#results.clearDatum(),
 		);
 		this.#canvas.addEventListener("filedrop", (e) =>
 			this.openFile((e as CustomEvent<File>).detail),
@@ -439,8 +445,9 @@ class App {
 		debug: boolean,
 		mark: DebugMark | null,
 	): void {
+		// the canvas gets shorter, but keeps its zoom and pan, so what is at
+		// the top stays where it is
 		const center = $("#center-panel");
-		const wasShown = center.classList.contains("has-results");
 		center.classList.add("has-results");
 		$("#center-splitter").hidden = false;
 		$("#results").hidden = false;
@@ -456,10 +463,6 @@ class App {
 			this.#results.show(result);
 		}
 		this.#inputPanel.setFinalState(result.finalState);
-		if (!wasShown) {
-			// the canvas is smaller now
-			this.#canvas.fit();
-		}
 	}
 
 	#stopDebug(): void {
@@ -659,6 +662,7 @@ class App {
 				}
 			} else if (e.key === "Escape") {
 				canvas.select(null);
+				this.#results.clearDatum();
 			}
 		});
 	}

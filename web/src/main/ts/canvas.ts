@@ -6,6 +6,7 @@ import {
 	type RouteLayers,
 	type RouteLine,
 } from "./routeOverlay.ts";
+import { RoutesLegend, type LegendToggle } from "./routesLegend.ts";
 import { showToast } from "./dialogs.ts";
 import { filterIcon, iconGlyph, MAIN_CHAIN_ICON } from "./icons.ts";
 import {
@@ -20,7 +21,7 @@ import {
 } from "./layout.ts";
 import { UNASSIGNED_UID, type DatumTrace, type FilterConfig } from "./model.ts";
 import type { DatumPath, FilterRunStats } from "./results.ts";
-import { externalFilesText } from "./view.ts";
+import { externalFilesText, quoted } from "./view.ts";
 import type {
 	ChainSlot,
 	Point,
@@ -271,7 +272,9 @@ function clamp(n: number, min: number, max: number): number {
  * workspace changes.
  *
  * It emits a `select` event with the selected {@link FilterNode} (or `null`)
- * as its detail, and a `filedrop` event with a dropped `File` as its detail.
+ * as its detail, a `filedrop` event with a dropped `File` as its detail, and a
+ * `datumselect` event with a datum sequence number detail when a datum route
+ * is clicked, and a `blankclick` event when the background is clicked.
  */
 export class Canvas extends EventTarget {
 	readonly graph: dia.Graph;
@@ -292,6 +295,11 @@ export class Canvas extends EventTarget {
 	readonly #routeLayers: RouteLayers;
 	#showRoutes = loadShowRoutes();
 	#routeFrame?: number;
+	readonly #legend: RoutesLegend | null;
+	/** The datum whose routes the legend shows, or `null` for all. */
+	#visibleSeqs: Set<number> | null = null;
+	/** The datum whose route the pointer is over. */
+	#routeHover: number | null = null;
 	#drop: Drop | null = null;
 	#drag: { key: string; start: Point } | null = null;
 	#changes = 0;
@@ -301,9 +309,11 @@ export class Canvas extends EventTarget {
 	 *
 	 * @param el the element to draw the canvas in
 	 * @param ws the workspace
+	 * @param legendEl the element to show the datum routes legend in
 	 */
-	constructor(el: HTMLElement, ws: Workspace) {
+	constructor(el: HTMLElement, ws: Workspace, legendEl?: HTMLElement) {
 		super();
+		this.#legend = legendEl ? new RoutesLegend(legendEl) : null;
 		this.#el = el;
 		this.#ws = ws;
 		this.graph = new dia.Graph({}, { cellNamespace: namespace });
@@ -357,6 +367,7 @@ export class Canvas extends EventTarget {
 			.el.append(this.#routeLayers.badges);
 		// moving filters moves the links, so the routes follow
 		this.graph.on("change:position", () => this.#scheduleRoutes());
+		this.#bindRouteEvents();
 		this.#bindPaperEvents();
 		this.#bindDropEvents();
 		ws.addEventListener("change", (e) => {
@@ -473,6 +484,8 @@ export class Canvas extends EventTarget {
 	setRun(run: CanvasRun | null): void {
 		this.#run = run;
 		this.#path = null;
+		this.#visibleSeqs = null;
+		this.#routeHover = null;
 		this.#sourceColors.clear();
 		for (const trace of run?.datum ?? []) {
 			const sourceId = trace.input.sourceId ?? "";
@@ -593,6 +606,7 @@ export class Canvas extends EventTarget {
 		const routes = this.#routes;
 		if (!run || !routes) {
 			drawRoutes(this.#routeLayers, [], this.#routeGeometry);
+			this.#legend?.show(null);
 			return;
 		}
 		const path = this.#path;
@@ -614,6 +628,14 @@ export class Canvas extends EventTarget {
 		} else {
 			const trace = traces.find((t) => t.seq === path?.seq);
 			shown = trace ? [{ trace }] : [];
+		}
+		// the legend hides routes, but never the selected datum's
+		const visible = this.#visibleSeqs;
+		if (this.#showRoutes && visible) {
+			shown = shown.filter(
+				({ trace }) =>
+					visible.has(trace.seq) || trace.seq === path?.seq,
+			);
 		}
 
 		// the whole routes, to find where generated datum came from
@@ -642,10 +664,9 @@ export class Canvas extends EventTarget {
 			}
 			return {
 				route,
-				color:
-					this.#sourceColors.get(route.sourceId) ?? ROUTE_COLORS[0],
+				color: this.#routeColor(route.sourceId),
 				fromKey,
-				title: this.#routeTitle(trace, route),
+				title: this.#routeText(trace, route).title,
 				dim:
 					this.#showRoutes &&
 					path?.seq !== undefined &&
@@ -653,31 +674,168 @@ export class Canvas extends EventTarget {
 			};
 		});
 		drawRoutes(this.#routeLayers, lines, this.#routeGeometry);
+		this.#legend?.show(
+			this.#showRoutes
+				? traces.map((trace) => {
+						const route = whole.get(trace.seq)!;
+						const text = this.#routeText(trace, route);
+						return {
+							seq: trace.seq,
+							sourceId: route.sourceId,
+							color: this.#routeColor(route.sourceId),
+							...text,
+							visible: !visible || visible.has(trace.seq),
+							selected: trace.seq === path?.seq,
+						};
+					})
+				: null,
+		);
+		this.#applyRouteHover();
 	}
 
-	/** Describe a datum route, for its badges' tooltips. */
-	#routeTitle(trace: DatumTrace, route: DatumRoute): string {
+	#routeColor(sourceId: string): string {
+		return this.#sourceColors.get(sourceId) ?? ROUTE_COLORS[0];
+	}
+
+	/**
+	 * Describe where a datum came from and where its route ended: in full,
+	 * and in short for the legend.
+	 */
+	#routeText(
+		trace: DatumTrace,
+		route: DatumRoute,
+	): { title: string; summary: string } {
 		const label = (id: string | undefined) => {
 			const filter = id ? this.#ws.filter(id) : undefined;
-			return filter ? this.#ws.label(filter) : (id ?? "a filter");
+			return id
+				? quoted(filter ? this.#ws.label(filter) : id)
+				: "a filter";
 		};
 		const origin = trace.origin;
-		const from =
+		const generator = label(origin.filterId);
+		const [from, fromShort] =
 			origin.type === "Input"
-				? `input ${(origin.index ?? 0) + 1}`
+				? [
+						`input ${(origin.index ?? 0) + 1}`,
+						`input ${(origin.index ?? 0) + 1}`,
+					]
 				: origin.type === "Scheduled"
-					? `generated by a scheduled task of ${label(origin.filterId)}`
-					: `generated by ${label(origin.filterId)}`;
+					? [
+							`generated by a scheduled task of ${generator}`,
+							`from ${generator}`,
+						]
+					: [`generated by ${generator}`, `from ${generator}`];
 		const last = this.#nodes.get(route.keys[route.keys.length - 1]);
-		const end =
+		const dropper = label(
+			last?.kind === "filter" ? last.filterId : undefined,
+		);
+		const [end, endShort] =
 			route.end === "output"
-				? "output by the Datum Queue"
+				? ["output by the Datum Queue", "output"]
 				: route.end === "dropped"
-					? `discarded by ${label(last?.kind === "filter" ? last.filterId : undefined)}`
+					? [`discarded by ${dropper}`, `dropped by ${dropper}`]
 					: route.end === "stopped"
-						? "stopped by an error"
-						: "";
-		return `#${trace.seq} ${route.sourceId}: ${from}${end ? `, ${end}` : ""}`;
+						? ["stopped by an error", "error"]
+						: ["", ""];
+		return {
+			title: `#${trace.seq} ${route.sourceId}: ${from}${end ? `, ${end}` : ""}`,
+			summary: endShort ? `${fromShort} → ${endShort}` : fromShort,
+		};
+	}
+
+	/**
+	 * Show or hide routes, like a Grafana legend: show only the given routes,
+	 * or all again if only they are shown; or add them to the shown routes, or
+	 * remove them if they are all shown.
+	 */
+	#toggleRoutes({ seqs, additive }: LegendToggle): void {
+		const all = (this.#run?.datum ?? []).map((t) => t.seq);
+		let visible: Set<number> | null = this.#visibleSeqs ?? new Set(all);
+		if (additive) {
+			const allShown = seqs.every((s) => visible!.has(s));
+			visible = new Set(visible);
+			for (const seq of seqs) {
+				if (allShown) {
+					visible.delete(seq);
+				} else {
+					visible.add(seq);
+				}
+			}
+		} else {
+			const only =
+				visible.size === seqs.length &&
+				seqs.every((s) => visible!.has(s));
+			visible = only ? null : new Set(seqs);
+		}
+		this.#visibleSeqs =
+			visible && visible.size === all.length ? null : visible;
+		this.#drawRoutes();
+	}
+
+	/**
+	 * Emphasize a datum's route, such as while the pointer is over it.
+	 *
+	 * @param seq the datum sequence number, or `null` for none
+	 */
+	#setRouteHover(seq: number | null): void {
+		if (seq !== this.#routeHover) {
+			this.#routeHover = seq;
+			this.#applyRouteHover();
+		}
+	}
+
+	#applyRouteHover(): void {
+		const seq = this.#routeHover;
+		for (const layer of [
+			this.#routeLayers.lines,
+			this.#routeLayers.badges,
+		]) {
+			layer.classList.toggle("is-hovering", seq !== null);
+			layer
+				.querySelectorAll<SVGElement>("[data-seq]")
+				.forEach((el) =>
+					el.classList.toggle(
+						"is-hover",
+						el.dataset.seq === String(seq),
+					),
+				);
+		}
+		this.#legend?.setHover(seq);
+	}
+
+	/** Handle the pointer on routes and their badges. */
+	#bindRouteEvents(): void {
+		const seqOf = (e: Event) => {
+			const el = (e.target as Element).closest<SVGElement>("[data-seq]");
+			return el ? Number(el.dataset.seq) : null;
+		};
+		for (const layer of [
+			this.#routeLayers.lines,
+			this.#routeLayers.badges,
+		]) {
+			layer.addEventListener("pointerover", (e) =>
+				this.#setRouteHover(seqOf(e)),
+			);
+			layer.addEventListener("pointerout", () =>
+				this.#setRouteHover(null),
+			);
+			layer.addEventListener("click", (e) => {
+				const seq = seqOf(e);
+				if (seq !== null) {
+					// not a click on the background, which unselects
+					e.stopPropagation();
+					this.dispatchEvent(
+						new CustomEvent<number>("datumselect", { detail: seq }),
+					);
+				}
+			});
+		}
+		this.#legend?.addEventListener("toggle", (e) =>
+			this.#toggleRoutes((e as CustomEvent<LegendToggle>).detail),
+		);
+		this.#legend?.addEventListener("hover", (e) =>
+			this.#setRouteHover((e as CustomEvent<number | null>).detail),
+		);
 	}
 
 	/** The drawing's geometry, for datum routes. */
@@ -841,7 +999,7 @@ export class Canvas extends EventTarget {
 				root: {
 					title: end.main
 						? "The Datum Queue output: datum that come out of the Main chain are persisted or uploaded."
-						: `The end of ${chainLabel}. The flow continues with the filter it links to.`,
+						: `The end of ${quoted(chainLabel)}. The flow continues with the filter it links to.`,
 				},
 				body: { class: end.main ? "sim-end is-output" : "sim-end" },
 				dot: { class: "sim-end-dot" },
@@ -954,7 +1112,7 @@ export class Canvas extends EventTarget {
 			);
 		}
 		if (ws.isUnknown(filter)) {
-			return `${ws.label(filter)}: an unknown filter, which a chain uses by its Service Name but whose settings are not in this configuration. Datum pass through it unchanged.`;
+			return `${quoted(ws.label(filter))}: an unknown filter, which a chain uses by its Service Name but whose settings are not in this configuration. Datum pass through it unchanged.`;
 		}
 		const type = ws.type(filter.factoryUid);
 		const lines = [
@@ -1084,7 +1242,10 @@ export class Canvas extends EventTarget {
 		paper.on("element:pointerclick", (view: dia.ElementView) =>
 			this.select(String(view.model.id)),
 		);
-		paper.on("blank:pointerclick", () => this.select(null));
+		paper.on("blank:pointerclick", () => {
+			this.select(null);
+			this.dispatchEvent(new Event("blankclick"));
+		});
 		paper.on("blank:pointerdown", (evt: dia.Event) => this.#startPan(evt));
 		paper.on("blank:mousewheel", (evt: dia.Event, x: number, y: number) =>
 			this.#wheel(evt, x, y),
