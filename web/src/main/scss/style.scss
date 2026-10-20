@@ -85,6 +85,36 @@ body {
 	resize: vertical;
 }
 
+// a JSON editor (jsonEditor.ts), in place of a hidden text area
+.sim-json-editor {
+	position: relative;
+	min-height: 5rem;
+	overflow: hidden;
+	resize: vertical;
+
+	&:focus-within {
+		border-color: var(--bs-focus-ring-color);
+		box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color);
+	}
+}
+
+.sim-json-source.is-invalid + .sim-json-editor {
+	border-color: var(--bs-form-invalid-border-color);
+}
+
+.sim-json-format {
+	position: absolute;
+	top: 0.25rem;
+	right: 0.25rem;
+	z-index: 5;
+	opacity: 0.5;
+
+	.sim-json-editor:hover &,
+	&:focus-visible {
+		opacity: 1;
+	}
+}
+
 .sim-splitter {
 	display: flex;
 	align-items: center;

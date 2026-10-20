@@ -13,6 +13,7 @@ import {
 	type RunInputs,
 	type UserMetadataInput,
 } from "./inputs.ts";
+import { JsonEditor } from "./jsonEditor.ts";
 import type { SimulationState } from "./model.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -55,6 +56,15 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	allowedCommands: "environment",
 	nodeMetadata: "node-metadata",
 };
+
+/** The JSON inputs, which get a JSON editor. */
+const JSON_FIELDS: ReadonlySet<InputField> = new Set([
+	"datum",
+	"history",
+	"unfilteredHistory",
+	"nodeMetadata",
+	"datumMetadata",
+]);
 
 /** The checks of the JSON inputs, which throw an error for a problem. */
 const FIELD_CHECKS: Partial<
@@ -265,6 +275,12 @@ export class InputPanel {
 		][]) {
 			const input = $<HTMLInputElement | HTMLTextAreaElement>(selector);
 			input.value = state[field];
+			if (
+				JSON_FIELDS.has(field) &&
+				input instanceof HTMLTextAreaElement
+			) {
+				new JsonEditor(input);
+			}
 			const check = FIELD_CHECKS[field];
 			input.addEventListener("input", () => {
 				this.#inputs.set(field, input.value);
@@ -470,6 +486,7 @@ export class InputPanel {
 			this.#scheduleCheck(item.id, "user-metadata", check);
 		});
 		card.append(head, uidWarning, json, feedback);
+		new JsonEditor(json);
 		try {
 			check();
 		} catch (e) {
