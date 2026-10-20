@@ -193,6 +193,34 @@ function datumOutcome(trace: DatumTrace): DatumOutcome {
 }
 
 /**
+ * Summarize a result's statistics, such as "3 datum processed · 1 output".
+ *
+ * @param result the result
+ */
+function summaryText(result: SimulationResult): string {
+	const s = result.stats;
+	return [
+		`${s.processed} datum processed`,
+		s.generated ? `${s.generated} generated` : "",
+		`${s.output} output`,
+		s.discarded ? `${s.discarded} discarded` : "",
+		`${s.durationMs} ms`,
+	]
+		.filter((p) => p)
+		.join(" · ");
+}
+
+/** The content of an Execution Flow report. */
+export interface ReportContent {
+	/** The run's statistics, summarized. */
+	summary: string;
+	/** The flow: messages, datum, and final state. */
+	body: HTMLElement;
+	/** `true` if there are datum to expand and collapse. */
+	collapsible: boolean;
+}
+
+/**
  * Count values by key, in the order they first appear.
  *
  * @param keys the keys
@@ -262,6 +290,8 @@ export class ResultsPanel extends EventTarget {
 	 * @param result the result
 	 */
 	show(result: SimulationResult): void {
+		this.#result = result;
+		this.#selectedSeq = null;
 		this.#debug = null;
 		this.#el.classList.remove("is-debug");
 		this.#el.replaceChildren(this.#header(result), this.#body(result));
@@ -312,6 +342,7 @@ export class ResultsPanel extends EventTarget {
 			return;
 		}
 		this.#result = result;
+		this.#selectedSeq = null;
 		const header = this.#debugHeader();
 		const stateEl = element("div", "sim-debug-state border-start");
 		this.#debug = {
@@ -350,8 +381,6 @@ export class ResultsPanel extends EventTarget {
 	}
 
 	#body(result: SimulationResult): HTMLElement {
-		this.#result = result;
-		this.#selectedSeq = null;
 		const body = element("div", "sim-results-body p-3");
 		if (result.messages.length) {
 			body.append(this.#messages(result.messages));
@@ -395,17 +424,10 @@ export class ResultsPanel extends EventTarget {
 			"sim-results-header d-flex align-items-center gap-2 px-3 py-2 border-bottom bg-body-tertiary",
 		);
 		const title = element("h2", "h6 mb-0 text-nowrap", "Execution Flow");
-		const parts = [
-			`${s.processed} datum processed`,
-			s.generated ? `${s.generated} generated` : "",
-			`${s.output} output`,
-			s.discarded ? `${s.discarded} discarded` : "",
-			`${s.durationMs} ms`,
-		].filter((p) => p);
 		const summary = element(
 			"span",
 			"small text-body-secondary text-truncate",
-			parts.join(" · "),
+			summaryText(result),
 		);
 		this.#stale = element(
 			"span",
@@ -692,6 +714,7 @@ export class ResultsPanel extends EventTarget {
 			this.#messagesCollapsed = collapsed;
 			card.classList.toggle("is-collapsed", collapsed);
 		});
+		collapse.button.classList.add("sim-messages-collapse");
 		header.append(
 			collapse.button,
 			element("span", "fw-semibold small", "Messages"),
@@ -704,6 +727,7 @@ export class ResultsPanel extends EventTarget {
 		for (const [level, count] of countBy(messages.map((m) => m.level))) {
 			pills.append(
 				this.#filterPill(
+					"level",
 					level,
 					count,
 					LEVEL_CLASSES[level] ?? "text-bg-secondary",
@@ -734,6 +758,7 @@ export class ResultsPanel extends EventTarget {
 		)) {
 			pills.append(
 				this.#filterPill(
+					"outcome",
 					outcome,
 					count,
 					OUTCOME_CLASSES[outcome],
@@ -767,6 +792,7 @@ export class ResultsPanel extends EventTarget {
 	 * @param apply show or hide the rows after a change
 	 */
 	#filterPill<K extends string>(
+		group: "level" | "outcome",
 		name: K,
 		count: number,
 		className: string,
@@ -779,6 +805,8 @@ export class ResultsPanel extends EventTarget {
 			`${name} ${count}`,
 		);
 		pill.type = "button";
+		pill.dataset.filterGroup = group;
+		pill.dataset.filterValue = name;
 		const refresh = () => {
 			const shown = !hidden.has(name);
 			pill.setAttribute("aria-pressed", String(shown));
@@ -858,7 +886,7 @@ export class ResultsPanel extends EventTarget {
 
 		const header = element(
 			"header",
-			"card-header d-flex flex-wrap align-items-center gap-2 py-1 px-2 sim-datum-header",
+			"card-header d-flex flex-wrap align-items-baseline gap-2 py-1 px-2 sim-datum-header",
 		);
 		header.tabIndex = 0;
 		header.setAttribute("role", "button");
@@ -1139,6 +1167,8 @@ export class ResultsPanel extends EventTarget {
 		);
 		name.type = "button";
 		name.title = "Show the filter";
+		// a report shows the name as text
+		name.dataset.report = "text";
 		name.addEventListener("click", (e) => {
 			e.preventDefault();
 			this.#emitFilter(step.filterId);
@@ -1409,6 +1439,7 @@ export class ResultsPanel extends EventTarget {
 				"Allow",
 			);
 			allow.type = "button";
+			allow.dataset.report = "remove";
 			allow.title = `Add ${path} to the Allowed Commands, so the next run can run it. Allow only programs you trust.`;
 			allow.addEventListener("click", () =>
 				this.dispatchEvent(
@@ -1466,6 +1497,7 @@ export class ResultsPanel extends EventTarget {
 			"Use as the starting state",
 		);
 		use.type = "button";
+		use.dataset.report = "remove";
 		use.title =
 			"Copy the final operational modes and Local State into the Environment inputs, to continue from here in the next run";
 		use.addEventListener("click", () =>
