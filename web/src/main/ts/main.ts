@@ -448,6 +448,7 @@ class App {
 		this.#canvas.setRun({
 			stats: filterRunStats(result),
 			output: result.stats.output,
+			datum: result.datum,
 		});
 		if (debug) {
 			this.#results.showDebug(result, mark);

@@ -56,6 +56,10 @@ export interface DatumPath {
 	dropped: Set<string>;
 	/** In debug mode, the id of the filter at the cursor. */
 	current?: string;
+	/** The datum's sequence number, to draw its route. */
+	seq?: number;
+	/** The index of the last step to draw the route to, or all if missing. */
+	upTo?: number;
 }
 
 /** A debug cursor position that stays meaningful across re-runs. */
@@ -143,7 +147,11 @@ export function filterRunStats(
  * @returns the path
  */
 export function datumPath(trace: DatumTrace): DatumPath {
-	const path: DatumPath = { visited: new Set(), dropped: new Set() };
+	const path: DatumPath = {
+		visited: new Set(),
+		dropped: new Set(),
+		seq: trace.seq,
+	};
 	for (const step of trace.steps ?? []) {
 		path.visited.add(step.filterId);
 		if (step.status === "Dropped") {
@@ -485,6 +493,8 @@ export class ResultsPanel extends EventTarget {
 			visited: new Set(),
 			dropped: new Set(),
 			current: step?.filterId,
+			seq: trace.seq,
+			upTo: stepIndex,
 		};
 		for (const s of (trace.steps ?? []).slice(0, stepIndex + 1)) {
 			path.visited.add(s.filterId);

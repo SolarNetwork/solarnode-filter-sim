@@ -1,4 +1,5 @@
 import { dia, shapes } from "@joint/core";
+import { DatumRoutes, ROUTE_COLORS, type DatumRoute } from "./datumRoutes.ts";
 import { showToast } from "./dialogs.ts";
 import { filterIcon, iconGlyph, MAIN_CHAIN_ICON } from "./icons.ts";
 import {
@@ -11,7 +12,7 @@ import {
 	type FilterNode,
 	type FlowLink,
 } from "./layout.ts";
-import { UNASSIGNED_UID, type FilterConfig } from "./model.ts";
+import { UNASSIGNED_UID, type DatumTrace, type FilterConfig } from "./model.ts";
 import type { DatumPath, FilterRunStats } from "./results.ts";
 import { externalFilesText } from "./view.ts";
 import type {
@@ -55,7 +56,11 @@ export interface CanvasRun {
 	stats: Map<string, FilterRunStats>;
 	/** The number of datum the Datum Queue output. */
 	output: number;
+	/** The datum traces, for their routes. */
+	datum: DatumTrace[];
 }
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PORT_MARKUP = [{ tagName: "circle", selector: "portBody" }];
 
@@ -262,6 +267,12 @@ export class Canvas extends EventTarget {
 	#flagged = new Set<string>();
 	#run: CanvasRun | null = null;
 	#path: DatumPath | null = null;
+	#routes: DatumRoutes | null = null;
+	/** The color of each source ID's datum routes. */
+	#sourceColors = new Map<string, string>();
+	/** The datum routes, drawn under the links and filters. */
+	readonly #routeLayer: SVGGElement;
+	#routeFrame?: number;
 	#drop: Drop | null = null;
 	#drag: { key: string; start: Point } | null = null;
 	#changes = 0;
@@ -313,6 +324,13 @@ export class Canvas extends EventTarget {
 					targetMagnet,
 				),
 		});
+		this.#routeLayer = document.createElementNS(SVG_NS, "g");
+		this.#routeLayer.classList.add("sim-routes");
+		this.paper
+			.getLayerView(dia.Paper.Layers.BACK)
+			.el.append(this.#routeLayer);
+		// moving filters moves the links, so the routes follow
+		this.graph.on("change:position", () => this.#scheduleRoutes());
 		this.#bindPaperEvents();
 		this.#bindDropEvents();
 		ws.addEventListener("change", (e) => {
@@ -375,6 +393,8 @@ export class Canvas extends EventTarget {
 			}
 		}
 		this.paper.unfreeze();
+		this.#routes = new DatumRoutes(drawing, this.#ws);
+		this.#drawRoutes();
 		// the selected filter might have changed, so always tell listeners
 		this.#emitSelect();
 	}
@@ -427,6 +447,16 @@ export class Canvas extends EventTarget {
 	setRun(run: CanvasRun | null): void {
 		this.#run = run;
 		this.#path = null;
+		this.#sourceColors.clear();
+		for (const trace of run?.datum ?? []) {
+			const sourceId = trace.input.sourceId ?? "";
+			if (!this.#sourceColors.has(sourceId)) {
+				this.#sourceColors.set(
+					sourceId,
+					ROUTE_COLORS[this.#sourceColors.size % ROUTE_COLORS.length],
+				);
+			}
+		}
 		this.#el.classList.remove("is-stale");
 		this.render();
 	}
@@ -450,6 +480,7 @@ export class Canvas extends EventTarget {
 		for (const key of this.#nodes.keys()) {
 			this.#refreshNode(key);
 		}
+		this.#drawRoutes();
 	}
 
 	/** Zoom and pan so the whole flow chart is in view. */
@@ -482,6 +513,73 @@ export class Canvas extends EventTarget {
 			this.paper.scale().sx * factor,
 			visible ? visible.topLeft() : view.center(),
 		);
+	}
+
+	/* === Datum routes === */
+
+	#scheduleRoutes(): void {
+		if (this.#routeFrame === undefined) {
+			this.#routeFrame = window.requestAnimationFrame(() => {
+				this.#routeFrame = undefined;
+				this.#drawRoutes();
+			});
+		}
+	}
+
+	/** Draw the route of the highlighted datum. */
+	#drawRoutes(): void {
+		this.#routeLayer.replaceChildren();
+		const seq = this.#path?.seq;
+		const trace =
+			seq !== undefined
+				? this.#run?.datum.find((t) => t.seq === seq)
+				: undefined;
+		if (!trace || !this.#routes) {
+			return;
+		}
+		const route = this.#routes.route(trace, this.#path?.upTo);
+		const points = this.#routePoints(route);
+		if (points.length < 2) {
+			return;
+		}
+		const line = document.createElementNS(SVG_NS, "path");
+		line.setAttribute(
+			"d",
+			points
+				.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+				.join(" "),
+		);
+		line.setAttribute(
+			"stroke",
+			this.#sourceColors.get(route.sourceId) ?? ROUTE_COLORS[0],
+		);
+		line.classList.add("sim-route");
+		this.#routeLayer.append(line);
+	}
+
+	/**
+	 * Get the points of a route: the corners of the links it travelled, as
+	 * they are drawn.
+	 */
+	#routePoints(route: DatumRoute): Point[] {
+		const points: Point[] = [];
+		const add = (p: Point) => {
+			const prev = points[points.length - 1];
+			if (!prev || prev.x !== p.x || prev.y !== p.y) {
+				points.push({ x: p.x, y: p.y });
+			}
+		};
+		for (const key of route.links) {
+			const view = this.paper.findViewByModel(key) as
+				dia.LinkView | undefined;
+			if (!view?.sourcePoint || !view.targetPoint) {
+				break;
+			}
+			add(view.sourcePoint);
+			(view.route ?? []).forEach(add);
+			add(view.targetPoint);
+		}
+		return points;
 	}
 
 	/* === Cells === */

@@ -745,3 +745,17 @@ rect.sim-badge {
 	text-align: end;
 	color: var(--bs-secondary-color);
 }
+
+// datum routes, drawn under the links and filters
+.sim-route {
+	fill: none;
+	stroke-width: 8;
+	stroke-opacity: 0.45;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	pointer-events: none;
+}
+
+.is-stale .sim-routes {
+	display: none;
+}
