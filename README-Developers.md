@@ -280,9 +280,6 @@ The local Ivy repository defaults to `~/.ivy2/local`. Use `-PlocalIvyPath=/some/
 it. Publish with `ant publish -Dpublish.ivy=true`, so the repository has the bundle's Ivy
 descriptor, which Gradle needs to resolve it.
 
-Until `net.solarnetwork.node.datum.filter.pvlib` 2.2.0 is on Maven Central, every build needs
-`-PlocalIvy` (the `app` launch configuration in `.claude/launch.json` passes it).
-
 [bootstrap]: https://getbootstrap.com/
 [bootstrap-icons]: https://icons.getbootstrap.com/
 [jointjs]: https://www.jointjs.com/
