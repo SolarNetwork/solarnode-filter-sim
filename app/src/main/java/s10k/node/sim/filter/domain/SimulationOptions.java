@@ -71,8 +71,11 @@ public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer ma
 	/** The default {@code timeoutMs} value. */
 	public static final long DEFAULT_TIMEOUT_MS = 10_000L;
 
-	/** The default {@code datumInterval} value. */
-	public static final Duration DEFAULT_DATUM_INTERVAL = Duration.ofMinutes(1);
+	/**
+	 * The default {@code datumInterval} value: short, so a run of a few input
+	 * datum does not leave time for scheduled tasks to run many times.
+	 */
+	public static final Duration DEFAULT_DATUM_INTERVAL = Duration.ofSeconds(1);
 
 	/** The default options. */
 	public static final SimulationOptions DEFAULTS = new SimulationOptions(null, null, null, null, null,

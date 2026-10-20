@@ -880,6 +880,30 @@ public class SimulationEngineTests {
 	}
 
 	@Test
+	public void inputDatum_defaultTimestamps() {
+		// GIVEN
+		SimulationRequest req = request(List.of(chain("main", "Chain - Main")),
+				meterDatum("2025-10-01 00:00:00Z"), """
+						{"sourceId":"/meter/1","i":{"watts":2}}""", """
+						{"sourceId":"/meter/1","i":{"watts":3}}""");
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("A datum without a date is a second after the datum before it")
+			.extracting(t -> t.input().timestamp())
+			.containsExactly(
+					Instant.parse("2025-10-01T00:00:00Z"),
+					Instant.parse("2025-10-01T00:00:01Z"),
+					Instant.parse("2025-10-01T00:00:02Z"))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void scheduledTask_betweenDatum() {
 		// GIVEN
 		SimulationRequest req = request(
