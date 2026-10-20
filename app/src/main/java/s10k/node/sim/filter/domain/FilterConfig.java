@@ -52,7 +52,9 @@ import org.jspecify.annotations.Nullable;
  *        the filter settings, as SolarNode setting keys and values
  * @param filterIds
  *        for a filter chain, the {@code id} values of its member filters, in
- *        execution order
+ *        execution order: the item at each index is the chain's
+ *        {@code transformUids} setting with that index, and a {@code null} item
+ *        is an Unassigned slot, which the chain skips
  * @param comment
  *        the comment lines that introduce the filter in a settings CSV file,
  *        each a {@code #} comment or a blank row, separated by line feeds, or
@@ -64,8 +66,15 @@ import org.jspecify.annotations.Nullable;
  * @version 1.0
  */
 public record FilterConfig(String id, String factoryUid, @Nullable String instanceKey,
-		@Nullable Map<String, String> settings, @Nullable List<String> filterIds,
+		@Nullable Map<String, String> settings, @Nullable List<@Nullable String> filterIds,
 		@Nullable String comment, @Nullable Map<String, String> notes) {
+
+	/**
+	 * The Service Name that a settings CSV file gives an Unassigned slot of a
+	 * chain, which no filter has, so that the slot stays empty when External
+	 * Settings have a filter at its index.
+	 */
+	public static final String UNASSIGNED_UID = "Unassigned";
 
 	/** The factory UID of a filter that is known only by its Service Name. */
 	public static final String UNKNOWN_FACTORY_UID = "unknown";
@@ -86,7 +95,7 @@ public record FilterConfig(String id, String factoryUid, @Nullable String instan
 	 *        or {@code null}
 	 */
 	public FilterConfig(String id, String factoryUid, @Nullable String instanceKey,
-			@Nullable Map<String, String> settings, @Nullable List<String> filterIds) {
+			@Nullable Map<String, String> settings, @Nullable List<@Nullable String> filterIds) {
 		this(id, factoryUid, instanceKey, settings, filterIds, null, null);
 	}
 
@@ -113,8 +122,8 @@ public record FilterConfig(String id, String factoryUid, @Nullable String instan
 	 *
 	 * @return the member filter IDs
 	 */
-	public List<String> filterIdsOrEmpty() {
-		return (filterIds != null ? filterIds : List.of());
+	public List<@Nullable String> filterIdsOrEmpty() {
+		return (filterIds != null ? filterIds : List.<@Nullable String> of());
 	}
 
 	/**

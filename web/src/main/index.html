@@ -465,25 +465,30 @@
 						<div class="d-flex gap-2 mt-2">
 							<button
 								type="button"
-								class="btn btn-outline-secondary btn-sm text-nowrap"
+								class="btn btn-outline-secondary btn-sm"
 								id="import-button"
-								title="Import a SolarNode settings CSV file"
+								title="Import"
 							>
 								<i class="bi bi-upload" aria-hidden="true"></i>
-								Import
+								<span class="visually-hidden"
+									>Import a SolarNode settings CSV file</span
+								>
 							</button>
 							<div class="btn-group">
 								<button
 									type="button"
-									class="btn btn-outline-secondary btn-sm text-nowrap"
+									class="btn btn-outline-secondary btn-sm"
 									id="export-button"
-									title="Export the filters as a SolarNode settings CSV file"
+									title="Export"
 								>
 									<i
 										class="bi bi-download"
 										aria-hidden="true"
 									></i>
-									Export
+									<span class="visually-hidden"
+										>Export the filters as a SolarNode
+										settings CSV file</span
+									>
 								</button>
 								<button
 									type="button"
@@ -519,7 +524,7 @@
 							</div>
 							<button
 								type="button"
-								class="btn btn-outline-secondary btn-sm text-nowrap"
+								class="btn btn-outline-secondary btn-sm position-relative"
 								id="external-button"
 								title="External Settings: SolarNode settings files that the simulation applies first, like those SolarNode packages install"
 							>
@@ -530,7 +535,11 @@
 								<span class="visually-hidden"
 									>External Settings</span
 								>
-								<span id="external-count" hidden></span>
+								<span
+									id="external-count"
+									class="badge rounded-pill text-bg-secondary sim-count"
+									hidden
+								></span>
 							</button>
 							<div class="btn-group ms-auto">
 								<button

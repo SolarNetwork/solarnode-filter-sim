@@ -525,17 +525,16 @@ final class SettingsCsvImporter {
 			}
 			if ( chain && f.filterIds() != null ) {
 				// the members as transformUids settings, so the file's rows can change them
-				final List<String> uids = new ArrayList<>(f.filterIdsOrEmpty().size());
-				for ( String memberId : f.filterIdsOrEmpty() ) {
+				final List<@Nullable String> members = f.filterIdsOrEmpty();
+				instance.settings.put(CHAIN_FILTERS_COUNT, String.valueOf(members.size()));
+				for ( int i = 0; i < members.size(); i++ ) {
+					// Unassigned slots have no row
+					final String memberId = members.get(i);
 					final FilterConfig member = (memberId != null ? byId.get(memberId) : null);
 					final String uid = (member != null ? member.settingsOrEmpty().get(UID) : null);
 					if ( uid != null && !uid.isBlank() ) {
-						uids.add(uid);
+						instance.settings.put(CHAIN_FILTERS + '[' + i + ']', uid);
 					}
-				}
-				instance.settings.put(CHAIN_FILTERS_COUNT, String.valueOf(uids.size()));
-				for ( int i = 0; i < uids.size(); i++ ) {
-					instance.settings.put(CHAIN_FILTERS + '[' + i + ']', uids.get(i));
 				}
 			}
 			instances.put(c, instance);
@@ -896,13 +895,13 @@ final class SettingsCsvImporter {
 
 		final Map<String, String> idsByUid = new LinkedHashMap<>(instances.size());
 		final Map<String, List<String>> duplicateUids = new LinkedHashMap<>(2);
-		final Map<String, List<String>> chainUids = new LinkedHashMap<>(4);
+		final Map<String, List<@Nullable String>> chainUids = new LinkedHashMap<>(4);
 		for ( Instance instance : instances.values() ) {
 			if ( instance.touched ) {
 				instanceMessages(instance);
 			}
 			if ( StandardFilterTypes.CHAIN.equals(instance.factoryUid()) ) {
-				final List<String> members = chainMembers(instance);
+				final List<@Nullable String> members = chainMembers(instance);
 				if ( members != null ) {
 					chainUids.put(instance.id(), members);
 				}
@@ -932,11 +931,16 @@ final class SettingsCsvImporter {
 			}
 		}
 		for ( Instance instance : instances.values() ) {
-			final List<String> uids = chainUids.get(instance.id());
-			List<String> filterIds = null;
+			final List<@Nullable String> uids = chainUids.get(instance.id());
+			List<@Nullable String> filterIds = null;
 			if ( uids != null ) {
 				filterIds = new ArrayList<>(uids.size());
 				for ( String uid : uids ) {
+					if ( uid == null ) {
+						// an Unassigned slot
+						filterIds.add(null);
+						continue;
+					}
 					String memberId = idsByUid.get(uid);
 					if ( memberId == null ) {
 						FilterConfig unknown = unknowns.get(uid);
@@ -1029,18 +1033,25 @@ final class SettingsCsvImporter {
 	 * Remove a chain's {@code transformUids} settings, and get its members.
 	 *
 	 * <p>
+	 * The members are positional, like SolarNode's array of them: the item at
+	 * each index is the {@code transformUids} setting with that index, and an
+	 * index without a setting, with a blank one, or with the
+	 * {@link FilterConfig#UNASSIGNED_UID} is a {@code null} Unassigned slot.
 	 * Like the chain's {@code transformUidsCount} setting, only that many
-	 * members are used.
+	 * members are used, and without one, the members end at the last member.
+	 * When applying External Settings, the count setting is kept, so an export
+	 * can tell whether the files have one.
 	 * </p>
 	 *
 	 * @param chain
 	 *        the chain
-	 * @return the member Service Names, in order, or {@code null} if the chain
-	 *         has no {@code transformUids} settings
+	 * @return the members, or {@code null} if the chain has no
+	 *         {@code transformUids} settings
 	 */
-	private @Nullable List<String> chainMembers(Instance chain) {
+	private @Nullable List<@Nullable String> chainMembers(Instance chain) {
 		boolean found = false;
 		Integer count = null;
+		String countValue = null;
 		final SortedMap<Integer, String> uids = new TreeMap<>();
 		for ( Iterator<Map.Entry<String, String>> itr = chain.settings.entrySet().iterator(); itr
 				.hasNext(); ) {
@@ -1053,6 +1064,7 @@ final class SettingsCsvImporter {
 			itr.remove();
 			chain.notes.remove(key);
 			if ( CHAIN_FILTERS_COUNT.equals(key) ) {
+				countValue = e.getValue();
 				try {
 					count = Integer.valueOf(e.getValue());
 				} catch ( NumberFormatException ex ) {
@@ -1072,7 +1084,10 @@ final class SettingsCsvImporter {
 		if ( !found ) {
 			return null;
 		}
-		final List<String> result = new ArrayList<>(uids.size());
+		if ( addOnly && countValue != null ) {
+			chain.settings.put(CHAIN_FILTERS_COUNT, countValue);
+		}
+		int size = 0;
 		for ( Map.Entry<Integer, String> e : uids.entrySet() ) {
 			if ( count != null && e.getKey() >= count ) {
 				messages.add(warning(SimulationMessage.CODE_INVALID_SETTING,
@@ -1080,11 +1095,31 @@ final class SettingsCsvImporter {
 								.formatted(chain.label(), CHAIN_FILTERS, e.getKey(), CHAIN_FILTERS_COUNT,
 										count),
 						chain.id(), null));
-			} else if ( !e.getValue().isBlank() ) {
-				result.add(e.getValue());
+			} else if ( isMember(e.getValue()) ) {
+				size = e.getKey() + 1;
 			}
 		}
+		if ( count != null && count > 0 ) {
+			size = count;
+		}
+		final List<@Nullable String> result = new ArrayList<>(size);
+		for ( int i = 0; i < size; i++ ) {
+			final String uid = uids.get(i);
+			result.add(isMember(uid) ? uid : null);
+		}
 		return result;
+	}
+
+	/**
+	 * Test if a {@code transformUids} value is a member, rather than an
+	 * Unassigned slot.
+	 *
+	 * @param uid
+	 *        the value
+	 * @return {@code true} if the value is a Service Name of a filter
+	 */
+	private static boolean isMember(@Nullable String uid) {
+		return (uid != null && !uid.isBlank() && !FilterConfig.UNASSIGNED_UID.equals(uid));
 	}
 
 	/**

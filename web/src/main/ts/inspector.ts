@@ -4,12 +4,14 @@ import { INSTANCE_ID_HELP, MAX_LENGTH } from "./instanceIds.ts";
 import type { FilterNode } from "./layout.ts";
 import {
 	UID_SETTING,
+	UNASSIGNED_UID,
 	type FilterConfig,
 	type SettingField,
 	type SettingProblem,
 	type SettingsForm,
 } from "./model.ts";
-import type { SettingChanges, Workspace } from "./workspace.ts";
+import { externalFilesText } from "./view.ts";
+import type { ChainSlot, SettingChanges, Workspace } from "./workspace.ts";
 
 /** What the inspector's buttons do. */
 export interface InspectorActions {
@@ -135,6 +137,8 @@ export class Inspector {
 	#controls = new Map<string, Control>();
 	#alerts?: HTMLElement;
 	#uidWarning?: HTMLElement;
+	/** The Remove Overrides button of an external filter. */
+	#overridesButton?: HTMLButtonElement;
 
 	/**
 	 * Constructor.
@@ -200,6 +204,11 @@ export class Inspector {
 		const filter = node ? ws.filter(node.filterId) : undefined;
 		const token = ++this.#token;
 		window.clearTimeout(this.#validateTimer);
+		if (node?.unassigned && node.slot) {
+			this.#shownFilterId = null;
+			this.#showUnassigned(node.slot);
+			return;
+		}
 		if (!node || !filter) {
 			this.#shownFilterId = null;
 			this.#showNothing();
@@ -224,6 +233,7 @@ export class Inspector {
 
 		this.#controls.clear();
 		this.#uidWarning = undefined;
+		this.#overridesButton = undefined;
 		const parts: HTMLElement[] = [this.#header(node, filter)];
 		this.#alerts = element("div");
 		this.#alerts.append(...this.#alertsContent(node, form, formError));
@@ -270,12 +280,41 @@ export class Inspector {
 		for (const tip of [
 			"Drag a filter from the palette onto a link to add it to a chain there, or onto an empty spot to add it on its own.",
 			"Drag a filter onto another link to move it, or away from its chain to disconnect it.",
+			"Drag Unassigned onto a link to keep a place in a chain without a filter, and drag a filter onto an Unassigned place to put it there.",
 			"Drag from a port to a filter that is not in a chain to connect it.",
 			"Drag the background to pan, and pinch or hold Ctrl while scrolling to zoom.",
 		]) {
 			tips.append(element("li", "mb-1", tip));
 		}
 		this.#el.replaceChildren(intro, tips);
+	}
+
+	/**
+	 * Show an Unassigned place in a chain.
+	 *
+	 * @param slot where the place is
+	 */
+	#showUnassigned(slot: ChainSlot): void {
+		const ws = this.#ws;
+		const chain = ws.filter(slot.chainId);
+		const header = element("div", "mb-3");
+		header.append(
+			element("h2", "h5 mb-1", UNASSIGNED_UID),
+			element(
+				"div",
+				"small text-body-secondary sim-about",
+				`Place ${slot.index} of ${chain ? ws.label(chain) : "the chain"}, without a filter. SolarNode skips it, and an export gives it the Service Name ${UNASSIGNED_UID}, so the filters after it keep their places (their transformUids indexes). Drop a filter on it to put the filter here.`,
+			),
+		);
+		const buttons = element("div", "d-flex gap-2 mt-3");
+		const remove = iconButton("Delete", "trash", "btn-outline-danger", () =>
+			ws.removeUnassigned(slot),
+		);
+		remove.title =
+			"Delete this place, which moves the filters after it down one place.";
+		buttons.append(remove);
+		this.#el.replaceChildren(header, buttons);
+		this.#el.scrollTop = 0;
 	}
 
 	/**
@@ -294,11 +333,11 @@ export class Inspector {
 			const members = ws.members(filter.id);
 			settings[`${CHAIN_FILTERS}Count`] = String(members.length);
 			members.forEach((id, i) => {
-				const member = ws.filter(id);
+				const member = id === null ? undefined : ws.filter(id);
 				settings[`${CHAIN_FILTERS}[${i}]`] = member
 					? (ws.uid(member) ??
 						`${ws.label(member)} (no Service Name)`)
-					: id;
+					: (id ?? UNASSIGNED_UID);
 			});
 		}
 		return settings;
@@ -330,6 +369,20 @@ export class Inspector {
 			about.append(safeHtml(type.description));
 		}
 		header.append(about);
+		const files = ws.externalFilesOf(filter.id);
+		if (files.length) {
+			const external = element("div", "small mt-2 sim-external-note");
+			const pill = element(
+				"span",
+				"badge rounded-pill text-bg-info me-1",
+				"Ext",
+			);
+			external.append(
+				pill,
+				`From ${externalFilesText(files)}. Settings marked Ext come from ${files.length === 1 ? "the file" : "these files"}. Changing one overrides it in this simulation, and exports include only the changes.`,
+			);
+			header.append(external);
+		}
 		return header;
 	}
 
@@ -398,10 +451,17 @@ export class Inspector {
 		input.value = filter.instanceKey ?? "";
 		input.maxLength = MAX_LENGTH;
 		input.spellcheck = false;
+		const external = ws.isExternal(filter.id);
+		input.readOnly = external;
 		const feedback = element("div", "invalid-feedback");
 		const help = element("div", "form-text");
 		const key = element("code");
-		help.append(`${INSTANCE_ID_HELP} Settings key: `, key);
+		help.append(
+			external
+				? "The External Settings have this instance ID, which is how the simulation's changes apply to the filter, so it cannot change. Settings key: "
+				: `${INSTANCE_ID_HELP} Settings key: `,
+			key,
+		);
 		const check = () => {
 			const current = ws.filter(filter.id);
 			const problem = current
@@ -482,6 +542,12 @@ export class Inspector {
 				"SolarNode does not save this setting, so exports leave it out. The simulator applies it when a simulation starts.";
 			head.append(badge);
 		}
+		const extPill = element(
+			"span",
+			"badge rounded-pill text-bg-info sim-ext-pill",
+			"Ext",
+		);
+		head.append(extPill);
 
 		const help = element("div", "form-text sim-help");
 		help.hidden = true;
@@ -540,9 +606,9 @@ export class Inspector {
 				() => this.#edit(filter.id, { [key]: null }, undefined, true),
 			);
 			reset.classList.add("sim-reset");
-			reset.hidden = !(key in (filter.settings ?? {}));
 			head.append(reset);
 		}
+		this.#refreshSource(filter.id, key, head);
 
 		const feedback = element("div", "invalid-feedback");
 		wrapper.append(head, control, feedback, help, noteRow);
@@ -835,10 +901,46 @@ export class Inspector {
 		if (field.readOnly) {
 			// a chain's filters, which the canvas manages
 			if (children.length > 0) {
-				const list = element("ol", "small mb-1 ps-4");
-				for (const child of children) {
-					list.append(element("li", undefined, child.value ?? ""));
-				}
+				// each filter's transformUids index, and the file it comes from
+				const members = this.#ws.members(filter.id);
+				const files = this.#ws.memberFiles(filter.id);
+				const list = element(
+					"ul",
+					"list-unstyled small mb-1 sim-members",
+				);
+				children.forEach((child, i) => {
+					const item = element(
+						"li",
+						"d-flex align-items-baseline gap-2",
+					);
+					const index = element(
+						"code",
+						"sim-member-index",
+						String(i),
+					);
+					index.title = `transformUids[${i}]`;
+					item.append(
+						index,
+						element(
+							"span",
+							members[i] === null
+								? "text-body-secondary fst-italic"
+								: undefined,
+							child.value ?? "",
+						),
+					);
+					const file = files[i];
+					if (file) {
+						const pill = element(
+							"span",
+							"badge rounded-pill text-bg-info",
+							"Ext",
+						);
+						pill.title = `From the External Settings file ${file}.`;
+						item.append(pill);
+					}
+					list.append(item);
+				});
 				set.append(list);
 			} else {
 				set.append(
@@ -1029,25 +1131,61 @@ export class Inspector {
 	}
 
 	#buttons(node: FilterNode): HTMLElement {
-		const buttons = element("div", "d-flex gap-2 mt-3");
+		const buttons = element("div", "d-flex flex-wrap gap-2 mt-3");
+		const ws = this.#ws;
+		const takeOutProblem = node.slot
+			? ws.takeOutProblem(node.slot)
+			: undefined;
 		if (node.slot) {
-			buttons.append(
-				iconButton(
-					"Disconnect",
-					"scissors",
-					"btn-outline-secondary",
-					() => this.#actions.disconnect(this.#node ?? node),
-				),
+			const disconnect = iconButton(
+				"Disconnect",
+				"scissors",
+				"btn-outline-secondary",
+				() => this.#actions.disconnect(this.#node ?? node),
 			);
+			disconnect.disabled = !!takeOutProblem;
+			buttons.append(disconnect);
 		}
-		if (!node.main) {
+		if (ws.isExternal(node.filterId)) {
+			const remove = iconButton(
+				"Remove Overrides",
+				"arrow-counterclockwise",
+				"btn-outline-secondary",
+				() => ws.removeOverrides(node.filterId),
+			);
+			this.#overridesButton = remove;
+			this.#refreshOverrides(node.filterId);
+			buttons.append(remove);
+		} else if (!node.main) {
 			buttons.append(
 				iconButton("Delete", "trash", "btn-outline-danger", () =>
 					this.#actions.remove(this.#node ?? node),
 				),
 			);
 		}
-		return buttons;
+		if (!takeOutProblem) {
+			return buttons;
+		}
+		const result = element("div");
+		result.append(buttons, element("div", "form-text", takeOutProblem));
+		return result;
+	}
+
+	/**
+	 * Enable the Remove Overrides button while the simulation changes the
+	 * filter.
+	 *
+	 * @param filterId the filter id
+	 */
+	#refreshOverrides(filterId: string): void {
+		const button = this.#overridesButton;
+		if (!button) {
+			return;
+		}
+		button.disabled = !this.#ws.hasOverrides(filterId);
+		button.title = button.disabled
+			? "The simulation does not change this filter's external settings."
+			: "Remove the simulation's changes to this filter, so it has only its external settings. The External Settings would add the filter back on a node if it were deleted, so it cannot be deleted.";
 	}
 
 	#newId(): string {
@@ -1068,6 +1206,9 @@ export class Inspector {
 			this.#selfEdit = false;
 		}
 		this.#signature = this.#signatureOf(this.#node);
+		if (this.#node) {
+			this.#refreshOverrides(this.#node.filterId);
+		}
 	}
 
 	/**
@@ -1101,13 +1242,43 @@ export class Inspector {
 		if (key === UID_SETTING) {
 			this.#updateUidWarning(filter.id);
 		}
-		// a set value can go back to the default
-		const control = this.#controls.get(key);
-		const reset = control?.control
-			.closest(".sim-setting")
-			?.querySelector<HTMLElement>(".sim-reset");
+		const setting = this.#controls
+			.get(key)
+			?.control.closest<HTMLElement>(".sim-setting");
+		if (setting) {
+			this.#refreshSource(filter.id, key, setting);
+		}
+	}
+
+	/**
+	 * Show where a setting's value comes from: the Ext pill while it is the
+	 * External Settings' value, and the reset button while the simulation has
+	 * its own value.
+	 *
+	 * @param filterId the filter id
+	 * @param key the setting key
+	 * @param container the element with the setting's pill and reset button
+	 */
+	#refreshSource(
+		filterId: string,
+		key: string,
+		container: HTMLElement,
+	): void {
+		const ws = this.#ws;
+		const source = ws.settingSource(filterId, key);
+		const pill = container.querySelector<HTMLElement>(".sim-ext-pill");
+		if (pill) {
+			pill.hidden = source !== "external";
+			pill.title = `From the External Settings file ${ws.externalSettingFile(filterId, key) ?? ""}. Change the value to override it in this simulation.`;
+		}
+		const reset = container.querySelector<HTMLElement>(".sim-reset");
 		if (reset) {
-			reset.hidden = false;
+			reset.hidden = source !== "override" && source !== "project";
+			const external = ws.externalFilter(filterId)?.settings?.[key];
+			if (external !== undefined) {
+				reset.title = `Use the external value: ${external}`;
+				reset.setAttribute("aria-label", reset.title);
+			}
 		}
 	}
 

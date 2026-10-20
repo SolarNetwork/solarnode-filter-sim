@@ -1,16 +1,19 @@
 import { dia, shapes } from "@joint/core";
+import { showToast } from "./dialogs.ts";
 import { filterIcon, iconGlyph, MAIN_CHAIN_ICON } from "./icons.ts";
 import {
 	END_SIZE,
 	layout,
 	NODE_SIZE,
+	UNASSIGNED_SIZE,
 	type ContinuationLink,
 	type EndNode,
 	type FilterNode,
 	type FlowLink,
 } from "./layout.ts";
-import type { FilterConfig } from "./model.ts";
+import { UNASSIGNED_UID, type FilterConfig } from "./model.ts";
 import type { DatumPath, FilterRunStats } from "./results.ts";
+import { externalFilesText } from "./view.ts";
 import type {
 	ChainSlot,
 	Point,
@@ -20,6 +23,9 @@ import type {
 
 /** The drag and drop data type of a filter type from the palette. */
 export const FILTER_TYPE_MIME = "application/x-sn-filter-type";
+
+/** The drag and drop data type of an Unassigned place from the palette. */
+export const UNASSIGNED_MIME = "application/x-sn-filter-unassigned";
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 2.5;
@@ -35,6 +41,13 @@ const WHEEL_LINE = 16;
 
 type DrawnNode = FilterNode | EndNode;
 type DrawnLink = FlowLink | ContinuationLink;
+
+/** Where a dragged filter would go: a link to insert it at, or a place to fill. */
+interface Drop {
+	/** The link or Unassigned place element. */
+	cell: dia.Cell;
+	slot: ChainSlot;
+}
 
 /** The results of a simulation run, which the canvas shows on its nodes. */
 export interface CanvasRun {
@@ -82,6 +95,14 @@ const FilterElement = dia.Element.define(
 				fontFamily: "bootstrap-icons",
 				fontSize: 28,
 			},
+			ext: {
+				x: "calc(w-6)",
+				y: 6,
+				textAnchor: "end",
+				textVerticalAnchor: "top",
+				fontFamily: "bootstrap-icons",
+				fontSize: 12,
+			},
 			label: {
 				x: "calc(0.5*w)",
 				y: "calc(h+10)",
@@ -113,6 +134,7 @@ const FilterElement = dia.Element.define(
 		markup: [
 			{ tagName: "rect", selector: "body" },
 			{ tagName: "text", selector: "icon" },
+			{ tagName: "text", selector: "ext" },
 			{ tagName: "text", selector: "label" },
 			{ tagName: "rect", selector: "badgeBody" },
 			{ tagName: "text", selector: "badge" },
@@ -240,7 +262,7 @@ export class Canvas extends EventTarget {
 	#flagged = new Set<string>();
 	#run: CanvasRun | null = null;
 	#path: DatumPath | null = null;
-	#dropLink: dia.Link | null = null;
+	#drop: Drop | null = null;
 	#drag: { key: string; start: Point } | null = null;
 	#changes = 0;
 
@@ -315,19 +337,34 @@ export class Canvas extends EventTarget {
 	render(): void {
 		const drawing = layout(this.#ws);
 		this.#nodes.clear();
-		this.#dropLink = null;
-		const cells: dia.Cell[] = [];
-		for (const node of drawing.nodes) {
+		this.#drop = null;
+		for (const node of [...drawing.nodes, ...drawing.ends]) {
 			this.#nodes.set(node.key, node);
-			cells.push(this.#filterCell(node));
 		}
-		for (const end of drawing.ends) {
-			this.#nodes.set(end.key, end);
-			cells.push(this.#endCell(end));
+
+		// keep the selection, or else select the same filter where it is now,
+		// before drawing the nodes with it
+		const current = this.#selected
+			? this.#nodes.get(this.#selected)
+			: undefined;
+		const same =
+			current?.kind === "filter" &&
+			(current.unassigned
+				? this.#selectedFilterId === null
+				: current.filterId === this.#selectedFilterId);
+		if (this.#selected && !same) {
+			this.#selected =
+				this.#firstNode(this.#selectedFilterId)?.key ?? null;
+			if (!this.#selected) {
+				this.#selectedFilterId = null;
+			}
 		}
-		for (const link of drawing.links) {
-			cells.push(this.#linkCell(link));
-		}
+
+		const cells: dia.Cell[] = [
+			...drawing.nodes.map((node) => this.#filterCell(node)),
+			...drawing.ends.map((end) => this.#endCell(end)),
+			...drawing.links.map((link) => this.#linkCell(link)),
+		];
 		this.paper.freeze();
 		this.graph.resetCells(cells);
 		// embed nodes in the chain they are drawn under, so they move with it
@@ -338,16 +375,6 @@ export class Canvas extends EventTarget {
 			}
 		}
 		this.paper.unfreeze();
-
-		// keep the selection, or else select the same filter where it is now
-		if (this.#selected && !this.#nodes.has(this.#selected)) {
-			this.#selected =
-				this.#firstNode(this.#selectedFilterId)?.key ?? null;
-			if (!this.#selected) {
-				this.#selectedFilterId = null;
-			}
-			this.#refreshNode(this.#selected);
-		}
 		// the selected filter might have changed, so always tell listeners
 		this.#emitSelect();
 	}
@@ -365,7 +392,8 @@ export class Canvas extends EventTarget {
 		}
 		const previous = this.#selected;
 		this.#selected = next;
-		this.#selectedFilterId = node?.kind === "filter" ? node.filterId : null;
+		this.#selectedFilterId =
+			node?.kind === "filter" && !node.unassigned ? node.filterId : null;
 		this.#refreshNode(previous);
 		this.#refreshNode(next);
 		this.#emitSelect();
@@ -454,6 +482,9 @@ export class Canvas extends EventTarget {
 	/* === Cells === */
 
 	#filterCell(node: FilterNode): dia.Element {
+		if (node.unassigned) {
+			return this.#unassignedCell(node);
+		}
 		const ws = this.#ws;
 		const filter = ws.filter(node.filterId);
 		const items: dia.Element.Port[] = [];
@@ -487,11 +518,52 @@ export class Canvas extends EventTarget {
 				root: { title: this.#tooltip(node, filter) },
 				body: { class: this.#nodeClass(node) },
 				icon: { text: iconGlyph(icon), class: "sim-node-icon" },
+				// the External Settings marker
+				ext: {
+					text: ws.isExternal(node.filterId)
+						? iconGlyph("box-seam")
+						: "",
+					class: "sim-node-ext",
+				},
 				label: {
 					text: filter ? ws.label(filter) : node.filterId,
 					class: "sim-node-label",
 				},
 				...this.#badgeAttrs(node),
+			},
+			sim: node,
+		});
+	}
+
+	#unassignedCell(node: FilterNode): dia.Element {
+		return new FilterElement({
+			id: node.key,
+			position: node.position,
+			size: { width: UNASSIGNED_SIZE, height: UNASSIGNED_SIZE },
+			ports: {
+				items: [
+					{
+						id: "in",
+						group: "in",
+						attrs: { portBody: { magnet: false } },
+					},
+					{
+						id: "out",
+						group: "out",
+						attrs: { portBody: { magnet: !!node.outSlot } },
+					},
+				],
+			},
+			attrs: {
+				root: {
+					title: `Unassigned: place ${node.slot?.index ?? ""} of the chain, without a filter, which SolarNode skips. Drop a filter on it to put the filter here, or delete it to move the filters after it down one place.`,
+				},
+				body: { rx: 8, ry: 8, class: this.#nodeClass(node) },
+				icon: { text: "" },
+				ext: { text: "" },
+				label: { text: UNASSIGNED_UID, class: "sim-node-label" },
+				badge: { text: "", display: "none" },
+				badgeBody: { display: "none" },
 			},
 			sim: node,
 		});
@@ -597,6 +669,16 @@ export class Canvas extends EventTarget {
 	}
 
 	#nodeClass(node: FilterNode): string {
+		if (node.unassigned) {
+			const classes = ["sim-node", "is-unassigned"];
+			if (node.key === this.#drop?.cell.id) {
+				classes.push("is-drop");
+			}
+			if (node.key === this.#selected) {
+				classes.push("is-selected");
+			}
+			return classes.join(" ");
+		}
 		const ws = this.#ws;
 		const filter = ws.filter(node.filterId);
 		const classes = ["sim-node"];
@@ -644,7 +726,11 @@ export class Canvas extends EventTarget {
 			return `The filter ${node.filterId} does not exist.`;
 		}
 		if (node.main) {
-			return "The Main chain: the filter chain the Datum Queue applies to every datum.";
+			const files = ws.externalFilesOf(filter.id);
+			return (
+				"The Main chain: the filter chain the Datum Queue applies to every datum." +
+				(files.length ? `\nFrom ${externalFilesText(files)}.` : "")
+			);
 		}
 		if (ws.isUnknown(filter)) {
 			return `${ws.label(filter)}: an unknown filter, which a chain uses by its Service Name but whose settings are not in this configuration. Datum pass through it unchanged.`;
@@ -655,6 +741,10 @@ export class Canvas extends EventTarget {
 		];
 		if (filter.instanceKey) {
 			lines.push(`Instance ID: ${filter.instanceKey}`);
+		}
+		const files = ws.externalFilesOf(filter.id);
+		if (files.length) {
+			lines.push(`From ${externalFilesText(files)}.`);
 		}
 		const problem = ws.instanceKeyProblem(filter);
 		if (problem) {
@@ -722,7 +812,8 @@ export class Canvas extends EventTarget {
 		}
 		const node = this.#nodes.get(String(view.model.id));
 		return {
-			elementMove: node?.kind === "filter" && !node.main,
+			elementMove:
+				node?.kind === "filter" && !node.main && !node.unassigned,
 			addLinkFromMagnet: true,
 		};
 	}
@@ -785,7 +876,7 @@ export class Canvas extends EventTarget {
 		paper.on("element:pointerdown", (view: dia.ElementView) => {
 			const node = this.#nodes.get(String(view.model.id));
 			this.#drag =
-				node?.kind === "filter" && !node.main
+				node?.kind === "filter" && !node.main && !node.unassigned
 					? { key: node.key, start: view.model.position() }
 					: null;
 		});
@@ -871,8 +962,8 @@ export class Canvas extends EventTarget {
 		if (position.x === drag.start.x && position.y === drag.start.y) {
 			return;
 		}
-		this.#setDropLink(
-			this.#findDropLink(
+		this.#setDrop(
+			this.#findDrop(
 				point,
 				(slot) => this.#canDrop(node, slot),
 				node.key,
@@ -882,9 +973,9 @@ export class Canvas extends EventTarget {
 
 	#dragEnd(view: dia.ElementView): void {
 		const drag = this.#drag;
-		const dropLink = this.#dropLink;
+		const drop = this.#drop;
 		this.#drag = null;
-		this.#setDropLink(null);
+		this.#setDrop(null);
 		const node = drag ? this.#nodes.get(drag.key) : undefined;
 		if (!drag || node?.kind !== "filter") {
 			return;
@@ -897,7 +988,7 @@ export class Canvas extends EventTarget {
 		}
 		const changes = this.#changes;
 		const ws = this.#ws;
-		const slot = (dropLink?.get("sim") as FlowLink | undefined)?.slot;
+		const slot = drop?.slot;
 		if (slot) {
 			if (node.root) {
 				ws.insert(node.filterId, slot);
@@ -907,7 +998,12 @@ export class Canvas extends EventTarget {
 		} else if (node.root) {
 			ws.setPosition(node.filterId, { x: position.x, y: position.y });
 		} else if (node.slot && Math.hypot(dx, dy) > DETACH_DISTANCE) {
-			ws.detach(node.slot, { x: position.x, y: position.y });
+			const problem = ws.takeOutProblem(node.slot);
+			if (problem) {
+				showToast(problem);
+			} else {
+				ws.detach(node.slot, { x: position.x, y: position.y });
+			}
 		}
 		if (this.#changes === changes) {
 			// nothing changed, so put the filter back where it was
@@ -931,14 +1027,62 @@ export class Canvas extends EventTarget {
 		if (node.root) {
 			return this.#ws.canInsert(node.filterId, slot);
 		}
+		if (!node.slot) {
+			return false;
+		}
+		const sameChain = slot.chainId === node.slot.chainId;
 		return (
-			!!node.slot &&
-			this.#ws.canInsert(
-				node.filterId,
-				slot,
-				slot.chainId === node.slot.chainId,
-			)
+			this.#ws.canInsert(node.filterId, slot, sameChain) &&
+			// a filter an External Settings file puts in its chain stays there
+			(sameChain || !this.#ws.takeOutProblem(node.slot))
 		);
+	}
+
+	/**
+	 * Find where a filter dropped at a point would go: an Unassigned place
+	 * under the point, or else the link closest to it, within the drop
+	 * distance.
+	 *
+	 * @param point the point, in canvas coordinates
+	 * @param accept a test for the chain slot
+	 * @param exclude the key of a node whose links, and those of the nodes
+	 *     drawn under it, are left out
+	 * @param fill `false` to leave out Unassigned places
+	 */
+	#findDrop(
+		point: Point,
+		accept: (slot: ChainSlot) => boolean,
+		exclude?: string,
+		fill = true,
+	): Drop | null {
+		const distance = DROP_DISTANCE / this.paper.scale().sx;
+		if (fill) {
+			for (const node of this.#nodes.values()) {
+				if (
+					node.kind !== "filter" ||
+					!node.unassigned ||
+					!node.slot ||
+					(exclude && isWithin(node.key, exclude))
+				) {
+					continue;
+				}
+				const slot: ChainSlot = { ...node.slot, fill: true };
+				const cell = this.graph.getCell(node.key);
+				if (
+					cell?.isElement() &&
+					cell
+						.getBBox()
+						.inflate(distance / 2)
+						.containsPoint(point) &&
+					accept(slot)
+				) {
+					return { cell, slot };
+				}
+			}
+		}
+		const link = this.#findDropLink(point, accept, exclude);
+		const slot = (link?.get("sim") as FlowLink | undefined)?.slot;
+		return link && slot ? { cell: link, slot } : null;
 	}
 
 	/**
@@ -982,30 +1126,46 @@ export class Canvas extends EventTarget {
 		return best;
 	}
 
-	#setDropLink(link: dia.Link | null): void {
-		if (link === this.#dropLink) {
+	#setDrop(drop: Drop | null): void {
+		const previous = this.#drop;
+		if (drop?.cell === previous?.cell) {
 			return;
 		}
-		this.#dropLink?.attr("line", {
-			stroke: this.#colors.flow,
-			strokeWidth: 2,
-		});
-		this.#dropLink = link;
-		link?.attr("line", { stroke: this.#colors.drop, strokeWidth: 4 });
+		this.#drop = drop;
+		if (previous?.cell.isLink()) {
+			previous.cell.attr("line", {
+				stroke: this.#colors.flow,
+				strokeWidth: 2,
+			});
+		} else if (previous) {
+			this.#refreshNode(String(previous.cell.id));
+		}
+		if (drop?.cell.isLink()) {
+			drop.cell.attr("line", {
+				stroke: this.#colors.drop,
+				strokeWidth: 4,
+			});
+		} else if (drop) {
+			this.#refreshNode(String(drop.cell.id));
+		}
 	}
 
 	#bindDropEvents(): void {
 		const el = this.#el;
 		el.addEventListener("dragover", (e) => {
 			const types = e.dataTransfer?.types ?? [];
-			if (types.includes(FILTER_TYPE_MIME)) {
+			const unassigned = types.includes(UNASSIGNED_MIME);
+			if (unassigned || types.includes(FILTER_TYPE_MIME)) {
 				e.preventDefault();
 				e.dataTransfer!.dropEffect = "copy";
 				const point = this.paper.clientToLocalPoint(
 					e.clientX,
 					e.clientY,
 				);
-				this.#setDropLink(this.#findDropLink(point, () => true));
+				// an Unassigned place can only be inserted, not fill another
+				this.#setDrop(
+					this.#findDrop(point, () => true, undefined, !unassigned),
+				);
 			} else if (types.includes("Files")) {
 				e.preventDefault();
 				e.dataTransfer!.dropEffect = "copy";
@@ -1015,7 +1175,7 @@ export class Canvas extends EventTarget {
 			if (!(
 				e.relatedTarget instanceof Node && el.contains(e.relatedTarget)
 			)) {
-				this.#setDropLink(null);
+				this.#setDrop(null);
 			}
 		});
 		el.addEventListener("drop", (e) => {
@@ -1024,10 +1184,18 @@ export class Canvas extends EventTarget {
 				return;
 			}
 			const factoryUid = dt.getData(FILTER_TYPE_MIME);
-			const slot = (this.#dropLink?.get("sim") as FlowLink | undefined)
-				?.slot;
-			this.#setDropLink(null);
-			if (factoryUid) {
+			const slot = this.#drop?.slot;
+			this.#setDrop(null);
+			if (dt.types.includes(UNASSIGNED_MIME)) {
+				e.preventDefault();
+				if (slot && !slot.fill) {
+					this.#ws.addUnassigned(slot);
+				} else {
+					showToast(
+						`Drop ${UNASSIGNED_UID} on a link of a chain, to insert a place without a filter there.`,
+					);
+				}
+			} else if (factoryUid) {
 				e.preventDefault();
 				const type = this.#ws.type(factoryUid);
 				if (!type) {

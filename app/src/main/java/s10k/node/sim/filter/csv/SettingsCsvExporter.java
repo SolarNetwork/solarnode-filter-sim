@@ -41,6 +41,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import de.siegmar.fastcsv.writer.CsvWriter;
@@ -112,6 +115,11 @@ final class SettingsCsvExporter {
 	private static final Pattern TRAILING_EMPTY_COLUMNS = Pattern.compile("[,\\s]+$");
 
 	private static final String DATUM_QUEUE_TITLE = "Datum Queue";
+
+	private static final String CHAIN_FILTERS_COUNT = CHAIN_FILTERS + SettingsApplier.COUNT_SUFFIX;
+
+	private static final Pattern CHAIN_FILTER_INDEX = Pattern
+			.compile(Pattern.quote(CHAIN_FILTERS) + "\\[(\\d+)\\]");
 
 	private final FilterTypeRegistry registry;
 	private final SettingsFormService forms;
@@ -239,9 +247,14 @@ final class SettingsCsvExporter {
 				}
 			}
 			if ( StandardFilterTypes.CHAIN.equals(c.factoryUid()) ) {
+				final boolean count = values.containsKey(CHAIN_FILTERS_COUNT);
 				values.keySet().removeIf(k -> k.startsWith(CHAIN_FILTERS));
 				if ( c.filterIds() != null ) {
 					values.putAll(chainFilters(c, configs, false));
+					if ( !count ) {
+						// the files have no count row, like files that each add a member
+						values.remove(CHAIN_FILTERS_COUNT);
+					}
 				}
 			}
 			settings.putIfAbsent(c.factoryUid() + '.' + key, values);
@@ -427,10 +440,15 @@ final class SettingsCsvExporter {
 				settings.put(e.getKey(), e.getValue());
 			}
 		}
+		final String componentKey = c.factoryUid() + '.' + instanceKey;
+		final Map<String, String> external = (ext != null ? ext.settings().get(componentKey) : null);
 		if ( def != null && def.isChain() ) {
 			settings.keySet().removeIf(k -> k.startsWith(CHAIN_FILTERS));
 			if ( c.filterIds() != null ) {
 				settings.putAll(chainFilters(c, configs, true));
+				if ( external != null ) {
+					externalChainRows(settings, external);
+				}
 			}
 		}
 
@@ -444,8 +462,6 @@ final class SettingsCsvExporter {
 		final Set<String> order = new LinkedHashSet<>(keys);
 		order.addAll(settings.keySet());
 
-		final String componentKey = c.factoryUid() + '.' + instanceKey;
-		final Map<String, String> external = (ext != null ? ext.settings().get(componentKey) : null);
 		final List<String[]> rows = new ArrayList<>(settings.size() + 1);
 		final List<String> leftOut = new ArrayList<>(2);
 		for ( String key : order ) {
@@ -494,38 +510,72 @@ final class SettingsCsvExporter {
 	 */
 	private Map<String, String> chainFilters(FilterConfig chain, Map<String, FilterConfig> configs,
 			boolean report) {
-		final List<String> uids = new ArrayList<>(chain.filterIdsOrEmpty().size());
-		for ( String memberId : chain.filterIdsOrEmpty() ) {
-			final FilterConfig member = (memberId != null ? configs.get(memberId) : null);
+		final List<@Nullable String> members = chain.filterIdsOrEmpty();
+		final Map<String, String> result = new LinkedHashMap<>(members.size() + 1);
+		result.put(CHAIN_FILTERS_COUNT, String.valueOf(members.size()));
+		for ( int i = 0; i < members.size(); i++ ) {
+			final String memberId = members.get(i);
+			if ( memberId == null ) {
+				// an Unassigned slot, which has no row
+				continue;
+			}
+			final FilterConfig member = configs.get(memberId);
 			if ( member == null ) {
-				if ( !report ) {
-					continue;
+				if ( report ) {
+					messages.add(warning(SimulationMessage.CODE_UNKNOWN_CHAIN_MEMBER,
+							"The chain %s refers to the filter %s, which does not exist, so it is left out."
+									.formatted(label(chain), memberId),
+							chain.id(), null));
 				}
-				messages.add(warning(SimulationMessage.CODE_UNKNOWN_CHAIN_MEMBER,
-						"The chain %s refers to the filter %s, which does not exist, so it is left out."
-								.formatted(label(chain), memberId),
-						chain.id(), null));
 				continue;
 			}
 			final String uid = uid(member);
 			if ( uid == null ) {
-				if ( !report ) {
-					continue;
+				if ( report ) {
+					messages.add(warning(SimulationMessage.CODE_MISSING_UID,
+							"The filter %s in the chain %s has no Service Name, so the chain cannot use it."
+									.formatted(member.id(), label(chain)),
+							member.id(), null));
 				}
-				messages.add(warning(SimulationMessage.CODE_MISSING_UID,
-						"The filter %s in the chain %s has no Service Name, so the chain cannot use it."
-								.formatted(member.id(), label(chain)),
-						member.id(), null));
 				continue;
 			}
-			uids.add(uid);
-		}
-		final Map<String, String> result = new LinkedHashMap<>(uids.size() + 1);
-		result.put(CHAIN_FILTERS + SettingsApplier.COUNT_SUFFIX, String.valueOf(uids.size()));
-		for ( int i = 0; i < uids.size(); i++ ) {
-			result.put(CHAIN_FILTERS + '[' + i + ']', uids.get(i));
+			result.put(CHAIN_FILTERS + '[' + i + ']', uid);
 		}
 		return result;
+	}
+
+	/**
+	 * Adjust a chain's {@code transformUids} settings for the chain's External
+	 * Settings rows.
+	 *
+	 * <p>
+	 * Without a count row in the External Settings, the count is left out, so a
+	 * node keeps the members that files add at their own indexes, including
+	 * files added later. An index that the External Settings have a member for,
+	 * but the chain does not, gets the {@link FilterConfig#UNASSIGNED_UID},
+	 * because a node's auto settings would add the external row back if the
+	 * export had none.
+	 * </p>
+	 *
+	 * @param settings
+	 *        the chain's settings to export
+	 * @param external
+	 *        the chain's External Settings rows
+	 */
+	private static void externalChainRows(Map<String, String> settings, Map<String, String> external) {
+		if ( !external.containsKey(CHAIN_FILTERS_COUNT) ) {
+			settings.remove(CHAIN_FILTERS_COUNT);
+		}
+		final SortedMap<Integer, String> indexes = new TreeMap<>();
+		for ( String key : external.keySet() ) {
+			final Matcher m = CHAIN_FILTER_INDEX.matcher(key);
+			if ( m.matches() ) {
+				indexes.put(Integer.valueOf(m.group(1)), key);
+			}
+		}
+		for ( String key : indexes.values() ) {
+			settings.putIfAbsent(key, FilterConfig.UNASSIGNED_UID);
+		}
 	}
 
 	/**

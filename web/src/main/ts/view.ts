@@ -153,3 +153,21 @@ export function samplesLine(label: string, samples: SamplesInfo): HTMLElement {
 	}
 	return line;
 }
+
+/**
+ * Describe the External Settings files a filter comes from.
+ *
+ * @param files the files
+ * @returns for example "the External Settings file a.csv", or "the External
+ *     Settings files a.csv, b.csv, and c.csv"
+ */
+export function externalFilesText(files: readonly string[]): string {
+	if (files.length < 2) {
+		return `the External Settings file ${files[0] ?? ""}`;
+	}
+	const list =
+		files.length === 2
+			? `${files[0]} and ${files[1]}`
+			: `${files.slice(0, -1).join(", ")}, and ${files[files.length - 1]}`;
+	return `the External Settings files ${list}`;
+}

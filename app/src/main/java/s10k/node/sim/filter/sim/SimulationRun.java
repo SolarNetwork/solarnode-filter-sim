@@ -545,10 +545,14 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( traced == null || !(traced.delegate() instanceof DatumFilterChainService chain) ) {
 				continue;
 			}
-			final List<String> uids = new ArrayList<>(config.filterIdsOrEmpty().size());
+			final List<@Nullable String> uids = new ArrayList<>(config.filterIdsOrEmpty().size());
 			for ( String memberId : config.filterIdsOrEmpty() ) {
-				final TracingDatumFilterService member = (memberId != null ? filters.get(memberId)
-						: null);
+				if ( memberId == null ) {
+					// an Unassigned slot, which the chain skips
+					uids.add(null);
+					continue;
+				}
+				final TracingDatumFilterService member = filters.get(memberId);
 				if ( member == null ) {
 					warn(SimulationMessage.CODE_UNKNOWN_CHAIN_MEMBER,
 							"The chain %s refers to the filter %s, which does not exist."

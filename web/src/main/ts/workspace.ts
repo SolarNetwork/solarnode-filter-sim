@@ -22,6 +22,11 @@ export interface ChainSlot {
 	chainId: string;
 	/** The index in the chain's filters. */
 	index: number;
+	/**
+	 * `true` to put a filter in the Unassigned place at the index, instead of
+	 * inserting it there.
+	 */
+	fill?: boolean;
 }
 
 /** The workspace state, which is saved in the browser. */
@@ -55,6 +60,8 @@ interface View {
 	mainChainId: string;
 	/** The external filter of each filter with external settings, by id. */
 	external: Map<string, FilterConfig>;
+	/** The filters of each external chain, as view ids, by chain id. */
+	externalMembers: Map<string, (string | null)[]>;
 }
 
 /** The detail of a workspace `change` event. */
@@ -64,6 +71,13 @@ export interface WorkspaceChange {
 	/** `false` if the change cannot affect the flow chart, such as a note. */
 	drawing: boolean;
 }
+
+/**
+ * Where a setting's value comes from: the External Settings (which the
+ * simulation has no different value for), the simulation overriding an
+ * external setting, or only the simulation.
+ */
+export type SettingSource = "external" | "override" | "project";
 
 /** Setting changes: a value to set, or `null` to remove the setting. */
 export type SettingChanges = Record<string, string | null>;
@@ -187,6 +201,142 @@ export class Workspace extends EventTarget {
 		return this.#v().external.get(id);
 	}
 
+	/**
+	 * Test if the External Settings have a filter.
+	 *
+	 * @param id the filter id
+	 */
+	isExternal(id: string): boolean {
+		return this.#v().external.has(id);
+	}
+
+	/**
+	 * Get the External Settings files a filter comes from: every file with
+	 * settings for it, such as files that each add a member to a chain.
+	 *
+	 * @param id the filter id
+	 * @returns the files, in the order they apply, or an empty list if the
+	 *     External Settings do not have the filter
+	 */
+	externalFilesOf(id: string): string[] {
+		const external = this.externalFilter(id);
+		const origin = external
+			? this.#state.external?.origins[external.id]
+			: undefined;
+		if (!origin) {
+			return [];
+		}
+		const files = new Set([origin.file, ...Object.values(origin.settings)]);
+		const order = (this.#state.external?.files ?? []).map((f) => f.name);
+		return [...files].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+	}
+
+	/**
+	 * Get the External Settings file of each of a chain's places: the file
+	 * that puts the same filter in the same place, so an export leaves it out.
+	 *
+	 * @param chainId the chain id
+	 * @returns the file of each place, or `undefined` for places that are the
+	 *     simulation's own, in order
+	 */
+	memberFiles(chainId: string): (string | undefined)[] {
+		const members = this.members(chainId);
+		const external = this.externalFilter(chainId);
+		const origin = external
+			? this.#state.external?.origins[external.id]
+			: undefined;
+		const externalMembers = this.#v().externalMembers.get(chainId);
+		return members.map((id, i) =>
+			origin && id !== null && externalMembers?.[i] === id
+				? origin.settings[`transformUids[${i}]`]
+				: undefined,
+		);
+	}
+
+	/**
+	 * Get why a filter cannot be taken out of a chain.
+	 *
+	 * @param slot where the filter is
+	 * @returns the reason, or `undefined` if it can be taken out
+	 */
+	takeOutProblem(slot: ChainSlot): string | undefined {
+		const file = this.memberFiles(slot.chainId)[slot.index];
+		if (!file) {
+			return undefined;
+		}
+		const chain = this.filter(slot.chainId);
+		return `The External Settings file ${file} puts this filter in ${chain ? this.label(chain) : "the chain"}, so it can be overridden, but not removed.`;
+	}
+
+	/**
+	 * Get where a setting's value comes from.
+	 *
+	 * @param id the filter id
+	 * @param key the setting key
+	 * @returns the source, or `undefined` if the setting has no value
+	 */
+	settingSource(id: string, key: string): SettingSource | undefined {
+		const external = this.externalFilter(id)?.settings?.[key];
+		const own = this.#state.filters.find((f) => f.id === id)?.settings?.[
+			key
+		];
+		if (external !== undefined && external !== null) {
+			return own === undefined || own === null || own === external
+				? "external"
+				: "override";
+		}
+		return own !== undefined && own !== null ? "project" : undefined;
+	}
+
+	/**
+	 * Get the External Settings file of a setting.
+	 *
+	 * @param id the filter id
+	 * @param key the setting key
+	 * @returns the file, or `undefined` if the External Settings do not have
+	 *     the setting
+	 */
+	externalSettingFile(id: string, key: string): string | undefined {
+		const external = this.externalFilter(id);
+		if (external?.settings?.[key] === undefined) {
+			return undefined;
+		}
+		const origin = this.#state.external?.origins[external.id];
+		return origin?.settings[key] ?? origin?.file;
+	}
+
+	/**
+	 * Test if the simulation changes an external filter: a setting with a
+	 * different value, its own chain filters, a comment, or notes.
+	 *
+	 * @param id the filter id
+	 */
+	hasOverrides(id: string): boolean {
+		const external = this.externalFilter(id);
+		const own = this.#state.filters.find((f) => f.id === id);
+		if (!external || !own) {
+			return false;
+		}
+		if (
+			Object.entries(own.settings ?? {}).some(
+				([k, v]) => external.settings?.[k] !== v,
+			)
+		) {
+			return true;
+		}
+		const ownMembers =
+			own.filterIds !== undefined &&
+			own.filterIds !== null &&
+			(external.filterIds
+				? !this.#inheritsMembersOf(this.#state, own, external)
+				: own.filterIds.length > 0);
+		return (
+			ownMembers ||
+			!!own.comment ||
+			Object.keys(own.notes ?? {}).length > 0
+		);
+	}
+
 	/** The positions of filters that are not in a chain. */
 	get positions(): Readonly<Record<string, Point>> {
 		return this.#state.positions;
@@ -262,9 +412,9 @@ export class Workspace extends EventTarget {
 	 * Get the filters of a chain.
 	 *
 	 * @param chainId the chain id
-	 * @returns the filter ids, in order
+	 * @returns the filter ids, in order, with `null` for Unassigned places
 	 */
-	members(chainId: string): readonly string[] {
+	members(chainId: string): readonly (string | null)[] {
 		return this.filter(chainId)?.filterIds ?? [];
 	}
 
@@ -380,7 +530,7 @@ export class Workspace extends EventTarget {
 		const result = new Set<string>();
 		const visit = (id: string) => {
 			for (const member of this.members(id)) {
-				if (!result.has(member)) {
+				if (member !== null && !result.has(member)) {
 					result.add(member);
 					visit(member);
 				}
@@ -407,8 +557,12 @@ export class Workspace extends EventTarget {
 		) {
 			return false;
 		}
-		if (!moving && this.members(slot.chainId).includes(filterId)) {
+		const members = this.members(slot.chainId);
+		if (!moving && members.includes(filterId)) {
 			// already in the chain
+			return false;
+		}
+		if (slot.fill && members[slot.index] !== null) {
 			return false;
 		}
 		// a chain cannot contain itself
@@ -514,6 +668,39 @@ export class Workspace extends EventTarget {
 	}
 
 	/**
+	 * Insert an Unassigned place into a chain, which moves the filters after
+	 * it up one place.
+	 *
+	 * @param slot where to insert the place
+	 */
+	addUnassigned(slot: ChainSlot): void {
+		if (!this.isChain(slot.chainId)) {
+			return;
+		}
+		this.#commit("Add Unassigned", (s) => {
+			this.#insertMember(s, null, {
+				chainId: slot.chainId,
+				index: slot.index,
+			});
+		});
+	}
+
+	/**
+	 * Delete an Unassigned place from a chain, which moves the filters after it
+	 * down one place.
+	 *
+	 * @param slot where the place is
+	 */
+	removeUnassigned(slot: ChainSlot): void {
+		if (this.members(slot.chainId)[slot.index] !== null) {
+			return;
+		}
+		this.#commit("Delete Unassigned", (s) => {
+			this.#removeMember(s, slot);
+		});
+	}
+
+	/**
 	 * Move a filter from one chain position to another.
 	 *
 	 * @param from where the filter is
@@ -525,7 +712,10 @@ export class Workspace extends EventTarget {
 			return;
 		}
 		const sameChain = from.chainId === to.chainId;
-		if (!this.canInsert(filterId, to, sameChain)) {
+		if (
+			!this.canInsert(filterId, to, sameChain) ||
+			(!sameChain && this.takeOutProblem(from))
+		) {
 			return;
 		}
 		const index =
@@ -535,7 +725,7 @@ export class Workspace extends EventTarget {
 		}
 		this.#commit("Move filter", (s) => {
 			this.#removeMember(s, from);
-			this.#insertMember(s, filterId, { chainId: to.chainId, index });
+			this.#insertMember(s, filterId, { ...to, index });
 		});
 	}
 
@@ -548,7 +738,7 @@ export class Workspace extends EventTarget {
 	 */
 	detach(from: ChainSlot, position?: Point): void {
 		const filterId = this.members(from.chainId)[from.index];
-		if (!filterId) {
+		if (!filterId || this.takeOutProblem(from)) {
 			return;
 		}
 		// in another chain, or in this chain more than once
@@ -567,13 +757,18 @@ export class Workspace extends EventTarget {
 	/**
 	 * Delete a filter, and remove it from every chain.
 	 *
-	 * The filters of a deleted chain are kept. The Main chain cannot be
-	 * deleted.
+	 * The filters of a deleted chain are kept. The Main chain and external
+	 * filters cannot be deleted.
 	 *
 	 * @param filterId the filter id
 	 */
 	remove(filterId: string): void {
-		if (filterId === this.mainChainId || !this.filter(filterId)) {
+		if (
+			filterId === this.mainChainId ||
+			!this.filter(filterId) ||
+			this.isExternal(filterId)
+		) {
+			// an external filter would come back, as on a node
 			return;
 		}
 		this.#commit("Delete filter", (s) => {
@@ -584,6 +779,50 @@ export class Workspace extends EventTarget {
 				}
 			}
 			delete s.positions[filterId];
+		});
+	}
+
+	/**
+	 * Remove the simulation's changes to an external filter, so it has only its
+	 * external settings again.
+	 *
+	 * @param filterId the filter id
+	 */
+	removeOverrides(filterId: string): void {
+		const external = this.externalFilter(filterId);
+		if (!external || !this.hasOverrides(filterId)) {
+			return;
+		}
+		this.#commit("Remove overrides", (s) => {
+			const own = s.filters.find((f) => f.id === filterId);
+			if (!own) {
+				return;
+			}
+			if (own.id === s.mainChainId) {
+				// the Main chain stays, using the external chain's filters again
+				const uid = external.settings?.[UID_SETTING];
+				own.settings = uid ? { [UID_SETTING]: uid } : {};
+				own.filterIds = [];
+				own.notes = null;
+				own.comment = null;
+				s.implicitMain = true;
+				return;
+			}
+			s.filters = s.filters.filter((f) => f !== own);
+			if (own.id !== external.id) {
+				// the filter then has its external id
+				for (const f of s.filters) {
+					if (f.filterIds?.includes(own.id)) {
+						f.filterIds = f.filterIds.map((id) =>
+							id === own.id ? external.id : id,
+						);
+					}
+				}
+				if (s.positions[own.id]) {
+					s.positions[external.id] = s.positions[own.id];
+					delete s.positions[own.id];
+				}
+			}
 		});
 	}
 
@@ -643,6 +882,10 @@ export class Workspace extends EventTarget {
 		instanceKey: string,
 		mergeKey?: string,
 	): void {
+		if (this.isExternal(filterId)) {
+			// the instance ID is what matches it to its external settings
+			return;
+		}
 		this.#update(filterId, "Edit instance ID", mergeKey, true, (f) => {
 			f.instanceKey = instanceKey;
 		});
@@ -914,13 +1157,22 @@ export class Workspace extends EventTarget {
 		}
 	}
 
-	#insertMember(s: WorkspaceState, filterId: string, slot: ChainSlot): void {
+	#insertMember(
+		s: WorkspaceState,
+		filterId: string | null,
+		slot: ChainSlot,
+	): void {
 		const chain = this.#ownChain(s, slot.chainId);
 		if (!chain) {
 			return;
 		}
 		const members = [...(chain.filterIds ?? [])];
-		members.splice(Math.min(slot.index, members.length), 0, filterId);
+		if (slot.fill && members[slot.index] === null) {
+			// an Unassigned place, so the other filters keep their places
+			members[slot.index] = filterId;
+		} else {
+			members.splice(Math.min(slot.index, members.length), 0, filterId);
+		}
 		chain.filterIds = members;
 		if (chain.id === s.mainChainId) {
 			s.implicitMain = false;
@@ -1043,6 +1295,7 @@ export class Workspace extends EventTarget {
 				byId: new Map(s.filters.map((f) => [f.id, f])),
 				mainChainId: s.mainChainId,
 				external: new Map(),
+				externalMembers: new Map(),
 			};
 		}
 		const component = (f: FilterConfig) =>
@@ -1114,7 +1367,13 @@ export class Workspace extends EventTarget {
 				.map((f) => [f.id, f]),
 		);
 		const unknowns = new Map<string, FilterConfig>();
-		const resolve = (id: string, fromExternal: boolean): string => {
+		const resolve = (
+			id: string | null,
+			fromExternal: boolean,
+		): string | null => {
+			if (id === null) {
+				return null;
+			}
 			const mapped = fromExternal ? (ids.get(id) ?? id) : id;
 			const unknown = fromExternal
 				? extUnknowns.get(id)
@@ -1146,6 +1405,16 @@ export class Workspace extends EventTarget {
 					}
 				: f,
 		);
+		// the external chains' filters, to tell which places come from them
+		const extMembers = new Map<string, (string | null)[]>();
+		for (const [id, e] of external) {
+			if (e.filterIds) {
+				extMembers.set(
+					id,
+					e.filterIds.map((m) => resolve(m, true)),
+				);
+			}
+		}
 		// an unknown filter that the External Settings have is not unknown
 		filters = filters.filter((f) => {
 			const uid = this.isUnknown(f) ? this.uid(f) : undefined;
@@ -1176,6 +1445,7 @@ export class Workspace extends EventTarget {
 			byId: new Map(filters.map((f) => [f.id, f])),
 			mainChainId,
 			external,
+			externalMembers: extMembers,
 		};
 	}
 
@@ -1271,7 +1541,9 @@ function migrate(state: WorkspaceState | null): WorkspaceState | null {
 			f.id = rename(f.id);
 		}
 		if (f.filterIds) {
-			f.filterIds = f.filterIds.map(rename);
+			f.filterIds = f.filterIds.map((id) =>
+				id === null ? null : rename(id),
+			);
 		}
 	}
 	if (state.positions) {

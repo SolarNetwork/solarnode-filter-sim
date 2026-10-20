@@ -258,6 +258,26 @@ body {
 		stroke-width: 3px;
 		filter: drop-shadow(0 0 4px rgba(var(--bs-primary-rgb), 0.5));
 	}
+
+	// a chain place without a filter
+	&.is-unassigned {
+		fill: transparent;
+		stroke: var(--bs-secondary-color);
+		stroke-dasharray: 4 4;
+		cursor: pointer;
+	}
+
+	&.is-unassigned.is-selected {
+		stroke: var(--bs-primary);
+	}
+
+	// an Unassigned place a dragged filter would fill
+	&.is-unassigned.is-drop {
+		fill: var(--bs-primary-bg-subtle);
+		stroke: var(--bs-primary);
+		stroke-width: 3px;
+		stroke-dasharray: none;
+	}
 }
 
 // the run results badges above nodes
@@ -302,6 +322,12 @@ rect.sim-badge {
 	}
 }
 
+// the External Settings marker of a filter node
+.sim-node-ext {
+	fill: var(--bs-info-text-emphasis);
+	pointer-events: none;
+}
+
 .sim-node-icon {
 	fill: var(--bs-body-color);
 	pointer-events: none;
@@ -321,7 +347,8 @@ rect.sim-badge {
 	fill: var(--bs-body-color);
 	pointer-events: none;
 
-	.is-root ~ & {
+	.is-root ~ &,
+	.is-unassigned ~ & {
 		fill: var(--bs-secondary-color);
 		font-style: italic;
 	}
@@ -654,4 +681,23 @@ rect.sim-badge {
 	border: var(--bs-border-width) solid var(--bs-border-color);
 	border-radius: var(--bs-border-radius-sm);
 	padding: 0.5rem;
+}
+
+// the External Settings file count, on the corner of its button so the button
+// stays the same width; as specific as Bootstrap's `.btn .badge` rule
+.btn .sim-count {
+	position: absolute;
+	top: 0;
+	right: 0;
+	transform: translate(40%, -45%);
+	font-size: 0.6rem;
+	font-weight: 500;
+	pointer-events: none;
+}
+
+// a chain's filters in the inspector, with their transformUids index
+.sim-member-index {
+	min-width: 1.5rem;
+	text-align: end;
+	color: var(--bs-secondary-color);
 }

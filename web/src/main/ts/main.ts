@@ -20,7 +20,7 @@ import { ExternalSettingsDialog } from "./externalSettings.ts";
 import { InputPanel } from "./inputPanel.ts";
 import { InputError, NODE_METADATA_SERVICE_UID, RunInputs } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
-import type { FilterNode } from "./layout.ts";
+import { MAIN_KEY, type FilterNode } from "./layout.ts";
 import {
 	UNKNOWN_FACTORY_UID,
 	type ExportStyle,
@@ -123,14 +123,24 @@ class App {
 		});
 		this.#inputPanel = new InputPanel(inputs, ws);
 		this.#results = new ResultsPanel($("#results"), ws);
-		renderPalette($("#palette"), types, (type) => {
-			const main = ws.mainChainId;
-			const filter = ws.addFilter(type, {
-				chainId: main,
-				index: ws.members(main).length,
-			});
-			this.#canvas.selectFilter(filter.id);
-		});
+		renderPalette(
+			$("#palette"),
+			types,
+			(type) => {
+				const main = ws.mainChainId;
+				const filter = ws.addFilter(type, {
+					chainId: main,
+					index: ws.members(main).length,
+				});
+				this.#canvas.selectFilter(filter.id);
+			},
+			() => {
+				const main = ws.mainChainId;
+				const index = ws.members(main).length;
+				ws.addUnassigned({ chainId: main, index });
+				this.#canvas.select(`${MAIN_KEY}/${index}`);
+			},
+		);
 		initSplitter(
 			$("#left-splitter"),
 			$("#left-panel"),
@@ -517,7 +527,17 @@ class App {
 				const node = canvas.selection;
 				if (node && !node.main) {
 					e.preventDefault();
-					ws.remove(node.filterId);
+					if (node.unassigned) {
+						if (node.slot) {
+							ws.removeUnassigned(node.slot);
+						}
+					} else if (ws.isExternal(node.filterId)) {
+						showToast(
+							"This filter comes from the External Settings, so it can be overridden, but not removed. You can remove the simulation's changes to it in the inspector.",
+						);
+					} else {
+						ws.remove(node.filterId);
+					}
 				}
 			} else if (e.key === "Escape") {
 				canvas.select(null);

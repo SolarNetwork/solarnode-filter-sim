@@ -849,8 +849,8 @@ public class SettingsCsvServiceTests {
 			.containsExactly("A.csv", "b.csv")
 			;
 		then(filter(result.config(), MAIN_ID))
-			.as("The first file's settings win, and members resolve across files")
-			.returns(Map.of("uid", "Chain - A"), from(FilterConfig::settings))
+			.as("The first file's settings win (the count is kept), and members resolve across files")
+			.returns(Map.of("uid", "Chain - A", "transformUidsCount", "2"), from(FilterConfig::settings))
 			.returns(List.of(throttle, missing), from(FilterConfig::filterIds))
 			;
 		then(filter(result.config(), throttle).settings())
@@ -878,6 +878,173 @@ public class SettingsCsvServiceTests {
 		then(result.messages().getFirst().message())
 			.as("Message says where the filter is not")
 			.contains("not in the external settings")
+			;
+		// @formatter:on
+	}
+
+	/**
+	 * Get a chain's members with {@code null} Unassigned slots.
+	 */
+	private static List<String> slots(int size, Map<Integer, String> members) {
+		final List<String> result = new ArrayList<>(size);
+		for ( int i = 0; i < size; i++ ) {
+			result.add(members.get(i));
+		}
+		return result;
+	}
+
+	@Test
+	public void externalChainMemberIndexes() {
+		// GIVEN
+		final String param = StandardFilterTypes.PARAMETER + ".Day";
+		final String meter = StandardFilterTypes.VIRTUAL_METER + ".OverLimit";
+		// @formatter:off
+		final ExternalSettingsFile day = new ExternalSettingsFile("0300-day-period.csv", csv(
+				"net.solarnetwork.node.datum.filter.std.param.Day,uid,PEX - Day Period,,,",
+				"net.solarnetwork.node.datum.filter.std.param.FACTORY,Day,Day,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[9],PEX - Day Period,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,"));
+		final ExternalSettingsFile limit = new ExternalSettingsFile("0400-day-limit.csv", csv(
+				"net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,uid,VM - Day Over Limit,,,",
+				"net.solarnetwork.node.datum.samplefilter.virtmeter.FACTORY,OverLimit,OverLimit,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[19],VM - Day Over Limit,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,"));
+		// @formatter:on
+
+		// WHEN
+		ExternalSettings result = service.external(
+				new ExternalSettingsRequest(List.of(limit, packageFile(DATUM_FILTERS_PACKAGE), day)));
+
+		// THEN
+		// @formatter:off
+		then(filter(result.config(), MAIN_ID).filterIds())
+			.as("Each file adds its member at its index, after Unassigned slots")
+			.isEqualTo(slots(20, Map.of(9, param, 19, meter)))
+			;
+		then(result.origins().get(MAIN_ID).settings())
+			.as("The file of each member")
+			.isEqualTo(Map.of("uid", DATUM_FILTERS_PACKAGE, "transformUids[9]", "0300-day-period.csv",
+					"transformUids[19]", "0400-day-limit.csv"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importChainSlots() {
+		// GIVEN
+		final String throttle = StandardFilterTypes.THROTTLE + ".1";
+		final String throttle2 = StandardFilterTypes.THROTTLE + ".2";
+		// @formatter:off
+		final String file = csv(
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,One,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.2,uid,Two,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,2,2,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[0],One,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[2],Unassigned,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[3],Two,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,",
+				"net.solarnetwork.node.datum.xform.user.Second,transformUidsCount,4,,,",
+				"net.solarnetwork.node.datum.xform.user.Second,transformUids[1],Two,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Second,Second,,,");
+		// @formatter:on
+
+		// WHEN
+		SettingsImport result = service.importCsv(file);
+
+		// THEN
+		final Map<Integer, String> mainMembers = new java.util.HashMap<>();
+		mainMembers.put(0, throttle);
+		mainMembers.put(3, throttle2);
+		// @formatter:off
+		then(filter(result.config(), MAIN_ID).filterIds())
+			.as("Missing indexes and the Unassigned Service Name are Unassigned slots")
+			.isEqualTo(slots(4, mainMembers))
+			;
+		then(filter(result.config(), StandardFilterTypes.CHAIN + ".Second").filterIds())
+			.as("The count gives the chain's length")
+			.isEqualTo(slots(4, Map.of(1, throttle2)))
+			;
+		then(result.config().filtersOrEmpty())
+			.as("The Unassigned Service Name is not an unknown filter")
+			.extracting(FilterConfig::factoryUid)
+			.doesNotContain(FilterConfig.UNKNOWN_FACTORY_UID)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void exportChainSlots() {
+		// GIVEN
+		final List<String> members = new ArrayList<>(List.of("a", "x", "b"));
+		members.set(1, null);
+		// @formatter:off
+		final SimConfig config = new SimConfig(List.of(
+				new FilterConfig(MAIN_ID, StandardFilterTypes.CHAIN, "Main",
+						Map.of("uid", "Chain - Main"), members),
+				new FilterConfig("a", StandardFilterTypes.THROTTLE, "1", Map.of("uid", "A"), null),
+				new FilterConfig("b", StandardFilterTypes.THROTTLE, "2", Map.of("uid", "B"), null)),
+				MAIN_ID);
+		// @formatter:on
+
+		// WHEN
+		SettingsExport result = export(config, Style.Plain);
+
+		// THEN
+		// @formatter:off
+		then(result.csv())
+			.as("An Unassigned slot has no row, and the count keeps the chain's length")
+			.contains(
+					"net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,3,,,\r\n",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[0],A,,,\r\n",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[2],B,,,\r\n")
+			.doesNotContain("transformUids[1]")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void exportExternalChainShifted() {
+		// GIVEN
+		final String param = StandardFilterTypes.PARAMETER + ".Day";
+		final String meter = StandardFilterTypes.VIRTUAL_METER + ".OverLimit";
+		// @formatter:off
+		final ExternalSettingsFile day = new ExternalSettingsFile("0300-day-period.csv", csv(
+				"net.solarnetwork.node.datum.filter.std.param.Day,uid,PEX - Day Period,,,",
+				"net.solarnetwork.node.datum.filter.std.param.FACTORY,Day,Day,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[9],PEX - Day Period,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,"));
+		final ExternalSettingsFile limit = new ExternalSettingsFile("0400-day-limit.csv", csv(
+				"net.solarnetwork.node.datum.samplefilter.virtmeter.OverLimit,uid,VM - Day Over Limit,,,",
+				"net.solarnetwork.node.datum.samplefilter.virtmeter.FACTORY,OverLimit,OverLimit,,,",
+				"net.solarnetwork.node.datum.xform.user.Main,transformUids[19],VM - Day Over Limit,,,",
+				"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,"));
+		final ExternalSettings ext = service.external(new ExternalSettingsRequest(
+				List.of(packageFile(DATUM_FILTERS_PACKAGE), day, limit)));
+
+		// the first Unassigned slot deleted, so the members move down one
+		final List<FilterConfig> filters = new ArrayList<>(ext.config().filtersOrEmpty());
+		filters.replaceAll(f -> f.id().equals(MAIN_ID)
+				? new FilterConfig(MAIN_ID, f.factoryUid(), f.instanceKey(), f.settings(),
+						slots(19, Map.of(8, param, 18, meter)))
+				: f);
+		final SimConfig config = new SimConfig(filters, ext.config().mainChainId());
+		// @formatter:on
+
+		// WHEN
+		SettingsExport result = service
+				.exportCsv(new SettingsExportRequest(config, Style.Plain, ext.config()));
+
+		// THEN
+		// @formatter:off
+		then(result.csv())
+			.as("The moved members, Unassigned at the files' indexes, and no count")
+			.isEqualTo(csv(
+					"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[18],VM - Day Over Limit,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[19],Unassigned,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[8],PEX - Day Period,,,",
+					"net.solarnetwork.node.datum.xform.user.Main,transformUids[9],Unassigned,,,"))
 			;
 		// @formatter:on
 	}
@@ -952,7 +1119,7 @@ public class SettingsCsvServiceTests {
 		// THEN
 		// @formatter:off
 		then(result.csv())
-			.as("Only changed rows, with the .FACTORY row of each filter that has them")
+			.as("Only changed rows, with the .FACTORY row of each filter that has them, and no count over the package's chain")
 			.isEqualTo(csv(
 					"net.solarnetwork.node.datum.samplefilter.limiter.1,frequencySeconds,10,,,",
 					"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle 1,,,",
@@ -960,7 +1127,6 @@ public class SettingsCsvServiceTests {
 					"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1,,,",
 					"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,Ext,Ext,,,",
 					"net.solarnetwork.node.datum.xform.user.FACTORY,Main,Main,,,",
-					"net.solarnetwork.node.datum.xform.user.Main,transformUidsCount,2,,,",
 					"net.solarnetwork.node.datum.xform.user.Main,transformUids[0],Ext Throttle,,,",
 					"net.solarnetwork.node.datum.xform.user.Main,transformUids[1],Throttle 1,,,"))
 			;

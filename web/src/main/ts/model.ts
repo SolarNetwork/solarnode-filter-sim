@@ -15,6 +15,12 @@ export const UNKNOWN_FACTORY_UID = "unknown";
 /** The Service Name setting key. */
 export const UID_SETTING = "uid";
 
+/**
+ * The name of a chain place without a filter: the Service Name an export
+ * writes for it, which no filter has.
+ */
+export const UNASSIGNED_UID = "Unassigned";
+
 /** Application information. */
 export interface AppInfo {
 	name: string;
@@ -40,8 +46,12 @@ export interface FilterConfig {
 	instanceKey?: string | null;
 	/** The settings, as SolarNode setting keys and values. */
 	settings?: Record<string, string> | null;
-	/** For a chain, the `id` values of its filters, in execution order. */
-	filterIds?: string[] | null;
+	/**
+	 * For a chain, the `id` values of its filters, in execution order. Each
+	 * index is the filter's `transformUids` index, and `null` is an Unassigned
+	 * place, which SolarNode skips.
+	 */
+	filterIds?: (string | null)[] | null;
 	/** The comment lines that introduce the filter in a settings CSV file. */
 	comment?: string | null;
 	/** Notes about individual settings, by setting key. */

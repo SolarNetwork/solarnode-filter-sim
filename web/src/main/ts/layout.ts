@@ -12,8 +12,14 @@ export const NODE_SIZE = 64;
 /** The size of an end connector. */
 export const END_SIZE = 22;
 
+/** The size of an Unassigned place. */
+export const UNASSIGNED_SIZE = 40;
+
 /** The horizontal distance between filters in a row. */
 const COLUMN = 150;
+
+/** The horizontal space an Unassigned place takes in a row. */
+const UNASSIGNED_COLUMN = 100;
 
 /** The vertical distance between rows. */
 const ROW = 150;
@@ -38,7 +44,10 @@ export interface FilterNode {
 	kind: "filter";
 	/** A key unique to this node, which is also its canvas element id. */
 	key: string;
+	/** The filter id, or an empty string for an Unassigned place. */
 	filterId: string;
+	/** `true` for an Unassigned place in a chain, which has no filter. */
+	unassigned?: boolean;
 	position: Point;
 	/** The node's position in its chain, if it is in one. */
 	slot?: ChainSlot;
@@ -153,6 +162,29 @@ export function layout(ws: Workspace): Drawing {
 			const key = `${chainKey}/${index}`;
 			const slot: ChainSlot = { chainId, index };
 			const next: ChainSlot = { chainId, index: index + 1 };
+			if (memberId === null) {
+				drawing.nodes.push({
+					kind: "filter",
+					key,
+					filterId: "",
+					unassigned: true,
+					position: { x, y: y + (NODE_SIZE - UNASSIGNED_SIZE) / 2 },
+					slot,
+					outSlot: next,
+					main: false,
+					root: false,
+					loop: false,
+					parentKey: chainKey,
+				});
+				flow(prev, { key, port: "in" }, slot);
+				if (continuationFrom) {
+					continuation(continuationFrom, key);
+					continuationFrom = undefined;
+				}
+				prev = { key, port: "out" };
+				x += UNASSIGNED_COLUMN;
+				return;
+			}
 			const chain = ws.isChain(memberId);
 			const loop =
 				chain &&

@@ -534,6 +534,35 @@ public class SimulationEngineTests {
 	}
 
 	@Test
+	public void chainUnassignedSlot() {
+		// GIVEN
+		final List<String> members = new java.util.ArrayList<>(List.of("x", "exp"));
+		members.set(0, null);
+		SimulationRequest req = request(
+				List.of(new FilterConfig("main", StandardFilterTypes.CHAIN, null,
+						Map.of("uid", "Chain - Main"), members), expression("exp", "EXP", "x", "1")),
+				METER_DATUM);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("An Unassigned slot is not a problem")
+			.isEmpty()
+			;
+		then(result.datum().getFirst().steps())
+			.as("The chain skips the Unassigned slot")
+			.extracting(FilterStep::filterId, FilterStep::status)
+			.containsExactly(
+					tuple("main", Status.Changed),
+					tuple("exp", Status.Changed))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void unknownFilter() {
 		// GIVEN
 		SimulationRequest req = request(
