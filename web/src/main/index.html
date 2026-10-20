@@ -25,6 +25,39 @@
 				id="app-version"
 			></span>
 			<div class="d-flex gap-2 ms-auto">
+				<div
+					class="btn-group btn-group-sm"
+					role="group"
+					aria-label="Panels"
+				>
+					<button
+						type="button"
+						class="btn btn-outline-secondary active"
+						id="left-panel-button"
+						title="Hide the inputs and filters panel, to give the canvas more room"
+						aria-pressed="true"
+						aria-controls="left-panel"
+					>
+						<i class="bi bi-layout-sidebar" aria-hidden="true"></i>
+						<span class="visually-hidden"
+							>Inputs and filters panel</span
+						>
+					</button>
+					<button
+						type="button"
+						class="btn btn-outline-secondary active"
+						id="right-panel-button"
+						title="Hide the inspector panel, to give the canvas more room"
+						aria-pressed="true"
+						aria-controls="inspector"
+					>
+						<i
+							class="bi bi-layout-sidebar-reverse"
+							aria-hidden="true"
+						></i>
+						<span class="visually-hidden">Inspector panel</span>
+					</button>
+				</div>
 				<button
 					type="button"
 					class="btn btn-outline-secondary btn-sm text-nowrap"
@@ -52,7 +85,7 @@
 			/>
 		</header>
 
-		<main class="sim-layout">
+		<main class="sim-layout" id="layout">
 			<aside class="sim-left border-end" id="left-panel">
 				<section class="sim-left-top">
 					<div class="sim-inputs p-3">

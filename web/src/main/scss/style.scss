@@ -17,8 +17,32 @@ body {
 .sim-layout {
 	flex: 1;
 	display: grid;
-	grid-template-columns: 22rem 1fr 24rem;
+	grid-template-columns: var(--sim-left-width, 22rem) 1fr var(
+			--sim-right-width,
+			24rem
+		);
 	min-height: 0;
+
+	// each part keeps its column, so a hidden panel leaves its column empty
+	> .sim-left {
+		grid-column: 1;
+	}
+
+	> .sim-center {
+		grid-column: 2;
+	}
+
+	> .sim-right {
+		grid-column: 3;
+	}
+
+	&.is-left-hidden {
+		--sim-left-width: 0;
+	}
+
+	&.is-right-hidden {
+		--sim-right-width: 0;
+	}
 }
 
 .sim-right {

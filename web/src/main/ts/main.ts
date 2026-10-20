@@ -46,6 +46,9 @@ import { buildReport, REPORT_FILE_NAME } from "./report.ts";
 import { initSplitter } from "./splitter.ts";
 import { Workspace } from "./workspace.ts";
 
+/** The browser storage key of the hidden side panels. */
+const PANELS_STORAGE_KEY = "sn-filter-sim.hiddenPanels";
+
 /** The name of exported settings CSV files. */
 const EXPORT_FILE_NAME = "solarnode-filter-settings.csv";
 
@@ -621,6 +624,7 @@ class App {
 			canvas.zoom(1 / 1.2),
 		);
 		$("#fit-button").addEventListener("click", () => canvas.fit());
+		this.#bindPanelButtons();
 		const routesButton = $<HTMLButtonElement>("#routes-button");
 		const showRoutes = (show: boolean) => {
 			canvas.showRoutes = show;
@@ -682,6 +686,64 @@ class App {
 				this.#results.clearDatum();
 			}
 		});
+	}
+
+	/**
+	 * Bind the buttons that hide and show the side panels, which the browser
+	 * remembers.
+	 */
+	#bindPanelButtons(): void {
+		const layout = $("#layout");
+		const panels = [
+			{
+				button: $<HTMLButtonElement>("#left-panel-button"),
+				panel: $("#left-panel"),
+				hiddenClass: "is-left-hidden",
+				name: "inputs and filters",
+			},
+			{
+				button: $<HTMLButtonElement>("#right-panel-button"),
+				panel: $("#inspector"),
+				hiddenClass: "is-right-hidden",
+				name: "inspector",
+			},
+		];
+		let saved: Record<string, boolean> = {};
+		try {
+			saved = JSON.parse(
+				localStorage.getItem(PANELS_STORAGE_KEY) ?? "{}",
+			) as Record<string, boolean>;
+		} catch {
+			// all shown
+		}
+		const show = (
+			p: (typeof panels)[number],
+			shown: boolean,
+			save: boolean,
+		) => {
+			p.panel.hidden = !shown;
+			layout.classList.toggle(p.hiddenClass, !shown);
+			p.button.classList.toggle("active", shown);
+			p.button.setAttribute("aria-pressed", String(shown));
+			p.button.title = `${shown ? "Hide" : "Show"} the ${p.name} panel${shown ? ", to give the canvas more room" : ""}`;
+			if (save) {
+				saved[p.panel.id] = !shown;
+				try {
+					localStorage.setItem(
+						PANELS_STORAGE_KEY,
+						JSON.stringify(saved),
+					);
+				} catch {
+					// not saved
+				}
+			}
+		};
+		for (const p of panels) {
+			show(p, !saved[p.panel.id], false);
+			p.button.addEventListener("click", () =>
+				show(p, layout.classList.contains(p.hiddenClass), true),
+			);
+		}
 	}
 
 	#refreshControls(): void {
