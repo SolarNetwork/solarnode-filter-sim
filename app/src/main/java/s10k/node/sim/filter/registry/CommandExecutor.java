@@ -44,8 +44,10 @@ public interface CommandExecutor {
 	 * @param runner
 	 *        the filter's function that runs the command and returns its result
 	 * @return the command result
+	 * @throws CommandNotAllowedException
+	 *         if the command is not allowed
 	 * @throws RuntimeException
-	 *         if the command is not allowed, or the runner fails
+	 *         if the runner fails
 	 */
 	Map<String, ?> execute(List<String> command, Function<List<String>, Map<String, ?>> runner);
 

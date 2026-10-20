@@ -13,6 +13,7 @@ import {
 	type DatumTrace,
 	type FilterStep,
 	type InstructionInfo,
+	type MetricInfo,
 	type SamplesInfo,
 	type SimulationResult,
 } from "./model.ts";
@@ -48,6 +49,12 @@ interface IssuedInstruction {
 	instruction: InstructionInfo;
 }
 
+/** A metric a filter saved. */
+interface SavedMetric {
+	filterId: string;
+	metric: MetricInfo;
+}
+
 /** The simulated node's state after a filter step. */
 export interface DebugState {
 	trace: DatumTrace;
@@ -75,6 +82,8 @@ export interface DebugState {
 	/** The datum generated while processing this datum, so far. */
 	generated: number[];
 	instructions: IssuedInstruction[];
+	/** The metrics saved while processing this datum, so far. */
+	metrics: SavedMetric[];
 	/** The number of datum output by the Datum Queue before this one. */
 	outputBefore: number;
 }
@@ -213,6 +222,7 @@ export function debugState(
 		queue: [...(start.queue ?? [])],
 		generated: [],
 		instructions: [],
+		metrics: [],
 		outputBefore: result.datum
 			.slice(0, pos.traceIndex)
 			.filter((t) => t.output).length,
@@ -255,6 +265,9 @@ export function debugState(
 		}
 		for (const instruction of s.instructions ?? []) {
 			state.instructions.push({ filterId: s.filterId, instruction });
+		}
+		for (const metric of s.metrics ?? []) {
+			state.metrics.push({ filterId: s.filterId, metric });
 		}
 	});
 	if (step && !state.entering) {
@@ -538,6 +551,20 @@ export class DebugView {
 						"",
 					],
 					"No parameters.",
+				),
+			);
+		}
+		if (s.metrics.length) {
+			parts.push(
+				element("div", "fw-semibold mt-2", "Metrics"),
+				keyValueTable(
+					s.metrics.map(({ filterId, metric }) => [
+						metric.name,
+						formatValue(metric.value),
+						label(filterId),
+					]),
+					["Name", "Value", "Filter"],
+					"",
 				),
 			);
 		}

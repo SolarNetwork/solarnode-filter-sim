@@ -237,6 +237,18 @@ export interface SimulationEnvironment {
 	placeholders?: Record<string, string> | null;
 	/** Datum stream metadata, by source ID. */
 	datumMetadata?: Record<string, unknown> | null;
+	/** The node location, which the Location Service provides. */
+	nodeLocation?: NodeLocation | null;
+}
+
+/** The location of the simulated node. */
+export interface NodeLocation {
+	/** The latitude, in decimal degrees. */
+	latitude?: number | null;
+	/** The longitude, in decimal degrees. */
+	longitude?: number | null;
+	/** The elevation above sea level, in meters. */
+	elevation?: number | null;
 }
 
 /** Datum to pre-load into the datum histories. */
@@ -260,6 +272,8 @@ export interface SimulationOptions {
 	 * as an ISO 8601 duration like `PT5M`, so scheduled tasks can run.
 	 */
 	runAfter?: string | null;
+	/** The paths of the external commands filters may run. */
+	allowedCommands?: string[] | null;
 }
 
 /** A request to run a simulation. */
@@ -329,6 +343,28 @@ export interface InstructionInfo {
 	state?: string;
 }
 
+/** A metric a filter saved. */
+export interface MetricInfo {
+	timestamp: string;
+	/** The metric type, like `s` for a sample value. */
+	type: string;
+	name: string;
+	value: number;
+}
+
+/** An external command a filter asked to run. */
+export interface CommandInfo {
+	/** The command and its arguments. */
+	command: string[];
+	/** `false` if the simulator did not allow the command. */
+	ran: boolean;
+	/** The command's JSON result, if it succeeded. */
+	result?: Record<string, unknown>;
+	/** Why the command failed, or did not run. */
+	error?: string;
+	durationMicros?: number;
+}
+
 /** One filter invocation while processing a datum. */
 export interface FilterStep {
 	id: number;
@@ -348,6 +384,8 @@ export interface FilterStep {
 	/** The sequence numbers of datum the filter generated. */
 	generated?: number[];
 	instructions?: InstructionInfo[];
+	metrics?: MetricInfo[];
+	commands?: CommandInfo[];
 	error?: string;
 	durationMicros?: number;
 }
@@ -380,6 +418,8 @@ export interface LocalStateInfo {
 export interface SimulationState {
 	opModes?: string[];
 	localState?: LocalStateInfo[];
+	/** The metrics filters saved, oldest first. */
+	metrics?: MetricInfo[];
 	/** The Local State, in the SolarNode Local State CSV format. */
 	localStateCsv?: string;
 	/** The datum history, by source ID, newest first. */

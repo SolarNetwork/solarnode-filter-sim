@@ -27,6 +27,18 @@ export interface InspectorActions {
 	 *     `(objectClass=net.solarnetwork.node.service.MetadataService)`
 	 */
 	relatedServices(serviceFilter: string): string[];
+	/**
+	 * Test if an external command is in the Allowed Commands.
+	 *
+	 * @param command the command path
+	 */
+	isCommandAllowed(command: string): boolean;
+	/**
+	 * Add an external command to the Allowed Commands.
+	 *
+	 * @param command the command path
+	 */
+	allowCommand(command: string): void;
 }
 
 /** How long after typing stops, in milliseconds, the settings are checked. */
@@ -34,6 +46,9 @@ const VALIDATE_DELAY = 400;
 
 /** The setting key of a chain's filters. */
 const CHAIN_FILTERS = "transformUids";
+
+/** The setting of a filter's external command, like the POA Calculator's. */
+const COMMAND_SETTING = "command";
 
 /** A rendered setting, for showing its problems. */
 interface Control {
@@ -421,6 +436,10 @@ export class Inspector {
 		if (form?.limitation) {
 			alerts.push(alert("warning", form.limitation));
 		}
+		const command = this.#disallowedCommand(node, form);
+		if (command) {
+			alerts.push(this.#commandAlert(command));
+		}
 		if (form && form.problems.length > 0) {
 			const problems = element(
 				"div",
@@ -434,6 +453,57 @@ export class Inspector {
 			alerts.push(problems);
 		}
 		return alerts;
+	}
+
+	/**
+	 * Get a filter's external command, if it runs one that is not allowed.
+	 *
+	 * @returns the command path, or `undefined`
+	 */
+	#disallowedCommand(
+		node: FilterNode,
+		form: SettingsForm | undefined,
+	): string | undefined {
+		const filter = this.#ws.filter(node.filterId);
+		const type = filter ? this.#ws.type(filter.factoryUid) : undefined;
+		if (!form || !type?.capabilities?.includes("Commands")) {
+			return undefined;
+		}
+		const field = form.fields.find((f) => f.key === COMMAND_SETTING);
+		const command = (field?.value || field?.defaultValue || "").trim();
+		return command && !this.#actions.isCommandAllowed(command)
+			? command
+			: undefined;
+	}
+
+	#commandAlert(command: string): HTMLElement {
+		const el = element("div", "alert alert-warning small py-2 mb-2");
+		const text = element("div", "mb-1");
+		text.append(
+			"The simulator runs the command ",
+			element("code", "text-break", command),
+			" only if it is in the Allowed Commands, on the Environment tab. Allow only programs you trust: it runs on this computer.",
+		);
+		const allow = element(
+			"button",
+			"btn btn-sm btn-outline-secondary",
+			"Allow this command",
+		);
+		allow.type = "button";
+		allow.addEventListener("click", () => {
+			this.#actions.allowCommand(command);
+			void this.#validate();
+		});
+		el.append(text, allow);
+		return el;
+	}
+
+	/**
+	 * Check the shown filter again, such as after the Allowed Commands
+	 * change.
+	 */
+	refreshAlerts(): void {
+		void this.#validate();
 	}
 
 	#instanceIdField(filter: FilterConfig): HTMLElement {

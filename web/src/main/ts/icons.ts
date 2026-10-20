@@ -25,6 +25,8 @@ const FILTER_ICONS: Record<string, string> = {
 	"net.solarnetwork.node.datum.filter.std.timestamp": "clock",
 	"net.solarnetwork.node.datum.filter.instructor": "send",
 	"net.solarnetwork.node.datum.filter.tariff": "cash-coin",
+	"net.solarnetwork.node.datum.filter.pvlib.poa": "brightness-high",
+	"net.solarnetwork.node.metrics.service.harvester": "bar-chart-line",
 	[UNKNOWN_FACTORY_UID]: "question-circle",
 };
 

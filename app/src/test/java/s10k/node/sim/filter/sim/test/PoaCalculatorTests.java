@@ -191,9 +191,9 @@ public class PoaCalculatorTests {
 		final FilterStep step = poaStep(result);
 		// @formatter:off
 		then(result.messages())
-			.as("The command is reported when the filter is created")
-			.filteredOn(m -> SimulationMessage.CODE_FILTER_PROBLEM.equals(m.code()))
+			.as("The command is reported when the filter is created, and not again for the chain")
 			.singleElement()
+			.returns(SimulationMessage.CODE_FILTER_PROBLEM, from(SimulationMessage::code))
 			.returns("poa", from(SimulationMessage::filterId))
 			.extracting(SimulationMessage::message)
 			.asString()

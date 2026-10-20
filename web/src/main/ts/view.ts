@@ -171,3 +171,33 @@ export function externalFilesText(files: readonly string[]): string {
 			: `${files.slice(0, -1).join(", ")}, and ${files[files.length - 1]}`;
 	return `the External Settings files ${list}`;
 }
+
+/**
+ * Format a command and its arguments like a shell command line, quoting
+ * arguments with spaces or quotes.
+ *
+ * @param command the command and its arguments
+ * @returns the command line
+ */
+export function commandLine(command: readonly string[]): string {
+	return command
+		.map((arg) =>
+			arg === "" || /[\s'"\\$`]/.test(arg)
+				? `'${arg.replace(/'/g, "'\\''")}'`
+				: arg,
+		)
+		.join(" ");
+}
+
+/**
+ * Get the file name of a command path.
+ *
+ * @param command the command path
+ * @returns the file name
+ */
+export function commandName(command: string): string {
+	const i = command.lastIndexOf("/");
+	return i >= 0 && i < command.length - 1
+		? command.substring(i + 1)
+		: command;
+}

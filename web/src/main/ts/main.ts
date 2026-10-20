@@ -120,6 +120,9 @@ class App {
 			remove: (node) => ws.remove(node.filterId),
 			relatedServices: (serviceFilter) =>
 				this.#relatedServices(serviceFilter),
+			isCommandAllowed: (command) =>
+				inputs.allowedCommands.includes(command),
+			allowCommand: (command) => inputs.allowCommand(command),
 		});
 		this.#inputPanel = new InputPanel(inputs, ws);
 		this.#results = new ResultsPanel($("#results"), ws);
@@ -159,6 +162,14 @@ class App {
 			this.#changed();
 		});
 		inputs.addEventListener("change", () => this.#changed());
+		// the inspector warns about commands that are not allowed
+		let allowed = inputs.state.allowedCommands;
+		inputs.addEventListener("change", () => {
+			if (inputs.state.allowedCommands !== allowed) {
+				allowed = inputs.state.allowedCommands;
+				this.#inspector.refreshAlerts();
+			}
+		});
 		this.#bindResults();
 
 		this.#bindControls();
@@ -419,6 +430,13 @@ class App {
 		results.addEventListener("usefinalstate", () =>
 			this.#inputPanel.useFinalState(),
 		);
+		results.addEventListener("allowcommand", (e) => {
+			const command = (e as CustomEvent<string>).detail;
+			this.#inputs.allowCommand(command);
+			showToast(
+				`${command} is now in the Allowed Commands, on the Environment tab. Run again to use it.`,
+			);
+		});
 		results.addEventListener("close", () => this.#closeResults());
 		results.addEventListener("stop", () => this.#stopDebug());
 		$("#run-button").addEventListener("click", () => void this.run());

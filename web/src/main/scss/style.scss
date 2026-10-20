@@ -575,6 +575,16 @@ rect.sim-badge {
 	align-items: baseline;
 }
 
+// an external command line in a filter step
+.sim-command {
+	white-space: pre-wrap;
+	word-break: break-all;
+	font-size: 0.75rem;
+	background-color: var(--bs-tertiary-bg);
+	border-radius: var(--bs-border-radius-sm);
+	padding: 0.25rem 0.5rem;
+}
+
 .sim-samples-table {
 	font-size: 0.8rem;
 

@@ -10,6 +10,7 @@ import {
 } from "./debug.ts";
 import { filterIcon } from "./icons.ts";
 import type {
+	CommandInfo,
 	DatumInfo,
 	DatumTrace,
 	FilterStep,
@@ -20,6 +21,8 @@ import type {
 	SimulationState,
 } from "./model.ts";
 import {
+	commandLine,
+	commandName,
 	diffSamples,
 	element,
 	formatDuration,
@@ -166,6 +169,8 @@ export function datumPath(trace: DatumTrace): DatumPath {
  * - `datum`, with a {@link DatumPath} detail, or `null`, to highlight the
  *   filters a datum went through;
  * - `usefinalstate`, to use the final state as the next starting state;
+ * - `allowcommand`, with a command path detail, to allow a command that did
+ *   not run;
  * - `close`, to close the panel;
  * - `stop`, to stop debug mode.
  *
@@ -852,6 +857,20 @@ export class ResultsPanel extends EventTarget {
 				"Local State changed",
 			);
 		}
+		for (const m of step.metrics ?? []) {
+			chip(
+				`metric: ${m.name} = ${formatValue(m.value)}`,
+				"",
+				`Metric saved, of type ${m.type}, at ${formatTimestamp(m.timestamp)}`,
+			);
+		}
+		for (const c of step.commands ?? []) {
+			chip(
+				`command: ${commandName(c.command[0] ?? "")}${c.ran ? "" : " (not allowed)"}`,
+				c.error ? "is-removed" : "",
+				commandLine(c.command),
+			);
+		}
 		for (const instr of step.instructions ?? []) {
 			chip(
 				`instruction: ${instr.topic}${instr.state ? ` (${instr.state})` : ""}`,
@@ -982,7 +1001,77 @@ export class ResultsPanel extends EventTarget {
 			table.append(head, rows);
 			body.append(table);
 		}
+		for (const c of step.commands ?? []) {
+			body.append(this.#commandDetails(c));
+		}
 		return body;
+	}
+
+	/** The details of an external command a step asked to run. */
+	#commandDetails(c: CommandInfo): HTMLElement {
+		const section = element("div", "mt-2");
+		const heading = element(
+			"div",
+			"d-flex align-items-center gap-2 fw-semibold",
+			c.ran ? "Command" : "Command (not allowed)",
+		);
+		if (c.ran && c.durationMicros !== undefined) {
+			heading.append(
+				element(
+					"span",
+					"fw-normal text-body-secondary",
+					formatDuration(c.durationMicros),
+				),
+			);
+		}
+		const path = c.command[0];
+		if (!c.ran && path) {
+			const allow = element(
+				"button",
+				"btn btn-outline-secondary btn-sm py-0",
+				"Allow",
+			);
+			allow.type = "button";
+			allow.title = `Add ${path} to the Allowed Commands, so the next run can run it. Allow only programs you trust.`;
+			allow.addEventListener("click", () =>
+				this.dispatchEvent(
+					new CustomEvent<string>("allowcommand", { detail: path }),
+				),
+			);
+			heading.append(allow);
+		}
+		section.append(
+			heading,
+			element("pre", "sim-command mb-1", commandLine(c.command)),
+		);
+		if (c.error) {
+			section.append(element("div", "text-danger-emphasis", c.error));
+		}
+		if (c.result) {
+			const table = element(
+				"table",
+				"table table-sm mb-1 sim-samples-table",
+			);
+			const head = element("thead");
+			const headRow = element("tr");
+			headRow.append(
+				element("th", undefined, "Result"),
+				element("th", undefined, "Value"),
+			);
+			head.append(headRow);
+			const rows = element("tbody");
+			for (const [k, v] of Object.entries(c.result)) {
+				const row = element("tr");
+				row.append(
+					element("td", "font-monospace", k),
+					element("td", "font-monospace text-break", formatValue(v)),
+				);
+				rows.append(row);
+			}
+			table.append(head, rows);
+			section.append(table);
+		}
+		return section;
 	}
 
 	/* === Final state === */
@@ -1052,6 +1141,40 @@ export class ResultsPanel extends EventTarget {
 			body.append(table);
 		} else {
 			body.append(element("div", "text-body-secondary", "none"));
+		}
+
+		const metrics = state.metrics ?? [];
+		if (metrics.length) {
+			body.append(element("div", "fw-semibold mt-2", "Metrics"));
+			const table = element(
+				"table",
+				"table table-sm mb-0 sim-samples-table",
+			);
+			const head = element("thead");
+			const headRow = element("tr");
+			headRow.append(
+				element("th", undefined, "Date"),
+				element("th", undefined, "Name"),
+				element("th", undefined, "Value"),
+			);
+			head.append(headRow);
+			const rows = element("tbody");
+			for (const m of metrics) {
+				const row = element("tr");
+				row.title = `Metric type ${m.type}`;
+				row.append(
+					element("td", "text-nowrap", formatTimestamp(m.timestamp)),
+					element("td", "font-monospace", m.name),
+					element(
+						"td",
+						"font-monospace text-break",
+						formatValue(m.value),
+					),
+				);
+				rows.append(row);
+			}
+			table.append(head, rows);
+			body.append(table);
 		}
 		section.append(header, body);
 		return section;

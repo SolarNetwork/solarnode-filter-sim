@@ -6,6 +6,7 @@ import {
 	parseRunAfter,
 	parsePlaceholders,
 	parseDatumMetadata,
+	parseLocationNumber,
 	type InputError,
 	type InputField,
 	type InputTab,
@@ -31,6 +32,10 @@ const TEXT_INPUTS: Record<Exclude<InputField, "entryPoint">, string> = {
 	runAfter: "#input-runafter",
 	placeholders: "#input-placeholders",
 	datumMetadata: "#input-datum-metadata",
+	nodeLatitude: "#input-node-latitude",
+	nodeLongitude: "#input-node-longitude",
+	nodeElevation: "#input-node-elevation",
+	allowedCommands: "#input-allowed-commands",
 	nodeMetadata: "#input-node-metadata",
 };
 
@@ -44,6 +49,10 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	runAfter: "environment",
 	placeholders: "environment",
 	datumMetadata: "datum-metadata",
+	nodeLatitude: "environment",
+	nodeLongitude: "environment",
+	nodeElevation: "environment",
+	allowedCommands: "environment",
 	nodeMetadata: "node-metadata",
 };
 
@@ -59,6 +68,9 @@ const FIELD_CHECKS: Partial<
 	runAfter: (text) => parseRunAfter(text),
 	placeholders: (text) => parsePlaceholders(text),
 	datumMetadata: (text) => parseDatumMetadata(text),
+	nodeLatitude: (text) => parseLocationNumber(text, "Latitude", -90, 90),
+	nodeLongitude: (text) => parseLocationNumber(text, "Longitude", -180, 180),
+	nodeElevation: (text) => parseLocationNumber(text, "Elevation"),
 };
 
 function $<T extends HTMLElement>(selector: string): T {
@@ -114,6 +126,7 @@ export class InputPanel {
 			this.useFinalState(),
 		);
 		ws.addEventListener("change", () => this.#renderEntryPoints());
+		inputs.addEventListener("change", () => this.#syncTextInputs());
 		this.#renderEntryPoints();
 	}
 
@@ -267,6 +280,26 @@ export class InputPanel {
 				} catch (e) {
 					this.#setInvalid(field, FIELD_TABS[field], message(e));
 				}
+			}
+		}
+	}
+
+	/**
+	 * Show text inputs that changed elsewhere, such as a command allowed from
+	 * the inspector, without disturbing the input being typed in.
+	 */
+	#syncTextInputs(): void {
+		const state = this.#inputs.state;
+		for (const [field, selector] of Object.entries(TEXT_INPUTS) as [
+			keyof typeof TEXT_INPUTS,
+			string,
+		][]) {
+			const input = $<HTMLInputElement | HTMLTextAreaElement>(selector);
+			if (
+				input !== document.activeElement &&
+				input.value !== state[field]
+			) {
+				input.value = state[field];
 			}
 		}
 	}

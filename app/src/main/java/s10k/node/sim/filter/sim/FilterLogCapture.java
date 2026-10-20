@@ -22,6 +22,7 @@ package s10k.node.sim.filter.sim;
 import java.util.Iterator;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.registry.CommandNotAllowedException;
 import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -108,7 +109,7 @@ public final class FilterLogCapture {
 		@Override
 		protected void append(ILoggingEvent event) {
 			final Sink sink = SINK.get();
-			if ( sink != null && captured(event) ) {
+			if ( sink != null && captured(event) && !commandNotAllowed(event) ) {
 				final String message = event.getFormattedMessage();
 				sink.logged(event.getLevel().isGreaterOrEqual(Level.ERROR),
 						withCause(message != null ? message : "", event.getThrowableProxy()));
@@ -128,6 +129,20 @@ public final class FilterLogCapture {
 			return (captured(event) ? FilterReply.DENY : FilterReply.NEUTRAL);
 		}
 
+	}
+
+	/**
+	 * Test if an event is about a command that is not allowed, which the
+	 * filter's step already reports, such as a chain logging that its filter
+	 * failed.
+	 */
+	private static boolean commandNotAllowed(ILoggingEvent event) {
+		for ( IThrowableProxy t = event.getThrowableProxy(); t != null; t = t.getCause() ) {
+			if ( CommandNotAllowedException.class.getName().equals(t.getClassName()) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

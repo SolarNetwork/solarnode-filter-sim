@@ -4,6 +4,7 @@
  */
 
 import type {
+	NodeLocation,
 	SimulationEnvironment,
 	SimulationHistory,
 	SimulationOptions,
@@ -50,6 +51,14 @@ export interface InputsState {
 	placeholders: string;
 	/** Datum metadata JSON: an object of source IDs to metadata. */
 	datumMetadata: string;
+	/** The node location latitude, in decimal degrees. */
+	nodeLatitude: string;
+	/** The node location longitude, in decimal degrees. */
+	nodeLongitude: string;
+	/** The node location elevation, in meters. */
+	nodeElevation: string;
+	/** The paths of the external commands filters may run, one per line. */
+	allowedCommands: string;
 	nodeMetadata: string;
 	userMetadata: UserMetadataInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
@@ -105,6 +114,10 @@ function emptyState(): InputsState {
 		runAfter: "",
 		placeholders: "",
 		datumMetadata: "",
+		nodeLatitude: "",
+		nodeLongitude: "",
+		nodeElevation: "",
+		allowedCommands: "",
 		nodeMetadata: "",
 		userMetadata: [],
 		entryPoint: "",
@@ -240,6 +253,49 @@ export function parseDatumMetadata(
 }
 
 /**
+ * Parse a number of a node location.
+ *
+ * @param text the number
+ * @param label the name of the number, for messages
+ * @param min the smallest value allowed
+ * @param max the largest value allowed
+ * @returns the number, or `null` if the text is blank
+ * @throws Error if the text is not a number in range
+ */
+export function parseLocationNumber(
+	text: string,
+	label: string,
+	min = -Infinity,
+	max = Infinity,
+): number | null {
+	if (!text.trim()) {
+		return null;
+	}
+	const n = Number(text);
+	if (!Number.isFinite(n) || n < min || n > max) {
+		throw new Error(
+			Number.isFinite(min)
+				? `${label} must be a number from ${min} to ${max}.`
+				: `${label} must be a number.`,
+		);
+	}
+	return n;
+}
+
+/**
+ * Parse the Allowed Commands: one command path per line.
+ *
+ * @param text the commands
+ * @returns the command paths
+ */
+export function parseAllowedCommands(text: string): string[] {
+	return text
+		.split(/\r?\n/)
+		.map((c) => c.trim())
+		.filter((c) => c.length > 0);
+}
+
+/**
  * Parse operational modes.
  *
  * @param text the comma-delimited modes
@@ -299,6 +355,25 @@ export class RunInputs extends EventTarget {
 	/** The inputs. */
 	get state(): Readonly<InputsState> {
 		return this.#state;
+	}
+
+	/** The paths of the external commands filters may run. */
+	get allowedCommands(): string[] {
+		return parseAllowedCommands(this.#state.allowedCommands);
+	}
+
+	/**
+	 * Allow an external command to run.
+	 *
+	 * @param command the command path
+	 */
+	allowCommand(command: string): void {
+		const cmd = command.trim();
+		if (!cmd || this.allowedCommands.includes(cmd)) {
+			return;
+		}
+		const text = this.#state.allowedCommands.trimEnd();
+		this.set("allowedCommands", text ? `${text}\n${cmd}` : cmd);
 	}
 
 	/** The Service Names of the User Metadata Services. */
@@ -445,9 +520,26 @@ export class RunInputs extends EventTarget {
 		const datumMetadata = parse("datum-metadata", "datumMetadata", () =>
 			parseDatumMetadata(s.datumMetadata),
 		);
+		const nodeLocation: NodeLocation = {
+			latitude: parse("environment", "nodeLatitude", () =>
+				parseLocationNumber(s.nodeLatitude, "Latitude", -90, 90),
+			),
+			longitude: parse("environment", "nodeLongitude", () =>
+				parseLocationNumber(s.nodeLongitude, "Longitude", -180, 180),
+			),
+			elevation: parse("environment", "nodeElevation", () =>
+				parseLocationNumber(s.nodeElevation, "Elevation"),
+			),
+		};
+		const allowedCommands = this.allowedCommands;
 		return {
 			datum,
-			options: { runAfter: runAfter > 0 ? `PT${runAfter}S` : null },
+			options: {
+				runAfter: runAfter > 0 ? `PT${runAfter}S` : null,
+				allowedCommands: allowedCommands.length
+					? allowedCommands
+					: null,
+			},
 			history:
 				filtered.length || unfiltered?.length
 					? { filtered, unfiltered }
@@ -461,6 +553,11 @@ export class RunInputs extends EventTarget {
 					? placeholders
 					: null,
 				datumMetadata,
+				nodeLocation: Object.values(nodeLocation).some(
+					(v) => v !== null,
+				)
+					? nodeLocation
+					: null,
 			},
 			entryPoint: s.entryPoint || null,
 		};

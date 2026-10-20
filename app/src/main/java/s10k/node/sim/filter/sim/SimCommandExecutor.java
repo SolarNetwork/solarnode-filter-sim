@@ -29,6 +29,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import s10k.node.sim.filter.domain.CommandInfo;
 import s10k.node.sim.filter.registry.CommandExecutor;
+import s10k.node.sim.filter.registry.CommandNotAllowedException;
 
 /**
  * A {@link CommandExecutor} that runs only allowed commands, and reports each
@@ -75,7 +76,7 @@ public class SimCommandExecutor implements CommandExecutor {
 			final String msg = ("The command %s is not in the Allowed Commands list, so the simulator "
 					+ "did not run it.").formatted(cmd.isEmpty() ? "" : cmd.getFirst());
 			report(new CommandInfo(cmd, false, null, msg, 0));
-			throw new IllegalStateException(msg);
+			throw new CommandNotAllowedException(msg);
 		}
 		final long start = System.nanoTime();
 		try {
