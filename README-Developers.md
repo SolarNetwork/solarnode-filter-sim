@@ -60,7 +60,7 @@ The main TypeScript modules are:
 | `layout.ts`    | The automatic layout of the flow chart. |
 | `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
 | `datumRoutes.ts` | The route each datum took through the drawing, from its steps, for the canvas to draw. |
-| `jsonEditor.ts`, `jsonFormat.ts`, `jsonLint.ts` | The [CodeMirror][codemirror] JSON editor of the JSON inputs, its Format button's formatter, and its schema checks. |
+| `jsonEditor.ts`, `jsonFormat.ts`, `jsonLint.ts`, `jsonComplete.ts` | The [CodeMirror][codemirror] JSON editor of the JSON inputs, its Format button's formatter, its schema checks, and its key completion. |
 | `report.ts`    | Execution Flow reports: the flow as a stand-alone HTML page. |
 | `routeOverlay.ts` | Draws datum routes on the canvas: lanes, the lines back through the queue, and number badges. |
 | `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |

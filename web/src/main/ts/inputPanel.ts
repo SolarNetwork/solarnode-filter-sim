@@ -14,6 +14,7 @@ import {
 	type UserMetadataInput,
 } from "./inputs.ts";
 import { JsonEditor } from "./jsonEditor.ts";
+import { jsonCompletion } from "./jsonComplete.ts";
 import { jsonLint, type JsonSchema } from "./jsonLint.ts";
 import type { SimulationState } from "./model.ts";
 import type { Workspace } from "./workspace.ts";
@@ -300,6 +301,7 @@ export class InputPanel {
 					jsonLint(schema, (errors) =>
 						this.#setSchemaErrors(field, FIELD_TABS[field], errors),
 					),
+					jsonCompletion(schema),
 				]);
 			}
 			const check = FIELD_CHECKS[field];
@@ -511,6 +513,7 @@ export class InputPanel {
 			jsonLint("metadata", (errors) =>
 				this.#setSchemaErrors(item.id, "user-metadata", errors),
 			),
+			jsonCompletion("metadata"),
 		]);
 		try {
 			check();
