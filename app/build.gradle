@@ -10,7 +10,7 @@ plugins {
 }
 
 group = 's10k.node'
-version = '0.7.0'
+version = '0.7.1.dev0'
 
 base {
 	archivesName = 'sn-filter-sim'
