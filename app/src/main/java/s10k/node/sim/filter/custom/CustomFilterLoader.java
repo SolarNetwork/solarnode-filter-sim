@@ -26,7 +26,6 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -35,8 +34,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -159,16 +156,17 @@ public final class CustomFilterLoader {
 
 		final List<String> problems = new ArrayList<>(4);
 		final List<BundleJar> jars = new ArrayList<>(4);
-		final Extractor extractor = new Extractor();
-		for ( Path file : jarFiles(entries, problems) ) {
-			try {
-				jars.add(readJar(file, extractor, problems));
+		final TempFiles temp = new TempFiles();
+		for ( Path file : bundlePaths(entries, problems) ) {
+			try (BundleSource source = BundleSource.of(file)) {
+				jars.add(readBundle(source, temp, problems));
 			} catch ( IOException e ) {
-				problems.add("The jar %s could not be read: %s".formatted(file, e.getMessage()));
+				problems.add("The bundle %s could not be read: %s".formatted(file, e.getMessage()));
 			}
 		}
 		if ( jars.isEmpty() ) {
-			return new CustomFilters(List.of(), List.of(), List.of(), List.copyOf(problems));
+			temp.delete();
+			return new CustomFilters(List.of(), List.of(), List.of(), List.copyOf(problems), null);
 		}
 
 		final URLClassLoader classLoader = new URLClassLoader("sim-custom-filters", urls(jars, problems),
@@ -221,14 +219,20 @@ public final class CustomFilterLoader {
 					!jar.blueprints().isEmpty(), imports.check(jar.importPackage())));
 		}
 		return new CustomFilters(List.copyOf(definitions), List.copyOf(unavailable),
-				List.copyOf(bundles), List.copyOf(problems));
+				List.copyOf(bundles), List.copyOf(problems), () -> {
+					try {
+						classLoader.close();
+					} finally {
+						temp.delete();
+					}
+				});
 	}
 
 	/**
-	 * Get the jars of the path: each jar, and the jars in each directory, by
-	 * name.
+	 * Get the bundles of the path: each jar or bundle project directory, and
+	 * the jars and bundle project directories in each other directory, by name.
 	 */
-	private static List<Path> jarFiles(List<String> entries, List<String> problems) {
+	private static List<Path> bundlePaths(List<String> entries, List<String> problems) {
 		final Set<Path> result = new LinkedHashSet<>(entries.size());
 		for ( String entry : entries ) {
 			Path p = (entry.equals("~") || entry.startsWith("~/")
@@ -236,14 +240,21 @@ public final class CustomFilterLoader {
 					: Path.of(entry));
 			p = p.toAbsolutePath().normalize();
 			if ( Files.isDirectory(p) ) {
+				if ( BundleSource.isBundleDirectory(p) ) {
+					result.add(p);
+					continue;
+				}
 				try (Stream<Path> files = Files.list(p)) {
-					final List<Path> jars = files.filter(f -> Files.isRegularFile(f)
-							&& f.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
+					final List<Path> bundles = files
+							.filter(f -> (Files.isRegularFile(f) && f.getFileName().toString()
+									.toLowerCase(Locale.ROOT).endsWith(".jar"))
+									|| (Files.isDirectory(f) && BundleSource.isBundleDirectory(f)))
 							.sorted().toList();
-					if ( jars.isEmpty() ) {
-						problems.add("The custom filters directory %s has no jar files.".formatted(p));
+					if ( bundles.isEmpty() ) {
+						problems.add("The custom filters directory %s has no jars or bundle projects."
+								.formatted(p));
 					}
-					result.addAll(jars);
+					result.addAll(bundles);
 				} catch ( IOException e ) {
 					problems.add("The custom filters directory %s could not be read: %s".formatted(p,
 							e.getMessage()));
@@ -257,64 +268,62 @@ public final class CustomFilterLoader {
 		return List.copyOf(result);
 	}
 
-	private BundleJar readJar(Path file, Extractor extractor, List<String> problems) throws IOException {
-		try (JarFile jar = new JarFile(file.toFile())) {
-			final Manifest manifest = jar.getManifest();
-			final Attributes attrs = (manifest != null ? manifest.getMainAttributes()
-					: new Attributes());
-			String name = headerValue(attrs.getValue(BUNDLE_SYMBOLIC_NAME));
-			if ( name == null ) {
-				name = file.getFileName().toString().replaceFirst("(?i)\\.jar$", "");
-			}
-			final String version = headerValue(attrs.getValue(BUNDLE_VERSION));
-
-			final List<Path> classPath = new ArrayList<>(2);
-			final String bundleClassPath = attrs.getValue(BUNDLE_CLASSPATH);
-			if ( bundleClassPath == null || bundleClassPath.isBlank() ) {
-				classPath.add(file);
-			} else {
-				for ( String entry : headerEntries(bundleClassPath) ) {
-					if ( ".".equals(entry) || "/".equals(entry) ) {
-						classPath.add(file);
-						continue;
-					}
-					final String entryName = (entry.startsWith("/") ? entry.substring(1) : entry);
-					final JarEntry nested = jar.getJarEntry(entryName);
-					if ( nested == null ) {
-						// OSGi ignores missing entries
-						continue;
-					}
-					if ( nested.isDirectory() || !entryName.toLowerCase(Locale.ROOT).endsWith(".jar") ) {
-						problems.add("%s: the Bundle-ClassPath entry %s is not supported, only jars."
-								.formatted(name, entry));
-						continue;
-					}
-					try (InputStream in = jar.getInputStream(nested)) {
-						classPath.add(extractor.extract(entryName, in));
-					}
-				}
-			}
-
-			final List<Blueprint> blueprints = new ArrayList<>(1);
-			for ( JarEntry entry : blueprintEntries(jar, attrs.getValue(BUNDLE_BLUEPRINT)) ) {
-				try (InputStream in = jar.getInputStream(entry)) {
-					blueprints.add(reader.read(in));
-				} catch ( IOException e ) {
-					problems.add("%s: the blueprint %s could not be read: %s".formatted(name,
-							entry.getName(), e.getMessage()));
-				}
-			}
-			return new BundleJar(file, name, version, List.copyOf(classPath), List.copyOf(blueprints),
-					attrs.getValue(IMPORT_PACKAGE));
+	private BundleJar readBundle(BundleSource source, TempFiles temp, List<String> problems)
+			throws IOException {
+		final Manifest manifest = source.manifest();
+		final Attributes attrs = (manifest != null ? manifest.getMainAttributes() : new Attributes());
+		String name = headerValue(attrs.getValue(BUNDLE_SYMBOLIC_NAME));
+		if ( name == null ) {
+			name = source.defaultName();
 		}
+		final String version = headerValue(attrs.getValue(BUNDLE_VERSION));
+
+		final List<Path> classPath = new ArrayList<>(2);
+		final String bundleClassPath = attrs.getValue(BUNDLE_CLASSPATH);
+		if ( bundleClassPath == null || bundleClassPath.isBlank() ) {
+			classPath.addAll(source.root(temp));
+		} else {
+			for ( String entry : headerEntries(bundleClassPath) ) {
+				if ( ".".equals(entry) || "/".equals(entry) ) {
+					classPath.addAll(source.root(temp));
+					continue;
+				}
+				final String entryName = (entry.startsWith("/") ? entry.substring(1) : entry);
+				if ( !source.isFile(entryName) ) {
+					// OSGi ignores missing entries
+					continue;
+				}
+				if ( !entryName.toLowerCase(Locale.ROOT).endsWith(".jar") ) {
+					problems.add("%s: the Bundle-ClassPath entry %s is not supported, only jars."
+							.formatted(name, entry));
+					continue;
+				}
+				try (InputStream in = source.open(entryName)) {
+					classPath.add(temp.save(entryName, in));
+				}
+			}
+		}
+
+		final List<Blueprint> blueprints = new ArrayList<>(1);
+		for ( String entry : blueprintEntries(source, attrs.getValue(BUNDLE_BLUEPRINT)) ) {
+			try (InputStream in = source.open(entry)) {
+				blueprints.add(reader.read(in));
+			} catch ( IOException e ) {
+				problems.add("%s: the blueprint %s could not be read: %s".formatted(name, entry,
+						e.getMessage()));
+			}
+		}
+		return new BundleJar(source.path(), name, version, List.copyOf(classPath),
+				List.copyOf(blueprints), attrs.getValue(IMPORT_PACKAGE));
 	}
 
 	/**
-	 * Get the blueprint XML entries of a jar, as the {@code Bundle-Blueprint}
+	 * Get the blueprint XML files of a bundle, as the {@code Bundle-Blueprint}
 	 * header names them: paths, where the last segment can have {@code *}
 	 * wildcards, or directories, which mean all their XML files.
 	 */
-	private static List<JarEntry> blueprintEntries(JarFile jar, @Nullable String header) {
+	private static List<String> blueprintEntries(BundleSource source, @Nullable String header)
+			throws IOException {
 		final List<String> locations = (header != null && !header.isBlank() ? headerEntries(header)
 				: List.of(DEFAULT_BLUEPRINT));
 		final Set<String> names = new LinkedHashSet<>(2);
@@ -327,22 +336,16 @@ public final class CustomFilterLoader {
 			final String dir = loc.substring(0, slash + 1);
 			final String file = loc.substring(slash + 1);
 			if ( file.indexOf('*') < 0 ) {
-				names.add(loc);
+				if ( source.isFile(loc) ) {
+					names.add(loc);
+				}
 				continue;
 			}
 			final Pattern pattern = Pattern
 					.compile(Pattern.quote(dir) + Pattern.quote(file).replace("*", "\\E[^/]*\\Q"));
-			jar.stream().map(JarEntry::getName).filter(n -> pattern.matcher(n).matches()).sorted()
-					.forEach(names::add);
+			source.files(dir).stream().filter(n -> pattern.matcher(n).matches()).forEach(names::add);
 		}
-		final List<JarEntry> result = new ArrayList<>(names.size());
-		for ( String name : names ) {
-			final JarEntry entry = jar.getJarEntry(name);
-			if ( entry != null && !entry.isDirectory() ) {
-				result.add(entry);
-			}
-		}
-		return result;
+		return List.copyOf(names);
 	}
 
 	/** Get the entries of a manifest header, without their parameters. */
@@ -381,33 +384,6 @@ public final class CustomFilterLoader {
 			}
 		}
 		return result.toArray(URL[]::new);
-	}
-
-	/**
-	 * Extracts the jars that bundles embed to a temporary directory, which is
-	 * deleted when the simulator stops.
-	 */
-	private static final class Extractor {
-
-		private @Nullable Path dir;
-		private int count;
-
-		private Path extract(String entryName, InputStream in) throws IOException {
-			Path d = dir;
-			if ( d == null ) {
-				d = Files.createTempDirectory("sn-filter-sim-");
-				d.toFile().deleteOnExit();
-				dir = d;
-			}
-			// numbered, as the names come from the jars
-			final String name = entryName.substring(entryName.lastIndexOf('/') + 1)
-					.replaceAll("[^A-Za-z0-9._-]", "_");
-			final Path file = d.resolve("%d-%s".formatted(++count, name));
-			file.toFile().deleteOnExit();
-			Files.copy(in, file, StandardCopyOption.REPLACE_EXISTING);
-			return file;
-		}
-
 	}
 
 }

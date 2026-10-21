@@ -25,6 +25,7 @@ import org.springframework.boot.info.BuildProperties;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import s10k.node.sim.filter.custom.CustomFilterService;
 
 /**
  * Web API for general application information.
@@ -42,16 +43,22 @@ public class InfoController {
 	public static final String DEFAULT_APP_NAME = "sn-filter-sim";
 
 	private final @Nullable BuildProperties buildProperties;
+	private final boolean customFilters;
 
 	/**
 	 * Constructor.
 	 *
 	 * @param buildProperties
 	 *        the build properties, if available
+	 * @param customFilters
+	 *        the custom filters service, if available
 	 */
-	public InfoController(ObjectProvider<BuildProperties> buildProperties) {
+	public InfoController(ObjectProvider<BuildProperties> buildProperties,
+			ObjectProvider<CustomFilterService> customFilters) {
 		super();
 		this.buildProperties = buildProperties.getIfAvailable();
+		final CustomFilterService custom = customFilters.getIfAvailable();
+		this.customFilters = (custom != null && custom.isConfigured());
 	}
 
 	/**
@@ -61,8 +68,11 @@ public class InfoController {
 	 *        the application name
 	 * @param version
 	 *        the application version, or {@code null} if not known
+	 * @param customFilters
+	 *        {@code true} if the simulator was started with a custom filters
+	 *        path, so the custom filters can be reloaded
 	 */
-	public record AppInfo(String name, @Nullable String version) {
+	public record AppInfo(String name, @Nullable String version, boolean customFilters) {
 
 	}
 
@@ -75,10 +85,10 @@ public class InfoController {
 	public AppInfo info() {
 		final BuildProperties props = this.buildProperties;
 		if ( props == null ) {
-			return new AppInfo(DEFAULT_APP_NAME, null);
+			return new AppInfo(DEFAULT_APP_NAME, null, customFilters);
 		}
 		final String name = props.getName();
-		return new AppInfo(name != null ? name : DEFAULT_APP_NAME, props.getVersion());
+		return new AppInfo(name != null ? name : DEFAULT_APP_NAME, props.getVersion(), customFilters);
 	}
 
 }

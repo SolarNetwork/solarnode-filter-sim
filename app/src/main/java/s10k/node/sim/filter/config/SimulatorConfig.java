@@ -19,7 +19,6 @@
 
 package s10k.node.sim.filter.config;
 
-import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -29,12 +28,11 @@ import s10k.node.sim.filter.aot.SimulatorRuntimeHints;
 import s10k.node.sim.filter.capture.CaptureService;
 import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.custom.CustomFilterLoader;
-import s10k.node.sim.filter.custom.CustomFilters;
+import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
-import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.sim.SimulationEngine;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
 
@@ -49,41 +47,37 @@ import net.solarnetwork.common.expr.spel.SpelExpressionService;
 public class SimulatorConfig {
 
 	/**
-	 * The custom filter types, from the SolarNode bundle jars of the
-	 * {@code sim.filters.path} property.
+	 * The custom filters, from the SolarNode bundle jars and bundle project
+	 * directories of the {@code sim.filters.path} property, which can be
+	 * reloaded.
 	 *
 	 * @param path
-	 *        the jars and directories of jars, from the
-	 *        {@code sim.filters.path} property
+	 *        the jars, bundle project directories, and directories of them,
+	 *        from the {@code sim.filters.path} property
 	 * @param expressionService
 	 *        the expression service
-	 * @return the custom filters
+	 * @return the custom filters service
 	 */
 	@Bean
-	public CustomFilters customFilters(@Value("${sim.filters.path:}") List<String> path,
+	public CustomFilterService customFilterService(@Value("${sim.filters.path:}") List<String> path,
 			SpelExpressionService expressionService) {
 		final List<String> standard = StandardFilterTypes.definitions().stream()
 				.map(FilterTypeDefinition::factoryUid).toList();
-		return new CustomFilterLoader(expressionService, standard).load(path);
+		return new CustomFilterService(new CustomFilterLoader(expressionService, standard), path);
 	}
 
 	/**
 	 * The registry of supported filter types: the standard ones, plus the
 	 * custom ones, and the filter types that are not available.
 	 *
-	 * @param customFilters
-	 *        the custom filters
+	 * @param customFilterService
+	 *        the custom filters service, which updates the registry when the
+	 *        custom filters are reloaded
 	 * @return the registry
 	 */
 	@Bean
-	public FilterTypeRegistry filterTypeRegistry(CustomFilters customFilters) {
-		final List<FilterTypeDefinition> definitions = new ArrayList<>(
-				StandardFilterTypes.definitions());
-		definitions.addAll(customFilters.definitions());
-		final List<UnavailableFilterType> unavailable = new ArrayList<>(
-				StandardFilterTypes.unsupported());
-		unavailable.addAll(customFilters.unavailable());
-		return new FilterTypeRegistry(definitions, unavailable);
+	public FilterTypeRegistry filterTypeRegistry(CustomFilterService customFilterService) {
+		return customFilterService.registry();
 	}
 
 	/**

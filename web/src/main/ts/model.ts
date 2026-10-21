@@ -25,6 +25,11 @@ export const UNASSIGNED_UID = "Unassigned";
 export interface AppInfo {
 	name: string;
 	version?: string;
+	/**
+	 * `true` if the simulator was started with a custom filters path, so the
+	 * custom filters can be reloaded.
+	 */
+	customFilters?: boolean;
 }
 
 /** The bundle a custom filter type comes from. */
@@ -44,6 +49,18 @@ export interface FilterTypeInfo {
 	capabilities?: string[];
 	/** The bundle of a custom filter type, from the custom filters path. */
 	bundle?: FilterBundleInfo;
+}
+
+/** The result of reloading the custom filters. */
+export interface CustomFiltersReload {
+	filterTypes: FilterTypeInfo[];
+	unavailable: UnavailableFilterType[];
+	/**
+	 * The description of the custom filters, like the startup message's: the
+	 * jars and their filter types, warnings, the types that are not available,
+	 * and problems.
+	 */
+	messages: string[];
 }
 
 /**

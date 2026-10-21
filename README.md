@@ -62,13 +62,24 @@ commands to allow in every simulation can also be set when starting the simulato
 
 ## Custom filters
 
-The simulator can also run datum filters that you write yourself, from the SolarNode bundle jars
-you build for them. Start the simulator with `--sim.filters.path` (or the `SIM_FILTERS_PATH`
-environment variable) set to the jars, or to directories of jars, separated by commas:
+The simulator can also run datum filters that you write yourself, from the SolarNode bundles you
+build for them. Start the simulator with `--sim.filters.path` (or the `SIM_FILTERS_PATH`
+environment variable) set to bundle jars, bundle project directories, or directories of them,
+separated by commas:
 
 ```sh
 java -jar sn-filter-sim-<version>.jar --sim.filters.path=~/dev/my-filters/build/
 ```
+
+A bundle project directory is one with a `META-INF/MANIFEST.MF`, like the bundle projects of the
+`solarnetwork-node` repository. The simulator loads its classes from the output folders its
+Eclipse `build.properties` names, with its source folders for resources such as `.properties`
+files. Without a `build.properties`, it uses the first of `build/eclipse`, `build/ant/classes`,
+`bin`, `build/classes/java/main`, and `target/classes` that exists.
+
+After you rebuild a filter, click **Reload** above the palette (or `POST /api/filter-types/reload`)
+to load the custom filters again, without restarting the simulator. The next run uses the new
+classes. The simulator loads copies of the jars, so a build can replace them while it runs.
 
 The simulator reads each bundle's blueprint (`OSGI-INF/blueprint/*.xml`, or the
 `Bundle-Blueprint` manifest header) and adds its user datum filters to the palette, the settings

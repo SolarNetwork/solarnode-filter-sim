@@ -5,6 +5,7 @@ import type {
 	ExportStyle,
 	ExternalSettings,
 	ExternalSettingsFile,
+	CustomFiltersReload,
 	FilterTypeInfo,
 	UnavailableFilterType,
 	ProblemDetail,
@@ -69,6 +70,16 @@ export function getInfo(): Promise<AppInfo> {
 /** Get the supported filter types, sorted by name. */
 export function getFilterTypes(): Promise<FilterTypeInfo[]> {
 	return request<FilterTypeInfo[]>("api/filter-types");
+}
+
+/**
+ * Load the custom filters again, from the custom filters path the simulator
+ * was started with.
+ */
+export function reloadCustomFilters(): Promise<CustomFiltersReload> {
+	return request<CustomFiltersReload>("api/filter-types/reload", {
+		method: "POST",
+	});
 }
 
 /**

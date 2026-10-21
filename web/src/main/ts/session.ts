@@ -135,7 +135,7 @@ export function simulationJson(
 	const file: SimulationFile = {
 		format: SIMULATION_FORMAT,
 		version: 1,
-		app,
+		app: app ? { name: app.name, version: app.version } : null,
 		saved: new Date().toISOString(),
 		workspace: ws.state,
 		inputs: structuredClone(inputs.state),

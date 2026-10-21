@@ -44,6 +44,28 @@ import s10k.node.sim.filter.sim.SimulationContext;
 public class FilterTypeRegistryTests {
 
 	@Test
+	public void snapshot() {
+		// GIVEN
+		FilterTypeRegistry registry = new FilterTypeRegistry(StandardFilterTypes.definitions());
+		FilterTypeRegistry snapshot = registry.snapshot();
+
+		// WHEN
+		registry.replace(List.of(), List.of());
+
+		// THEN
+		// @formatter:off
+		then(registry.definition(StandardFilterTypes.EXPRESSION))
+			.as("The registry has the new filter types")
+			.isNull()
+			;
+		then(snapshot.definition(StandardFilterTypes.EXPRESSION))
+			.as("The snapshot keeps the filter types it was made with")
+			.isNotNull()
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void standardFilterTypes() {
 		// GIVEN
 		FilterTypeRegistry registry = new FilterTypeRegistry(StandardFilterTypes.definitions());

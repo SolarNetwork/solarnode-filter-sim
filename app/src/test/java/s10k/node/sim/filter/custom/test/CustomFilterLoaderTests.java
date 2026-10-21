@@ -24,6 +24,7 @@ import static org.assertj.core.api.BDDAssertions.then;
 import static org.assertj.core.api.BDDAssertions.thenThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 import java.math.BigDecimal;
+import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -102,6 +103,12 @@ public class CustomFilterLoaderTests {
 
 	private CustomFilters load() {
 		return loader.load(List.of(bundleJar().toString()));
+	}
+
+	private static Path projectDir() {
+		final String path = System.getProperty("sim.test.filterProject");
+		then(path).as("The test filter project system property is set").isNotNull();
+		return Path.of(path);
 	}
 
 	private static FilterTypeRegistry registry(CustomFilters custom) {
@@ -241,11 +248,94 @@ public class CustomFilterLoaderTests {
 		then(result.describe(Locale.ENGLISH))
 			.as("The description lists the available types, the import warnings, and the unavailable types")
 			.hasSize(5)
-			.satisfies(lines -> then(lines.get(0)).isEqualTo("Custom filters: 1 available from 1 jar"))
+			.satisfies(lines -> then(lines.get(0)).isEqualTo("Custom filters: 1 available from 1 bundle"))
 			.satisfies(lines -> then(lines.get(1)).contains(BUNDLE + " 1.0.0", "Scale Filter (" + SCALE + ")"))
 			.satisfies(lines -> then(lines.get(2)).startsWith("    Warning: ").contains("com.example.missing"))
 			.satisfies(lines -> then(lines.get(3)).startsWith("    Warning: ").contains("net.solarnetwork.service"))
 			.satisfies(lines -> then(lines.get(4)).contains("Not available: Identity Datum Filter"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void load_projectDirectory() throws Exception {
+		// WHEN
+		CustomFilters result = loader.load(List.of(projectDir().toString()));
+
+		// THEN
+		// @formatter:off
+		then(result.problems())
+			.as("No problems")
+			.isEmpty()
+			;
+		then(result.bundles())
+			.as("The bundle project is loaded, with its manifest name and version")
+			.extracting(FilterBundle::name, FilterBundle::version, FilterBundle::file,
+					FilterBundle::factoryUids)
+			.containsExactly(tuple(BUNDLE + ".project", "1.1.0", projectDir(), List.of(SCALE)))
+			;
+		FilterTypeDefinition def = result.definitions().getFirst();
+		then(def.info(Locale.ENGLISH).name())
+			.as("The name comes from the message source in the source folder")
+			.isEqualTo("Scale Filter")
+			;
+		then(def.filterClass().getProtectionDomain().getCodeSource().getLocation().toURI())
+			.as("The class comes from the build.properties output folder")
+			.isEqualTo(projectDir().resolve("build/eclipse").toUri())
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void load_directoryOfProjects() {
+		// WHEN
+		CustomFilters result = loader.load(List.of(projectDir().getParent().toString()));
+
+		// THEN
+		// @formatter:off
+		then(result.bundles())
+			.as("The bundle project in the directory is loaded")
+			.extracting(FilterBundle::name)
+			.containsExactly(BUNDLE + ".project")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void load_copiesJars() throws Exception {
+		// WHEN
+		CustomFilters result = load();
+
+		// THEN
+		URLClassLoader cl = (URLClassLoader) result.definitions().getFirst().classLoader();
+		// @formatter:off
+		then(cl.getURLs())
+			.as("The class loader loads copies of the jar and the jar it embeds, not the originals")
+			.hasSize(2)
+			.noneMatch(u -> u.toString().startsWith(bundleJar().getParent().toUri().toString()))
+			;
+		// @formatter:on
+		result.close();
+	}
+
+	@Test
+	public void projectDirectory_simulate() {
+		// GIVEN
+		SimulationEngine engine = new SimulationEngine(
+				registry(loader.load(List.of(projectDir().toString()))), expressionService);
+		SimulationRequest req = new SimulationRequest(new SimConfig(scaleChain("3"), "main"), null,
+				List.of(JSON.readTree("""
+						{"created":"2025-10-01 00:00:00Z","sourceId":"/meter/1","i":{"watts":100}}""")),
+				null, null, null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(new BigDecimal(result.datum().getFirst().output().samples().i().get("watts").toString()))
+			.as("Scaled with the bundle project's classes and embedded library")
+			.isEqualByComparingTo("300")
 			;
 		// @formatter:on
 	}

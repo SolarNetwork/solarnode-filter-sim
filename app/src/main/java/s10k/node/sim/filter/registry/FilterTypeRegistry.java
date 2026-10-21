@@ -31,13 +31,43 @@ import s10k.node.sim.filter.domain.FilterTypeInfo;
 /**
  * The registry of supported filter types.
  *
+ * <p>
+ * The custom filter types can be reloaded, which replaces the filter types. A
+ * {@link #snapshot()} keeps the filter types it was made with.
+ * </p>
+ *
  * @author matt
  * @version 1.0
  */
 public class FilterTypeRegistry {
 
-	private final Map<String, FilterTypeDefinition> definitions;
-	private final Map<String, UnavailableFilterType> unavailable;
+	/**
+	 * The filter types, which {@link #replace(Collection, Collection)} swaps.
+	 */
+	private record Types(Map<String, FilterTypeDefinition> definitions,
+			Map<String, UnavailableFilterType> unavailable) {
+
+		private static Types of(Collection<FilterTypeDefinition> definitions,
+				Collection<UnavailableFilterType> unavailable) {
+			Map<String, FilterTypeDefinition> map = new LinkedHashMap<>(definitions.size());
+			for ( FilterTypeDefinition def : definitions ) {
+				if ( map.putIfAbsent(def.factoryUid(), def) != null ) {
+					throw new IllegalArgumentException(
+							"Duplicate filter type definition: " + def.factoryUid());
+				}
+			}
+			Map<String, UnavailableFilterType> u = new LinkedHashMap<>(unavailable.size());
+			for ( UnavailableFilterType type : unavailable ) {
+				if ( !map.containsKey(type.factoryUid()) ) {
+					u.putIfAbsent(type.factoryUid(), type);
+				}
+			}
+			return new Types(Map.copyOf(map), Map.copyOf(u));
+		}
+
+	}
+
+	private volatile Types types;
 
 	/**
 	 * Constructor, with the {@link StandardFilterTypes#unsupported()} filter
@@ -66,21 +96,39 @@ public class FilterTypeRegistry {
 	public FilterTypeRegistry(Collection<FilterTypeDefinition> definitions,
 			Collection<UnavailableFilterType> unavailable) {
 		super();
-		Map<String, FilterTypeDefinition> map = new LinkedHashMap<>(definitions.size());
-		for ( FilterTypeDefinition def : definitions ) {
-			if ( map.putIfAbsent(def.factoryUid(), def) != null ) {
-				throw new IllegalArgumentException(
-						"Duplicate filter type definition: " + def.factoryUid());
-			}
-		}
-		this.definitions = Map.copyOf(map);
-		Map<String, UnavailableFilterType> u = new LinkedHashMap<>(unavailable.size());
-		for ( UnavailableFilterType type : unavailable ) {
-			if ( !map.containsKey(type.factoryUid()) ) {
-				u.putIfAbsent(type.factoryUid(), type);
-			}
-		}
-		this.unavailable = Map.copyOf(u);
+		this.types = Types.of(definitions, unavailable);
+	}
+
+	private FilterTypeRegistry(Types types) {
+		super();
+		this.types = types;
+	}
+
+	/**
+	 * Replace the filter types, such as when the custom filters are reloaded.
+	 *
+	 * @param definitions
+	 *        the filter type definitions
+	 * @param unavailable
+	 *        the filter types the simulator knows of but cannot run; those with
+	 *        the factory UID of a definition are ignored
+	 * @throws IllegalArgumentException
+	 *         if more than one definition has the same factory UID
+	 */
+	public void replace(Collection<FilterTypeDefinition> definitions,
+			Collection<UnavailableFilterType> unavailable) {
+		this.types = Types.of(definitions, unavailable);
+	}
+
+	/**
+	 * Get a registry of the current filter types, which
+	 * {@link #replace(Collection, Collection)} does not change, for something
+	 * that uses the registry more than once, like a simulation run.
+	 *
+	 * @return the registry
+	 */
+	public FilterTypeRegistry snapshot() {
+		return new FilterTypeRegistry(types);
 	}
 
 	/**
@@ -91,7 +139,7 @@ public class FilterTypeRegistry {
 	 * @return the filter type, or {@code null} if it is not one
 	 */
 	public @Nullable UnavailableFilterType unavailable(String factoryUid) {
-		return unavailable.get(factoryUid);
+		return types.unavailable().get(factoryUid);
 	}
 
 	/**
@@ -101,7 +149,7 @@ public class FilterTypeRegistry {
 	 * @return the filter types
 	 */
 	public List<UnavailableFilterType> unavailableTypes() {
-		return unavailable.values().stream()
+		return types.unavailable().values().stream()
 				.sorted(Comparator.comparing(UnavailableFilterType::name, String.CASE_INSENSITIVE_ORDER))
 				.toList();
 	}
@@ -115,7 +163,8 @@ public class FilterTypeRegistry {
 	 * @return {@code true} if the simulator knows of the filter type
 	 */
 	public boolean isFilterType(String factoryUid) {
-		return (definitions.containsKey(factoryUid) || unavailable.containsKey(factoryUid));
+		final Types t = types;
+		return (t.definitions().containsKey(factoryUid) || t.unavailable().containsKey(factoryUid));
 	}
 
 	/**
@@ -127,7 +176,7 @@ public class FilterTypeRegistry {
 	 *         supported
 	 */
 	public @Nullable FilterTypeDefinition definition(String factoryUid) {
-		return definitions.get(factoryUid);
+		return types.definitions().get(factoryUid);
 	}
 
 	/**
@@ -136,7 +185,7 @@ public class FilterTypeRegistry {
 	 * @return the definitions
 	 */
 	public Collection<FilterTypeDefinition> definitions() {
-		return definitions.values();
+		return types.definitions().values();
 	}
 
 	/**
@@ -147,7 +196,7 @@ public class FilterTypeRegistry {
 	 * @return the information
 	 */
 	public List<FilterTypeInfo> filterTypes(Locale locale) {
-		return definitions.values().stream().map(d -> d.info(locale))
+		return types.definitions().values().stream().map(d -> d.info(locale))
 				.sorted(Comparator.comparing(FilterTypeInfo::name, String.CASE_INSENSITIVE_ORDER))
 				.toList();
 	}

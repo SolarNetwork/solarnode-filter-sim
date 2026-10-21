@@ -744,7 +744,22 @@
 				</div>
 
 				<section class="sim-palette p-3">
-					<h2 class="h6">Filters</h2>
+					<div class="d-flex align-items-center mb-2">
+						<h2 class="h6 mb-0 me-auto">Filters</h2>
+						<button
+							type="button"
+							id="reload-filters-button"
+							class="btn btn-outline-secondary btn-sm py-0"
+							title="Reload the custom filters, after rebuilding them: the jars and bundle projects the simulator was started with (--sim.filters.path)"
+							hidden
+						>
+							<i
+								class="bi bi-arrow-clockwise"
+								aria-hidden="true"
+							></i>
+							Reload
+						</button>
+					</div>
 					<div id="palette" class="sim-palette-items"></div>
 				</section>
 			</aside>

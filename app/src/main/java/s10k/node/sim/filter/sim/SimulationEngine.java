@@ -86,7 +86,8 @@ public class SimulationEngine {
 		if ( request.config() == null ) {
 			throw new SimulationException("The filter configuration is required.");
 		}
-		return new SimulationRun(registry, expressionService, allowedCommands, request).run();
+		// a snapshot, so reloading custom filters during the run does not change its filter types
+		return new SimulationRun(registry.snapshot(), expressionService, allowedCommands, request).run();
 	}
 
 }

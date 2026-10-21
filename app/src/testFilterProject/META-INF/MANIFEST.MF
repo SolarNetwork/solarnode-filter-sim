@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-SymbolicName: com.example.solarnode.filter.project
+Bundle-Version: 1.1.0
+Bundle-ClassPath: .,lib/example-scaling.jar

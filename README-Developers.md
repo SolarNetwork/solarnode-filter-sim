@@ -88,8 +88,9 @@ records in the `s10k.node.sim.filter.domain` package.
 
 | Endpoint | Description |
 |:---------|:------------|
-| `GET /api/info` | The application name and version. |
+| `GET /api/info` | The application name and version, and `customFilters` if the app was started with a custom filters path. |
 | `GET /api/filter-types` | The supported filter types, sorted by name. A custom filter type has its `bundle` (`name` and `version`). |
+| `POST /api/filter-types/reload` | Load the custom filters again: a `CustomFiltersReload` out, with the filter types, the unavailable ones, and the `messages` of the startup message. A `400` response if there is no custom filters path. |
 | `GET /api/filter-types/unavailable` | The filter types the simulator knows of but cannot run, such as custom filter types that need a service it does not provide, sorted by name, each with its `reason`. |
 | `POST /api/settings-form` | Get a filter's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. |
 | `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out. |
@@ -215,9 +216,12 @@ The standard filter types are ported by hand from their bundles' blueprints, in
 `StandardFilterTypes`. Custom filter types, from the jars of `sim.filters.path`, are defined
 from their bundles' blueprints at startup instead (the `custom` package):
 
-1. `CustomFilterLoader` reads each jar's manifest and blueprint XML, and puts all the jars on
-   one `URLClassLoader`, whose parent is the app's. A bundle's `Bundle-ClassPath` jars are
-   extracted to a temporary directory and added too.
+1. `CustomFilterLoader` reads each bundle's manifest and blueprint XML, from a jar or a bundle
+   project directory (`BundleSource`), and puts all the bundles on one `URLClassLoader`, whose
+   parent is the app's. It loads copies of the jars, and of the jars a bundle's
+   `Bundle-ClassPath` names, from a temporary directory (`TempFiles`). A bundle project's
+   classes come from its `build.properties` output and source folders, or the usual output
+   folders of each build tool.
 2. `FilterBlueprintInterpreter` (the `blueprint` package) describes each user datum filter
    type the blueprint defines, as a `FilterTypeDescriptor`.
 3. `BlueprintFilterTypes` turns each description into a `FilterTypeDefinition`, with its
@@ -237,6 +241,13 @@ are listed in the startup message, as are the warnings of `ImportCheck`. It chec
 whose version range excludes the simulator's. It does not check the versions of other
 libraries, as the simulator runs the SolarNode bundles with newer ones than they import (such as
 Spring 7).
+
+`CustomFilterService` owns the custom filters and the `FilterTypeRegistry`. A reload loads the
+path again with a new class loader, replaces the registry's filter types, and closes the old
+class loader. A simulation run and a settings CSV import or export each use a
+`FilterTypeRegistry.snapshot()`, so a reload does not change their filter types partway. The
+`testFilterProject` task lays out the test bundle as a bundle project directory, for the tests
+of bundle projects, named by the `sim.test.filterProject` system property.
 
 The registry also holds the types that are not available (`UnavailableFilterType`), with
 `StandardFilterTypes.UNSUPPORTED`. A settings CSV import keeps their filters, and a simulation

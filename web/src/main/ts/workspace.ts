@@ -126,8 +126,8 @@ export function shortTypeName(type: FilterTypeInfo): string {
 export class Workspace extends EventTarget {
 	#state: WorkspaceState;
 	#view?: View;
-	readonly #types: Map<string, FilterTypeInfo>;
-	readonly #unavailable: Map<string, UnavailableFilterType>;
+	#types: Map<string, FilterTypeInfo>;
+	#unavailable: Map<string, UnavailableFilterType>;
 	readonly #undo: string[] = [];
 	readonly #redo: string[] = [];
 	#saveTimer?: number;
@@ -409,6 +409,23 @@ export class Workspace extends EventTarget {
 	 */
 	type(factoryUid: string): FilterTypeInfo | undefined {
 		return this.#types.get(factoryUid);
+	}
+
+	/**
+	 * Replace the filter types, such as when the custom filters are reloaded.
+	 * The filters stay the same, so this has no undo.
+	 *
+	 * @param types the supported filter types
+	 * @param unavailable the filter types the simulator knows of but cannot run
+	 */
+	setTypes(
+		types: FilterTypeInfo[],
+		unavailable: UnavailableFilterType[],
+	): void {
+		this.#types = new Map(types.map((t) => [t.factoryUid, t]));
+		this.#unavailable = new Map(unavailable.map((t) => [t.factoryUid, t]));
+		this.#view = undefined;
+		this.#changed("Reload filter types");
 	}
 
 	/**

@@ -19,12 +19,15 @@
 
 package s10k.node.sim.filter.custom;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import s10k.node.sim.filter.domain.FilterBundleInfo;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
@@ -41,15 +44,33 @@ import s10k.node.sim.filter.registry.UnavailableFilterType;
  * @param problems
  *        problems loading the jars or reading their blueprints, which do not
  *        belong to a filter type
+ * @param resources
+ *        what {@link #close()} closes: the class loader of the filter classes,
+ *        and the copies of the jars it loads, or {@code null}
  * @author matt
  * @version 1.0
  */
 public record CustomFilters(List<FilterTypeDefinition> definitions,
-		List<UnavailableFilterType> unavailable, List<FilterBundle> bundles, List<String> problems) {
+		List<UnavailableFilterType> unavailable, List<FilterBundle> bundles, List<String> problems,
+		@Nullable Closeable resources) implements Closeable {
 
 	/** No custom filters. */
 	public static final CustomFilters NONE = new CustomFilters(List.of(), List.of(), List.of(),
-			List.of());
+			List.of(), null);
+
+	/**
+	 * Close the class loader of the filter classes, and delete the copies of
+	 * the jars it loads, once the filter types are no longer used.
+	 *
+	 * @throws IOException
+	 *         if the class loader cannot be closed
+	 */
+	@Override
+	public void close() throws IOException {
+		if ( resources != null ) {
+			resources.close();
+		}
+	}
 
 	/**
 	 * Test if no custom filters path was given.
@@ -76,7 +97,7 @@ public record CustomFilters(List<FilterTypeDefinition> definitions,
 				.collect(Collectors.toMap(FilterTypeDefinition::factoryUid, Function.identity()));
 		final List<String> lines = new ArrayList<>(8);
 		lines.add("Custom filters: %d available from %d %s".formatted(definitions.size(), bundles.size(),
-				bundles.size() == 1 ? "jar" : "jars"));
+				bundles.size() == 1 ? "bundle" : "bundles"));
 		for ( FilterBundle bundle : bundles ) {
 			final String types = bundle.factoryUids().stream().map(defs::get)
 					.map(d -> "%s (%s)".formatted(d.info(locale).name(), d.factoryUid()))

@@ -29,6 +29,7 @@ import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.custom.CustomFilters;
 
 /**
@@ -48,7 +49,7 @@ import s10k.node.sim.filter.custom.CustomFilters;
 public class StartupMessage implements ApplicationListener<ApplicationReadyEvent> {
 
 	private final @Nullable BuildProperties buildProperties;
-	private final CustomFilters customFilters;
+	private final @Nullable CustomFilterService customFilters;
 
 	/**
 	 * Constructor.
@@ -56,13 +57,13 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 	 * @param buildProperties
 	 *        the build properties, if available
 	 * @param customFilters
-	 *        the custom filters, if available
+	 *        the custom filters service, if available
 	 */
 	public StartupMessage(ObjectProvider<BuildProperties> buildProperties,
-			ObjectProvider<CustomFilters> customFilters) {
+			ObjectProvider<CustomFilterService> customFilters) {
 		super();
 		this.buildProperties = buildProperties.getIfAvailable();
-		this.customFilters = customFilters.getIfAvailable(() -> CustomFilters.NONE);
+		this.customFilters = customFilters.getIfAvailable();
 	}
 
 	@Override
@@ -75,7 +76,9 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 			return;
 		}
 		System.out.println();
-		for ( String line : customFilters.describe(Locale.getDefault()) ) {
+		final CustomFilterService custom = this.customFilters;
+		for ( String line : (custom != null ? custom.current() : CustomFilters.NONE)
+				.describe(Locale.getDefault()) ) {
 			System.out.println(line);
 		}
 		System.out.println(message(url(ctx.getEnvironment(), server.getPort())));

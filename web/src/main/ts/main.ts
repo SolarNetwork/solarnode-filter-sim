@@ -7,6 +7,7 @@ import {
 	getUnavailableFilterTypes,
 	importSettings,
 	mergeSettings,
+	reloadCustomFilters,
 	simulate,
 } from "./api.ts";
 import { Canvas } from "./canvas.ts";
@@ -172,23 +173,14 @@ class App {
 		this.#inputPanel = new InputPanel(inputs, ws);
 		this.#results = new ResultsPanel($("#results"), ws);
 		this.#capture = new CapturePanel($("#capture"));
-		renderPalette(
-			$("#palette"),
-			types,
-			(type) => {
-				const main = ws.mainChainId;
-				const filter = ws.addFilter(type, {
-					chainId: main,
-					index: ws.members(main).length,
-				});
-				this.#canvas.selectFilter(filter.id);
-			},
-			() => {
-				const main = ws.mainChainId;
-				const index = ws.members(main).length;
-				ws.addUnassigned({ chainId: main, index });
-				this.#canvas.select(`${MAIN_KEY}/${index}`);
-			},
+		this.#renderPalette(types);
+		const reloadButton = $<HTMLButtonElement>("#reload-filters-button");
+		void info.then((i) => {
+			reloadButton.hidden = !i?.customFilters;
+		});
+		reloadButton.addEventListener(
+			"click",
+			() => void this.reloadCustomFilters(reloadButton),
 		);
 		initSplitter(
 			$("#left-splitter"),
@@ -937,6 +929,62 @@ class App {
 			p.button.addEventListener("click", () =>
 				show(p, layout.classList.contains(p.hiddenClass), true),
 			);
+		}
+	}
+
+	#renderPalette(types: FilterTypeInfo[]): void {
+		const ws = this.#ws;
+		renderPalette(
+			$("#palette"),
+			types,
+			(type) => {
+				const main = ws.mainChainId;
+				const filter = ws.addFilter(type, {
+					chainId: main,
+					index: ws.members(main).length,
+				});
+				this.#canvas.selectFilter(filter.id);
+			},
+			() => {
+				const main = ws.mainChainId;
+				const index = ws.members(main).length;
+				ws.addUnassigned({ chainId: main, index });
+				this.#canvas.select(`${MAIN_KEY}/${index}`);
+			},
+		);
+	}
+
+	/**
+	 * Load the custom filters again, after rebuilding them, and update the
+	 * palette, canvas, and inspector. The next run uses the new filters.
+	 *
+	 * @param button the Reload button, which is disabled while reloading
+	 */
+	async reloadCustomFilters(button: HTMLButtonElement): Promise<void> {
+		button.disabled = true;
+		let result;
+		try {
+			result = await reloadCustomFilters();
+		} catch (e) {
+			showError("Custom filters not reloaded", e);
+			return;
+		} finally {
+			button.disabled = false;
+		}
+		this.#ws.setTypes(result.filterTypes, result.unavailable);
+		this.#renderPalette(result.filterTypes);
+		this.#inspector.show(this.#canvas.selection);
+		const [first, ...details] = result.messages;
+		// the first line is like "Custom filters: 1 available from 1 bundle"
+		const summary = `Reloaded the custom filters${first ? `: ${first.replace(/^Custom filters: /, "")}` : ""}.`;
+		if (details.some((m) => /^(Warning|Not available|Problem):/.test(m))) {
+			showMessages({
+				title: "Custom filters reloaded",
+				summary,
+				notes: details,
+			});
+		} else {
+			showToast(summary);
 		}
 	}
 

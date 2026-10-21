@@ -278,11 +278,36 @@ def testFilterBundleJar = tasks.register('testFilterBundleJar', Jar) {
 	}
 }
 
+// the same bundle as a bundle project directory, laid out like a SolarNode bundle project: the
+// manifest, blueprint, and build.properties, the classes in build/eclipse, and the resources only
+// in src, as an Ant build leaves them
+def testFilterProject = tasks.register('testFilterProject', Sync) {
+	into layout.buildDirectory.dir('test-filter-project/example-filter')
+	from('src/testFilterProject')
+	from('src/testFilterBundle/resources') {
+		include 'OSGI-INF/**'
+	}
+	from(sourceSets.testFilterBundle.output.classesDirs) {
+		into 'build/eclipse'
+	}
+	from('src/testFilterBundle/resources') {
+		exclude 'OSGI-INF/**'
+		into 'src'
+	}
+	from(testFilterLibJar) {
+		into 'lib'
+	}
+}
+
 tasks.named('test') {
 	def bundleJar = testFilterBundleJar.flatMap { it.archiveFile }
 	inputs.file(bundleJar).withPropertyName('testFilterBundle')
 			.withPathSensitivity(PathSensitivity.NONE)
 	systemProperty 'sim.test.filterBundle', bundleJar.get().asFile.absolutePath
+	def projectDir = layout.buildDirectory.dir('test-filter-project/example-filter')
+	inputs.files(testFilterProject).withPropertyName('testFilterProject')
+			.withPathSensitivity(PathSensitivity.RELATIVE)
+	systemProperty 'sim.test.filterProject', projectDir.get().asFile.absolutePath
 }
 
 spotless {

@@ -67,7 +67,7 @@ public class SettingsCsvService {
 	 *         if SolarNode cannot import the file
 	 */
 	public SettingsImport importCsv(String csv) {
-		return new SettingsCsvImporter(registry).importCsv(csv);
+		return new SettingsCsvImporter(registry.snapshot()).importCsv(csv);
 	}
 
 	/**
@@ -85,8 +85,8 @@ public class SettingsCsvService {
 		if ( config == null ) {
 			throw new SimulationException("The config is required.");
 		}
-		return new SettingsCsvExporter(registry, forms).export(config, request.styleOrDefault(),
-				request.external());
+		return new SettingsCsvExporter(registry.snapshot(), forms).export(config,
+				request.styleOrDefault(), request.external());
 	}
 
 	/**
@@ -105,7 +105,7 @@ public class SettingsCsvService {
 		if ( config == null || csv == null ) {
 			throw new SimulationException("The config and csv are required.");
 		}
-		return new SettingsCsvImporter(registry).merge(config, csv);
+		return new SettingsCsvImporter(registry.snapshot()).merge(config, csv);
 	}
 
 	/**
@@ -117,7 +117,7 @@ public class SettingsCsvService {
 	 * @return the combined external settings
 	 */
 	public ExternalSettings external(ExternalSettingsRequest request) {
-		return new SettingsCsvImporter(registry).external(request.filesOrEmpty());
+		return new SettingsCsvImporter(registry.snapshot()).external(request.filesOrEmpty());
 	}
 
 }
