@@ -318,15 +318,17 @@ export class CapturePanel extends EventTarget {
 		this.#dot = element("span", "sim-capture-dot is-live");
 		this.#dot.setAttribute("aria-hidden", "true");
 		const title = element("h2", "h6 mb-0 text-nowrap", "Datum Capture");
-		const pattern = capture.info.topic.startsWith(TOPIC_PREFIX)
-			? capture.info.topic.substring(TOPIC_PREFIX.length)
-			: "**";
+		const patterns = capture.info.topics.map((topic) =>
+			topic.startsWith(TOPIC_PREFIX)
+				? topic.substring(TOPIC_PREFIX.length)
+				: "**",
+		);
 		this.#status = element(
 			"span",
 			"small text-body-secondary text-truncate",
 			`Connecting to ${capture.info.url}…`,
 		);
-		this.#status.title = `${capture.info.url}, source IDs ${pattern === "**" ? "all" : `/${pattern}`}`;
+		this.#status.title = `${capture.info.url}, source IDs ${patterns.includes("**") ? "all" : patterns.map((p) => `/${p}`).join(", ")}`;
 		this.#count = element(
 			"span",
 			"badge rounded-pill text-bg-secondary",

@@ -32,8 +32,9 @@ import org.jspecify.annotations.Nullable;
  * @param password
  *        the password to log in to the node with
  * @param sourceIds
- *        an Ant-style pattern of the source IDs to capture, like
- *        {@code /meter/**}, or {@code null} for every source
+ *        a comma-delimited list of Ant-style patterns of the source IDs to
+ *        capture, like {@code /meter/**, /inv/*}, or {@code null} for every
+ *        source
  * @author matt
  * @version 1.0
  */

@@ -36,6 +36,7 @@ import java.net.http.WebSocketHandshakeException;
 import java.nio.channels.UnresolvedAddressException;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -83,9 +84,6 @@ public final class NodeConnection implements WebSocket.Listener, AutoCloseable {
 
 	/** How long to wait for the node to answer. */
 	public static final Duration TIMEOUT = Duration.ofSeconds(15);
-
-	/** The STOMP subscription ID. */
-	private static final String SUBSCRIPTION_ID = "0";
 
 	private static final Logger log = LoggerFactory.getLogger(NodeConnection.class);
 
@@ -135,7 +133,7 @@ public final class NodeConnection implements WebSocket.Listener, AutoCloseable {
 	}
 
 	/**
-	 * Log in to a node and subscribe to one of its message topics.
+	 * Log in to a node and subscribe to some of its message topics.
 	 *
 	 * @param base
 	 *        the node's web address, ending in {@code /}
@@ -143,21 +141,22 @@ public final class NodeConnection implements WebSocket.Listener, AutoCloseable {
 	 *        the username to log in with
 	 * @param password
 	 *        the password to log in with
-	 * @param destination
-	 *        the topic to subscribe to, like {@code /topic/datum/captured/**}
+	 * @param destinations
+	 *        the topics to subscribe to, like {@code /topic/datum/captured/**};
+	 *        each subscription's ID is its index in this list
 	 * @param handler
-	 *        the handler of the topic's messages
+	 *        the handler of the topics' messages
 	 * @return the connection
 	 * @throws CaptureException
 	 *         if the node cannot be reached, or does not accept the login or
 	 *         subscription
 	 */
-	public static NodeConnection open(URI base, String username, String password, String destination,
-			Handler handler) {
+	public static NodeConnection open(URI base, String username, String password,
+			List<String> destinations, Handler handler) {
 		NodeConnection conn = new NodeConnection(base, handler);
 		try {
 			conn.login(username, password);
-			conn.subscribe(conn.csrf(), destination);
+			conn.subscribe(conn.csrf(), destinations);
 			return conn;
 		} catch ( RuntimeException e ) {
 			conn.close();
@@ -315,7 +314,7 @@ public final class NodeConnection implements WebSocket.Listener, AutoCloseable {
 		}
 	}
 
-	private void subscribe(CsrfToken csrf, String destination) {
+	private void subscribe(CsrfToken csrf, List<String> destinations) {
 		final WebSocket ws;
 		try {
 			ws = client.newWebSocketBuilder().connectTimeout(TIMEOUT).buildAsync(webSocketUri(), this)
@@ -359,8 +358,10 @@ public final class NodeConnection implements WebSocket.Listener, AutoCloseable {
 		if ( !StompFrame.CONNECTED.equals(reply.command()) ) {
 			throw new CaptureException("The node refused the WebSocket connection: " + errorText(reply));
 		}
-		sendFrame(ws, StompFrame.of(StompFrame.SUBSCRIBE,
-				Map.of("id", SUBSCRIPTION_ID, "destination", destination)));
+		for ( int i = 0, len = destinations.size(); i < len; i++ ) {
+			sendFrame(ws, StompFrame.of(StompFrame.SUBSCRIBE,
+					Map.of("id", String.valueOf(i), "destination", destinations.get(i))));
+		}
 	}
 
 	private static String errorText(StompFrame frame) {

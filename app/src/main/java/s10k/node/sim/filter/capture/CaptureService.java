@@ -22,8 +22,10 @@ package s10k.node.sim.filter.capture;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -43,10 +45,11 @@ import s10k.node.sim.filter.domain.CaptureRequest;
  * Capture the datum real SolarNodes capture, as input datum for simulations.
  *
  * <p>
- * Each capture subscribes to a node's {@code /topic/datum/captured/…} topic,
- * where the node's Datum Queue posts each datum it receives before the filters
- * run. A capture ends when it is ended on purpose, when the node ends the
- * connection, or when no browser has watched it for {@link #IDLE_TIMEOUT}.
+ * Each capture subscribes to a node's {@code /topic/datum/captured/…} topics,
+ * one for each source ID pattern, where the node's Datum Queue posts each datum
+ * it receives before the filters run. A capture ends when it is ended on
+ * purpose, when the node ends the connection, or when no browser has watched it
+ * for {@link #IDLE_TIMEOUT}.
  * </p>
  *
  * @author matt
@@ -59,6 +62,9 @@ public class CaptureService implements AutoCloseable {
 
 	/** The topic of a node's captured datum, without the source ID. */
 	public static final String TOPIC_PREFIX = "/topic/datum/captured/";
+
+	/** The source ID pattern that matches every source. */
+	public static final String ALL_SOURCES = "**";
 
 	/** How long a capture runs without a browser watching it. */
 	public static final Duration IDLE_TIMEOUT = Duration.ofSeconds(60);
@@ -149,24 +155,37 @@ public class CaptureService implements AutoCloseable {
 	}
 
 	/**
-	 * Get the topic of a node's captured datum.
+	 * Get the topics of a node's captured datum, one for each source ID
+	 * pattern.
 	 *
 	 * <p>
 	 * The node leaves a source ID's leading {@code /} out of its topic, so it
-	 * is left out of the pattern too.
+	 * is left out of the patterns too. Repeated patterns are left out, and a
+	 * {@code **} pattern, which matches every source, is the only topic.
 	 * </p>
 	 *
 	 * @param sourceIds
-	 *        an Ant-style pattern of source IDs, or {@code null} for every
-	 *        source
-	 * @return the topic, like {@code /topic/datum/captured/meter/**}
+	 *        a comma-delimited list of Ant-style source ID patterns, or
+	 *        {@code null} for every source
+	 * @return the topics, like {@code /topic/datum/captured/meter/**}
 	 */
-	public static String topic(@Nullable String sourceIds) {
-		String p = (sourceIds != null ? sourceIds.strip() : "");
-		while ( p.startsWith("/") ) {
-			p = p.substring(1);
+	public static List<String> topics(@Nullable String sourceIds) {
+		final Set<String> patterns = new LinkedHashSet<>(4);
+		for ( String s : (sourceIds != null ? sourceIds.split(",") : new String[0]) ) {
+			String p = s.strip();
+			while ( p.startsWith("/") ) {
+				p = p.substring(1);
+			}
+			if ( ALL_SOURCES.equals(p) ) {
+				return List.of(TOPIC_PREFIX + ALL_SOURCES);
+			} else if ( !p.isEmpty() ) {
+				patterns.add(p);
+			}
 		}
-		return TOPIC_PREFIX + (p.isEmpty() ? "**" : p);
+		if ( patterns.isEmpty() ) {
+			return List.of(TOPIC_PREFIX + ALL_SOURCES);
+		}
+		return patterns.stream().map(p -> TOPIC_PREFIX + p).toList();
 	}
 
 	/**
@@ -191,13 +210,13 @@ public class CaptureService implements AutoCloseable {
 					"The simulator is already capturing from %d nodes, the most it can at once. End one of them first."
 							.formatted(MAX_CAPTURES));
 		}
-		final String topic = topic(request.sourceIds());
-		final CaptureSession session = new CaptureSession(UUID.randomUUID().toString(), url, topic);
-		final NodeConnection conn = NodeConnection.open(url, username, password, topic, session);
+		final List<String> topics = topics(request.sourceIds());
+		final CaptureSession session = new CaptureSession(UUID.randomUUID().toString(), url, topics);
+		final NodeConnection conn = NodeConnection.open(url, username, password, topics, session);
 		session.connected(conn);
 		sessions.put(session.id(), session);
-		log.info("Capturing datum from {} topic {}", url, topic);
-		return new CaptureInfo(session.id(), url.toString(), topic);
+		log.info("Capturing datum from {} topics {}", url, topics);
+		return new CaptureInfo(session.id(), url.toString(), topics);
 	}
 
 	/**

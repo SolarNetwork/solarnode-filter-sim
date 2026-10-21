@@ -19,6 +19,8 @@
 
 package s10k.node.sim.filter.domain;
 
+import java.util.List;
+
 /**
  * A datum capture that started.
  *
@@ -26,11 +28,12 @@ package s10k.node.sim.filter.domain;
  *        the capture's ID, for its events and to end it
  * @param url
  *        the node's web address
- * @param topic
- *        the node's WebSocket topic the capture subscribed to
+ * @param topics
+ *        the node's WebSocket topics the capture subscribed to, one for each
+ *        source ID pattern
  * @author matt
  * @version 1.0
  */
-public record CaptureInfo(String id, String url, String topic) {
+public record CaptureInfo(String id, String url, List<String> topics) {
 
 }

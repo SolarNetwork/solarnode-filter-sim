@@ -59,6 +59,7 @@ import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.aot.hint.TypeReference;
 import org.springframework.beans.BeanUtils;
+import s10k.node.sim.filter.domain.CaptureInfo;
 import s10k.node.sim.filter.domain.CustomFiltersReload;
 import s10k.node.sim.filter.domain.ExternalSettings;
 import s10k.node.sim.filter.domain.ExternalSettingsRequest;
@@ -153,7 +154,7 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 			SimulationResult.class, SettingsFormRequest.class, SettingsForm.class, SettingsImport.class,
 			SettingsExportRequest.class, SettingsExport.class, SettingsMergeRequest.class,
 			ExternalSettingsRequest.class, ExternalSettings.class, InfoController.AppInfo.class,
-			CustomFiltersReload.class);
+			CustomFiltersReload.class, CaptureInfo.class);
 
 	/**
 	 * The JDK collection implementation types, which are not public, that

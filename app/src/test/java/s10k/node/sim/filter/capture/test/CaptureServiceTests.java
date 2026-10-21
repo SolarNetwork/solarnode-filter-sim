@@ -22,6 +22,8 @@ package s10k.node.sim.filter.capture.test;
 import static org.assertj.core.api.BDDAssertions.then;
 import static org.assertj.core.api.BDDAssertions.thenExceptionOfType;
 import java.net.URI;
+import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -75,24 +77,31 @@ public class CaptureServiceTests {
 	}
 
 	@ParameterizedTest
-	@CsvSource(nullValues = "null", value = {
+	@CsvSource(delimiter = '|', nullValues = "null", value = {
 	// @formatter:off
-		"null,        /topic/datum/captured/**",
-		"'',          /topic/datum/captured/**",
-		"/meter/**,   /topic/datum/captured/meter/**",
-		"meter1,      /topic/datum/captured/meter1",
-		"//a/*,       /topic/datum/captured/a/*",
+		"null                        | **",
+		"''                          | **",
+		"' , '                       | **",
+		"/meter/**                   | meter/**",
+		"meter1                      | meter1",
+		"//a/*                       | a/*",
+		"/meter/*, /inv/*            | meter/*, inv/*",
+		"/meter/*,/meter/*, inv/1    | meter/*, inv/1",
+		"/meter/*, **                | **",
+		"/meter/*, /**               | **",
 		// @formatter:on
 	})
-	public void topic(String sourceIds, String expected) {
+	public void topics(String sourceIds, String expected) {
 		// WHEN
-		String result = CaptureService.topic(sourceIds);
+		List<String> result = CaptureService.topics(sourceIds);
 
 		// THEN
 		// @formatter:off
 		then(result)
-			.as("Topic for source IDs %s, without their leading slash", sourceIds)
-			.isEqualTo(expected)
+			.as("Topics for source IDs %s, without their leading slash or repeats", sourceIds)
+			.containsExactlyElementsOf(Arrays.stream(expected.split(","))
+					.map(p -> CaptureService.TOPIC_PREFIX + p.strip())
+					.toList())
 			;
 		// @formatter:on
 	}

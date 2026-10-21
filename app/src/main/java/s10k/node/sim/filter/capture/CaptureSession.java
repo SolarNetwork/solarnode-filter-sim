@@ -23,7 +23,13 @@ import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -56,6 +62,13 @@ import tools.jackson.databind.node.ObjectNode;
  * gets the datum after that number.
  * </p>
  *
+ * <p>
+ * The node sends a datum once for each subscription its source ID matches, so
+ * with overlapping source ID patterns a datum comes more than once, each time
+ * with the same message body but a different subscription. Those repeats are
+ * dropped.
+ * </p>
+ *
  * @author matt
  * @version 1.0
  */
@@ -73,12 +86,20 @@ public final class CaptureSession implements NodeConnection.Handler {
 	/** The {@code state} value of a capture that ended. */
 	public static final String STATE_ENDED = "Ended";
 
+	/**
+	 * How many recent message bodies are remembered, to find the repeats of a
+	 * datum that several subscriptions match.
+	 */
+	private static final int RECENT_MESSAGES = 64;
+
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
 	private final String id;
 	private final URI url;
-	private final String topic;
+	private final List<String> topics;
 	private final List<String> datum = new ArrayList<>();
+	/** Recent message bodies, and the subscriptions that delivered them. */
+	private final Map<String, Set<String>> recent = new LinkedHashMap<>(RECENT_MESSAGES * 2);
 	private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 	private boolean guessed;
 	private boolean ended;
@@ -94,14 +115,14 @@ public final class CaptureSession implements NodeConnection.Handler {
 	 *        the capture ID
 	 * @param url
 	 *        the node's web address
-	 * @param topic
-	 *        the topic the capture subscribes to
+	 * @param topics
+	 *        the topics the capture subscribes to
 	 */
-	public CaptureSession(String id, URI url, String topic) {
+	public CaptureSession(String id, URI url, List<String> topics) {
 		super();
 		this.id = id;
 		this.url = url;
-		this.topic = topic;
+		this.topics = List.copyOf(topics);
 	}
 
 	/**
@@ -123,12 +144,21 @@ public final class CaptureSession implements NodeConnection.Handler {
 	}
 
 	/**
-	 * Get the topic the capture subscribes to.
+	 * Get the topics the capture subscribes to.
 	 *
-	 * @return the topic
+	 * @return the topics
 	 */
-	public String topic() {
-		return topic;
+	public List<String> topics() {
+		return topics;
+	}
+
+	/**
+	 * Get the number of datum captured.
+	 *
+	 * @return the number of datum
+	 */
+	public synchronized int count() {
+		return datum.size();
 	}
 
 	/**
@@ -149,6 +179,11 @@ public final class CaptureSession implements NodeConnection.Handler {
 
 	@Override
 	public void message(StompFrame frame) {
+		synchronized ( this ) {
+			if ( repeated(frame) ) {
+				return;
+			}
+		}
 		DatumMessages.MessageDatum d = DatumMessages.datum(frame.body());
 		if ( d != null ) {
 			add(d);
@@ -158,6 +193,38 @@ public final class CaptureSession implements NodeConnection.Handler {
 	@Override
 	public void ended(String problem) {
 		end(problem, true);
+	}
+
+	/**
+	 * Test if a message repeats one another subscription delivered.
+	 *
+	 * <p>
+	 * A message with the same body as a recent one is a repeat if a different
+	 * subscription delivered the recent one. From the same subscription it is a
+	 * new datum that happens to be the same.
+	 * </p>
+	 */
+	private boolean repeated(StompFrame frame) {
+		if ( topics.size() < 2 ) {
+			return false;
+		}
+		final String body = frame.body();
+		final String subscription = Objects.requireNonNullElse(frame.header("subscription"), "");
+		Set<String> subscriptions = recent.get(body);
+		if ( subscriptions != null && !subscriptions.contains(subscription) ) {
+			subscriptions.add(subscription);
+			return true;
+		}
+		subscriptions = new HashSet<>(4);
+		subscriptions.add(subscription);
+		recent.remove(body);
+		recent.put(body, subscriptions);
+		if ( recent.size() > RECENT_MESSAGES ) {
+			Iterator<String> eldest = recent.keySet().iterator();
+			eldest.next();
+			eldest.remove();
+		}
+		return false;
 	}
 
 	private void add(DatumMessages.MessageDatum d) {

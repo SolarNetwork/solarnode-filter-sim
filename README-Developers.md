@@ -98,7 +98,7 @@ records in the `s10k.node.sim.filter.domain` package.
 | `POST /api/settings/external` | Combine External Settings files the way a node applies its auto settings files: an `ExternalSettingsRequest` (`files` of `name` and `csv`) in, `ExternalSettings` out. |
 | `POST /api/settings/export` | Export a configuration as a settings CSV file: a `SettingsExportRequest` in, a `SettingsExport` out. With `external`, rows that the external settings already have are left out. |
 | `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
-| `POST /api/capture` | Start capturing the datum a SolarNode captures: a `CaptureRequest` (`url`, `username`, `password`, and optional `sourceIds`) in, a `CaptureInfo` (`id`) out. A node that cannot be reached or does not accept the login gets a `400` response with problem details. |
+| `POST /api/capture` | Start capturing the datum a SolarNode captures: a `CaptureRequest` (`url`, `username`, `password`, and optional `sourceIds`) in, a `CaptureInfo` (`id` and `topics`) out. A node that cannot be reached or does not accept the login gets a `400` response with problem details. |
 | `GET /api/capture/{id}/events` | A capture's datum, as a `text/event-stream` (see below). |
 | `DELETE /api/capture/{id}` | End a capture. |
 
@@ -165,8 +165,10 @@ accepts WebSocket connections from its own pages, so the app connects in the bro
 logs in like the node's login page (`GET /csrf`, `POST /login`, then `GET /csrf` again for the
 new session's token), connects to the node's STOMP WebSocket at `/ws` with the session cookie and
 the token as a `CONNECT` header, and subscribes to `/topic/datum/captured/**`, where the node's
-Datum Queue posts each datum before its filters run. `sourceIds` (an Ant-style pattern such as
-`/meter/**`) narrows the topic; the node leaves the source ID's leading `/` out of its topics.
+Datum Queue posts each datum before its filters run. `sourceIds`, a comma-delimited list of
+Ant-style patterns such as `/meter/**, /inv/*`, subscribes to a topic for each pattern instead;
+the node leaves the source ID's leading `/` out of its topics. The node sends a datum once for
+each subscription it matches, so the app drops the repeats that overlapping patterns cause.
 
 The event stream has `state` events (`{"state":"Capturing"|"Ended","count":…,"guessed":…}`, plus
 `message` and `error` once it ends) and a `datum` event for each datum, in the SolarNode datum

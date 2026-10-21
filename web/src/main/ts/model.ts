@@ -187,7 +187,10 @@ export interface CaptureRequest {
 	url: string;
 	username: string;
 	password: string;
-	/** An Ant-style pattern of the source IDs to capture, or `null` for all. */
+	/**
+	 * Ant-style patterns of the source IDs to capture, separated by commas, or
+	 * `null` for all.
+	 */
 	sourceIds: string | null;
 }
 
@@ -196,8 +199,11 @@ export interface CaptureInfo {
 	id: string;
 	/** The node's web address. */
 	url: string;
-	/** The node's WebSocket topic the capture subscribed to. */
-	topic: string;
+	/**
+	 * The node's WebSocket topics the capture subscribed to, one for each
+	 * source ID pattern.
+	 */
+	topics: string[];
 }
 
 /** The `state` event of a capture's event stream. */
