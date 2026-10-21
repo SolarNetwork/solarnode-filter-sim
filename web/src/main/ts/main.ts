@@ -9,7 +9,9 @@ import {
 	simulate,
 } from "./api.ts";
 import { Canvas } from "./canvas.ts";
+import { askCapture, CapturePanel, capturedDatumJson } from "./capture.ts";
 import {
+	askConfirm,
 	askImportMode,
 	askNewSimulation,
 	askOpenSimulation,
@@ -20,7 +22,12 @@ import {
 } from "./dialogs.ts";
 import { ExternalSettingsDialog } from "./externalSettings.ts";
 import { InputPanel } from "./inputPanel.ts";
-import { InputError, NODE_METADATA_SERVICE_UID, RunInputs } from "./inputs.ts";
+import {
+	InputError,
+	NODE_METADATA_SERVICE_UID,
+	parseDatumList,
+	RunInputs,
+} from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
 import { MAIN_KEY, type FilterNode } from "./layout.ts";
 import {
@@ -118,6 +125,7 @@ class App {
 	readonly #inspector: Inspector;
 	readonly #inputPanel: InputPanel;
 	readonly #results: ResultsPanel;
+	readonly #capture: CapturePanel;
 	readonly #info: Promise<AppInfo | null>;
 	#running = false;
 	#rerunTimer?: number;
@@ -150,6 +158,7 @@ class App {
 		});
 		this.#inputPanel = new InputPanel(inputs, ws);
 		this.#results = new ResultsPanel($("#results"), ws);
+		this.#capture = new CapturePanel($("#capture"));
 		renderPalette(
 			$("#palette"),
 			types,
@@ -201,6 +210,7 @@ class App {
 			}
 		});
 		this.#bindResults();
+		this.#bindCapture();
 
 		this.#bindControls();
 		this.#refreshControls();
@@ -415,6 +425,14 @@ class App {
 	 *     the debug position and does not interrupt with dialogs
 	 */
 	async run(debug = false, auto = false): Promise<void> {
+		if (this.#capture.active) {
+			if (!auto) {
+				showToast(
+					"End the datum capture first, to run the simulation with its datum.",
+				);
+			}
+			return;
+		}
 		if (this.#running) {
 			if (auto) {
 				this.#scheduleRerun();
@@ -477,10 +495,8 @@ class App {
 
 	#setRunning(running: boolean): void {
 		this.#running = running;
-		const button = $<HTMLButtonElement>("#run-button");
-		button.disabled = running;
-		$<HTMLButtonElement>("#debug-button").disabled = running;
-		button
+		this.#refreshRunButtons();
+		$<HTMLButtonElement>("#run-button")
 			.querySelector("i")!
 			.classList.replace(
 				running ? "bi-play-fill" : "bi-hourglass-split",
@@ -493,12 +509,6 @@ class App {
 		debug: boolean,
 		mark: DebugMark | null,
 	): void {
-		// the canvas gets shorter, but keeps its zoom and pan, so what is at
-		// the top stays where it is
-		const center = $("#center-panel");
-		center.classList.add("has-results");
-		$("#center-splitter").hidden = false;
-		$("#results").hidden = false;
 		// the canvas first, as debug mode then highlights the cursor on it
 		this.#canvas.setRun({
 			stats: filterRunStats(result),
@@ -510,6 +520,9 @@ class App {
 		} else {
 			this.#results.show(result);
 		}
+		// the canvas gets shorter, but keeps its zoom and pan, so what is at
+		// the top stays where it is
+		this.#refreshBottom();
 		this.#inputPanel.setFinalState(result.finalState);
 	}
 
@@ -525,10 +538,129 @@ class App {
 	#closeResults(): void {
 		window.clearTimeout(this.#rerunTimer);
 		this.#results.clear();
-		$("#center-panel").classList.remove("has-results");
-		$("#center-splitter").hidden = true;
-		$("#results").hidden = true;
+		this.#refreshBottom();
 		this.#canvas.setRun(null);
+	}
+
+	/**
+	 * Show the panel below the canvas: the datum capture while there is one,
+	 * else the execution flow if there is a result.
+	 */
+	#refreshBottom(): void {
+		const capturing = this.#capture.active;
+		const results = this.#results.result !== null;
+		$("#capture").hidden = !capturing;
+		$("#results").hidden = capturing || !results;
+		$("#center-panel").classList.toggle(
+			"has-results",
+			capturing || results,
+		);
+		$("#center-splitter").hidden = !(capturing || results);
+	}
+
+	#refreshRunButtons(): void {
+		const capturing = this.#capture.active;
+		$<HTMLButtonElement>("#run-button").disabled =
+			this.#running || capturing;
+		$<HTMLButtonElement>("#debug-button").disabled =
+			this.#running || capturing;
+		$<HTMLButtonElement>("#capture-button").disabled = capturing;
+	}
+
+	/* === Datum capture === */
+
+	/**
+	 * Capture the datum a real SolarNode captures, as input datum: ask for the
+	 * node and its login, then show each datum as it arrives.
+	 */
+	async startCapture(): Promise<void> {
+		if (this.#capture.active) {
+			return;
+		}
+		const text = this.#inputs.state.datum;
+		let existing: number | null = 0;
+		if (text.trim()) {
+			try {
+				existing = parseDatumList(text, "Datum").length;
+			} catch {
+				existing = null;
+			}
+		}
+		const capture = await askCapture(existing);
+		if (!capture) {
+			return;
+		}
+		this.#capture.start(
+			capture,
+			capture.mode === "add" ? (existing ?? 0) : 0,
+		);
+		this.#refreshBottom();
+		this.#refreshRunButtons();
+	}
+
+	/**
+	 * End the datum capture, and put its datum in the Datum input.
+	 */
+	endCapture(): void {
+		const panel = this.#capture;
+		const datum = panel.datum;
+		const mode = panel.mode;
+		if (datum.length) {
+			let json: string;
+			try {
+				json = capturedDatumJson(this.#inputs.state.datum, datum, mode);
+			} catch {
+				showError(
+					"The captured datum were not added",
+					"The Datum input is not valid JSON, so the captured datum cannot be added to it. Fix it, then end the capture again, or discard the capture.",
+				);
+				return;
+			}
+			this.#inputPanel.setText("datum", json);
+		}
+		panel.clear();
+		this.#refreshBottom();
+		this.#refreshRunButtons();
+		showToast(
+			!datum.length
+				? "The capture ended without any datum."
+				: mode === "add"
+					? `Added the ${datum.length} captured datum to the Datum input.`
+					: `Replaced the Datum input with the ${datum.length} captured datum.`,
+		);
+	}
+
+	/** End the datum capture without changing the Datum input. */
+	async discardCapture(): Promise<void> {
+		const count = this.#capture.datum.length;
+		if (
+			count &&
+			!(await askConfirm({
+				title: "Discard Capture",
+				message: [`Discard the ${count} captured datum?`],
+				detail: "The capture ends, and the Datum input stays as it is.",
+				confirm: "Discard",
+			}))
+		) {
+			return;
+		}
+		this.#capture.clear();
+		this.#refreshBottom();
+		this.#refreshRunButtons();
+	}
+
+	#bindCapture(): void {
+		$("#capture-button").addEventListener(
+			"click",
+			() => void this.startCapture(),
+		);
+		this.#capture.addEventListener("end", () => this.endCapture());
+		this.#capture.addEventListener(
+			"discard",
+			() => void this.discardCapture(),
+		);
+		// end the capture on the server too
+		window.addEventListener("pagehide", () => this.#capture.stop(true));
 	}
 
 	#markStale(): void {

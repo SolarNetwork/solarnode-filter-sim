@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import s10k.node.sim.filter.capture.CaptureException;
 import s10k.node.sim.filter.sim.SimulationException;
 
 /**
@@ -53,6 +54,20 @@ public class ApiExceptionHandler {
 		if ( !e.problems().isEmpty() ) {
 			result.setProperty("problems", e.problems());
 		}
+		return result;
+	}
+
+	/**
+	 * Handle a datum capture that could not start.
+	 *
+	 * @param e
+	 *        the exception
+	 * @return the problem details, with a {@code 400} status
+	 */
+	@ExceptionHandler(CaptureException.class)
+	public ProblemDetail captureException(CaptureException e) {
+		ProblemDetail result = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+		result.setTitle("Capture not started");
 		return result;
 	}
 

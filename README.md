@@ -7,6 +7,7 @@ The SolarNode Filter Simulator is a web application for designing and testing So
    including nested chains
  * configure each filter with the same settings SolarNode provides
  * run sample datum through the chain, and see how each filter transformed them
+ * record the datum a real SolarNode captures, as they arrive, to use as sample datum
  * see the route each datum took through the filters, drawn on the canvas
  * download the execution flow as a stand-alone HTML report
  * export the configuration as a SolarNode settings CSV file, or import an existing one

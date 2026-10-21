@@ -251,6 +251,18 @@
 									<code>created</code> date gets one, a second
 									after the datum before it.
 								</div>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary mt-2"
+									id="capture-button"
+									title="Record the datum a real SolarNode captures, as they arrive, as input datum"
+								>
+									<i
+										class="bi bi-record-circle"
+										aria-hidden="true"
+									></i>
+									Capture from SolarNode
+								</button>
 							</div>
 							<div
 								class="tab-pane fade"
@@ -868,6 +880,13 @@
 					aria-label="Execution flow"
 					hidden
 				></section>
+
+				<section
+					class="sim-capture"
+					id="capture"
+					aria-label="Datum capture"
+					hidden
+				></section>
 			</div>
 
 			<aside class="sim-right border-start p-3" id="inspector"></aside>
@@ -1118,6 +1137,172 @@
 						></button>
 					</div>
 				</div>
+			</div>
+		</div>
+
+		<div
+			class="modal fade"
+			id="capture-dialog"
+			tabindex="-1"
+			aria-labelledby="capture-dialog-title"
+			aria-hidden="true"
+		>
+			<div class="modal-dialog">
+				<form class="modal-content" id="capture-form" novalidate>
+					<div class="modal-header">
+						<h1 class="modal-title fs-5" id="capture-dialog-title">
+							Capture from SolarNode
+						</h1>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="Close"
+						></button>
+					</div>
+					<div class="modal-body">
+						<p class="small">
+							Record the datum a SolarNode captures, as they
+							arrive, as input datum for the simulation. The
+							simulator logs in to the node and receives each
+							datum its Datum Queue gets, before the node's
+							filters run.
+						</p>
+						<label
+							for="capture-url"
+							class="form-label small fw-semibold mb-1"
+							>Node Address</label
+						>
+						<input
+							id="capture-url"
+							class="form-control form-control-sm"
+							type="text"
+							inputmode="url"
+							spellcheck="false"
+							autocomplete="url"
+							placeholder="http://solarnode.local"
+							required
+						/>
+						<div class="row g-2 mt-1">
+							<div class="col">
+								<label
+									for="capture-username"
+									class="form-label small fw-semibold mb-1"
+									>Username</label
+								>
+								<input
+									id="capture-username"
+									class="form-control form-control-sm"
+									type="text"
+									spellcheck="false"
+									autocomplete="username"
+									required
+								/>
+							</div>
+							<div class="col">
+								<label
+									for="capture-password"
+									class="form-label small fw-semibold mb-1"
+									>Password</label
+								>
+								<input
+									id="capture-password"
+									class="form-control form-control-sm"
+									type="password"
+									autocomplete="current-password"
+									required
+								/>
+							</div>
+						</div>
+						<div class="form-text">
+							The login you use for the node's web app. The
+							simulator does not save the password.
+						</div>
+						<label
+							for="capture-source-ids"
+							class="form-label small fw-semibold mb-1 mt-3"
+							>Source IDs</label
+						>
+						<input
+							id="capture-source-ids"
+							class="form-control form-control-sm font-monospace"
+							type="text"
+							spellcheck="false"
+							placeholder="/meter/**"
+						/>
+						<div class="form-text">
+							An optional pattern of the source IDs to capture,
+							like <code>/meter/**</code> or <code>/inv/*</code>;
+							blank for every source. The datum that the node's
+							own filters make, like the Split filter's, are
+							captured too, so leave them out if the simulation
+							makes them.
+						</div>
+						<fieldset class="mt-3" id="capture-mode" hidden>
+							<legend class="form-label small fw-semibold mb-1">
+								Datum Input
+							</legend>
+							<div class="form-check">
+								<input
+									class="form-check-input"
+									type="radio"
+									name="capture-mode"
+									id="capture-mode-add"
+									value="add"
+									checked
+								/>
+								<label
+									class="form-check-label small"
+									for="capture-mode-add"
+									id="capture-mode-add-label"
+									>Add the captured datum after the datum
+									already there</label
+								>
+							</div>
+							<div class="form-check">
+								<input
+									class="form-check-input"
+									type="radio"
+									name="capture-mode"
+									id="capture-mode-replace"
+									value="replace"
+								/>
+								<label
+									class="form-check-label small"
+									for="capture-mode-replace"
+									>Replace the datum already there</label
+								>
+							</div>
+						</fieldset>
+						<div
+							class="alert alert-danger small mt-3 mb-0"
+							id="capture-error"
+							role="alert"
+							hidden
+						></div>
+					</div>
+					<div class="modal-footer">
+						<button
+							type="button"
+							class="btn btn-secondary"
+							data-bs-dismiss="modal"
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							class="btn btn-primary"
+							id="capture-start"
+						>
+							<span
+								class="spinner-border spinner-border-sm"
+								aria-hidden="true"
+								hidden
+							></span>
+							Start Capture
+						</button>
+					</div>
+				</form>
 			</div>
 		</div>
 

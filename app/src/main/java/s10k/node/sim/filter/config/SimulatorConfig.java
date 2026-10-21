@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import s10k.node.sim.filter.aot.SimulatorRuntimeHints;
+import s10k.node.sim.filter.capture.CaptureService;
 import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
@@ -111,6 +112,16 @@ public class SimulatorConfig {
 	public SettingsCsvService settingsCsvService(FilterTypeRegistry registry,
 			SettingsFormService settingsFormService) {
 		return new SettingsCsvService(registry, settingsFormService);
+	}
+
+	/**
+	 * The datum capture service, which records datum from real nodes.
+	 *
+	 * @return the service
+	 */
+	@Bean
+	public CaptureService captureService() {
+		return new CaptureService();
 	}
 
 }

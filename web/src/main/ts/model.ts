@@ -141,6 +141,38 @@ export interface SettingsExport {
 }
 
 /** An RFC 9457 problem details response. */
+/** A request to capture the datum a SolarNode captures. */
+export interface CaptureRequest {
+	/** The node's web address, like `http://solarnode.local`. */
+	url: string;
+	username: string;
+	password: string;
+	/** An Ant-style pattern of the source IDs to capture, or `null` for all. */
+	sourceIds: string | null;
+}
+
+/** A datum capture that started. */
+export interface CaptureInfo {
+	id: string;
+	/** The node's web address. */
+	url: string;
+	/** The node's WebSocket topic the capture subscribed to. */
+	topic: string;
+}
+
+/** The `state` event of a capture's event stream. */
+export interface CaptureState {
+	state: "Capturing" | "Ended";
+	/** The number of datum captured. */
+	count: number;
+	/** `true` if the sample type of each property was guessed. */
+	guessed: boolean;
+	/** Why the capture ended. */
+	message?: string;
+	/** `true` if the capture ended because of a problem. */
+	error?: boolean;
+}
+
 export interface ProblemDetail {
 	title?: string;
 	detail?: string;

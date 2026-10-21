@@ -73,6 +73,7 @@ The main TypeScript modules are:
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
 | `session.ts`   | Simulation files: the workspace and run inputs saved as JSON, to share a simulation or open it in another browser. |
+| `capture.ts`   | Datum capture: the Capture from SolarNode dialog, and the panel that shows each captured datum until its datum go into the Datum input. |
 | `externalSettings.ts` | The External Settings dialog: settings CSV files the simulation applies first, combined by `/api/settings/external`. |
 | `palette.ts`, `dialogs.ts`, `splitter.ts` | The other parts of the page. |
 | `icons.ts`     | The [Bootstrap Icons][bootstrap-icons] of the filter types. |
@@ -95,6 +96,9 @@ records in the `s10k.node.sim.filter.domain` package.
 | `POST /api/settings/external` | Combine External Settings files the way a node applies its auto settings files: an `ExternalSettingsRequest` (`files` of `name` and `csv`) in, `ExternalSettings` out. |
 | `POST /api/settings/export` | Export a configuration as a settings CSV file: a `SettingsExportRequest` in, a `SettingsExport` out. With `external`, rows that the external settings already have are left out. |
 | `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
+| `POST /api/capture` | Start capturing the datum a SolarNode captures: a `CaptureRequest` (`url`, `username`, `password`, and optional `sourceIds`) in, a `CaptureInfo` (`id`) out. A node that cannot be reached or does not accept the login gets a `400` response with problem details. |
+| `GET /api/capture/{id}/events` | A capture's datum, as a `text/event-stream` (see below). |
+| `DELETE /api/capture/{id}` | End a capture. |
 
 A minimal simulation request runs one Expression filter on the main chain:
 
@@ -151,6 +155,37 @@ unknown setting keys.
 A `Group` with `dynamic` set is a list. To add an item, increase the setting named by its
 `countKey`. To remove the last item, decrease that count and delete the settings whose keys
 start with `key[n]`, where `n` is the new count. Then request the form again.
+
+## Datum capture
+
+A capture records the datum a real SolarNode captures, as input datum. The node's web app only
+accepts WebSocket connections from its own pages, so the app connects in the browser's place: it
+logs in like the node's login page (`GET /csrf`, `POST /login`, then `GET /csrf` again for the
+new session's token), connects to the node's STOMP WebSocket at `/ws` with the session cookie and
+the token as a `CONNECT` header, and subscribes to `/topic/datum/captured/**`, where the node's
+Datum Queue posts each datum before its filters run. `sourceIds` (an Ant-style pattern such as
+`/meter/**`) narrows the topic; the node leaves the source ID's leading `/` out of its topics.
+
+The event stream has `state` events (`{"state":"Capturing"|"Ended","count":…,"guessed":…}`, plus
+`message` and `error` once it ends) and a `datum` event for each datum, in the SolarNode datum
+JSON format, with its number (from 1) as the event ID. The app keeps the datum, so an
+`EventSource` that reconnects gets those after its `Last-Event-ID`. A capture ends when it is
+deleted, when the node ends the connection, after 10,000 datum, or when no browser has watched it
+for a minute.
+
+From `net.solarnetwork.node` 4.10.1 a datum message includes the datum itself, as `_Datum`, so
+each property keeps its type. Older nodes send only the datum's properties, merged together, so
+the app guesses the types: numbers are instantaneous, except `wattHours` and
+`wattHoursReverse` (also with a phase suffix like `_a`), which are accumulating, and everything
+else is status. The UI says when it guessed.
+
+```sh
+curl -H 'Content-Type: application/json' \
+  -d '{"url":"http://solarnode.local","username":"me@example.com","password":"…"}' \
+  http://localhost:8080/api/capture
+curl -N http://localhost:8080/api/capture/<id>/events
+curl -X DELETE http://localhost:8080/api/capture/<id>
+```
 
 ## Settings CSV files
 

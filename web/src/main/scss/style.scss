@@ -577,6 +577,75 @@ rect.sim-badge {
 	z-index: 2;
 }
 
+// the datum capture (capture.ts): a dense table that follows new datum, like
+// tail -f, in place of the execution flow
+.sim-capture {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	// the table scrolls, rather than widening the page
+	overflow: hidden;
+	background-color: var(--bs-body-bg);
+}
+
+.sim-capture-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+}
+
+.sim-capture-table {
+	--bs-table-cell-padding-y: 0.05rem;
+	--bs-table-cell-padding-x: 0.5rem;
+	width: auto;
+	min-width: 100%;
+	margin-bottom: 0;
+	font-size: 0.75rem;
+	white-space: nowrap;
+
+	thead th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background-color: var(--bs-tertiary-bg);
+		font-weight: 600;
+	}
+
+	tbody td {
+		font-family: var(--bs-font-monospace);
+	}
+}
+
+.sim-capture-prop + .sim-capture-prop {
+	margin-left: 0.75rem;
+}
+
+.sim-capture-dot {
+	flex: none;
+	width: 0.6rem;
+	height: 0.6rem;
+	border-radius: 50%;
+	background-color: var(--bs-secondary-color);
+
+	&.is-live {
+		background-color: var(--bs-danger);
+		animation: sim-capture-pulse 1.5s ease-in-out infinite;
+	}
+}
+
+@keyframes sim-capture-pulse {
+	50% {
+		opacity: 0.3;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sim-capture-dot.is-live {
+		animation: none;
+	}
+}
+
 .sim-datum {
 	scroll-margin-top: 3rem;
 

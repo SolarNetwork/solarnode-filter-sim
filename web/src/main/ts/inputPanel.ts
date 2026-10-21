@@ -357,6 +357,31 @@ export class InputPanel {
 	}
 
 	/**
+	 * Replace a text input, such as the Datum input with captured datum, check
+	 * it, and show its tab.
+	 *
+	 * @param field the input
+	 * @param value the new value
+	 */
+	setText(field: keyof typeof TEXT_INPUTS, value: string): void {
+		this.#inputs.set(field, value);
+		$<HTMLInputElement | HTMLTextAreaElement>(TEXT_INPUTS[field]).value =
+			value;
+		const check = FIELD_CHECKS[field];
+		if (check) {
+			window.clearTimeout(this.#timers.get(field));
+			this.#timers.delete(field);
+			try {
+				check(value);
+				this.#setInvalid(field, FIELD_TABS[field]);
+			} catch (e) {
+				this.#setInvalid(field, FIELD_TABS[field], message(e));
+			}
+		}
+		this.#showTab(FIELD_TABS[field]);
+	}
+
+	/**
 	 * Show text inputs that changed elsewhere, such as a command allowed from
 	 * the inspector, without disturbing the input being typed in.
 	 */

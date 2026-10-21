@@ -1,5 +1,7 @@
 import type {
 	AppInfo,
+	CaptureInfo,
+	CaptureRequest,
 	ExportStyle,
 	ExternalSettings,
 	ExternalSettingsFile,
@@ -151,4 +153,36 @@ export function getSettingsForm(
  */
 export function simulate(req: SimulationRequest): Promise<SimulationResult> {
 	return postJson<SimulationResult>("api/simulate", req);
+}
+
+/**
+ * Start capturing the datum a SolarNode captures: log in to the node and
+ * subscribe to its datum.
+ *
+ * @param req the node and how to log in to it
+ */
+export function startCapture(req: CaptureRequest): Promise<CaptureInfo> {
+	return postJson<CaptureInfo>("api/capture", req);
+}
+
+/**
+ * Get the address of a capture's event stream, for an `EventSource`.
+ *
+ * @param id the capture ID
+ */
+export function captureEventsUrl(id: string): string {
+	return `api/capture/${encodeURIComponent(id)}/events`;
+}
+
+/**
+ * End a capture.
+ *
+ * @param id the capture ID
+ * @param keepalive `true` to finish the request even if the page is closing
+ */
+export async function endCapture(id: string, keepalive = false): Promise<void> {
+	await fetch(`api/capture/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		keepalive,
+	});
 }
