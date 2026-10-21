@@ -130,6 +130,11 @@ public final class FilterBlueprintInterpreter {
 				problems.add("Datum filter [%s] has no bean class.".formatted(uid));
 				continue;
 			}
+			if ( bean.factoryMethod() != null ) {
+				problems.add("Datum filter [%s] bean uses factory method [%s], which is not supported."
+						.formatted(uid, bean.factoryMethod()));
+				continue;
+			}
 			final Bean factory = factoryBeans.get(uid);
 			if ( factory == null ) {
 				problems.add("Datum filter [%s] has no %s service.".formatted(uid,
@@ -139,6 +144,20 @@ public final class FilterBlueprintInterpreter {
 			filterTypes.add(new Resolver(blueprint, uid).describe(className, bean, factory));
 		}
 		return new Interpretation(List.copyOf(filterTypes), List.copyOf(problems));
+	}
+
+	/**
+	 * Format a problem of a filter type, the way
+	 * {@link FilterTypeDescriptor#problems()} has it.
+	 *
+	 * @param factoryUid
+	 *        the filter type's factory UID
+	 * @param description
+	 *        the problem description
+	 * @return the problem
+	 */
+	public static String problem(String factoryUid, String description) {
+		return "Datum filter [%s]: %s.".formatted(factoryUid, description);
 	}
 
 	/**
@@ -204,10 +223,6 @@ public final class FilterBlueprintInterpreter {
 		}
 
 		private FilterTypeDescriptor describe(String className, Bean bean, Bean factory) {
-			if ( bean.factoryMethod() != null ) {
-				problem("filter bean uses factory method [%s]".formatted(bean.factoryMethod()));
-			}
-
 			final String displayName = (factory.properties()
 					.get("displayName") instanceof Literal(String name) ? name : null);
 			if ( displayName == null ) {
@@ -257,7 +272,7 @@ public final class FilterBlueprintInterpreter {
 		}
 
 		private void problem(String description) {
-			problems.add("Datum filter [%s]: %s.".formatted(factoryUid, description));
+			problems.add(FilterBlueprintInterpreter.problem(factoryUid, description));
 		}
 
 		private FilterValue unresolved(String reason) {
@@ -316,8 +331,15 @@ public final class FilterBlueprintInterpreter {
 					return unresolved(
 							"service tracker [%s] serviceFilter is not a value".formatted(bean.id()));
 				}
+				final Value ignoreEmpty = bean.properties().get("ignoreEmptyPropertyFilterValues");
+				if ( ignoreEmpty != null && !(ignoreEmpty instanceof Literal) ) {
+					return unresolved(
+							"service tracker [%s] ignoreEmptyPropertyFilterValues is not a value"
+									.formatted(bean.id()));
+				}
 				return new FilterValue.Service(new ServiceKey(type,
-						(filter instanceof Literal(String f) ? f : null), ServiceKey.Source.Tracker));
+						(filter instanceof Literal(String f) ? f : null), ServiceKey.Source.Tracker,
+						!(ignoreEmpty instanceof Literal(String v)) || Boolean.parseBoolean(v.strip())));
 			}
 			if ( RESOURCE_BUNDLE_MESSAGE_SOURCE.equals(className)
 					|| PREFIXED_MESSAGE_SOURCE.equals(className) ) {

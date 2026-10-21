@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ The blueprint of the custom filter bundle for the custom filter tests, written
+ the way the SolarNode filter bundles write theirs.
+-->
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:osgix="http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium"
+	xmlns:beans="http://www.springframework.org/schema/beans"
+	xsi:schemaLocation="
+		http://www.osgi.org/xmlns/blueprint/v1.0.0
+		http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium
+		http://www.eclipse.org/gemini/blueprint/schema/blueprint-compendium/gemini-blueprint-compendium.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans-4.2.xsd">
+
+	<reference id="opModesService" interface="net.solarnetwork.node.service.OperationalModesService"/>
+
+	<reference id="transientSettingDao" interface="net.solarnetwork.node.dao.TransientSettingDao"/>
+
+	<reference id="identityService" interface="net.solarnetwork.node.service.IdentityService"/>
+
+	<bean id="datumQueue" class="net.solarnetwork.common.osgi.service.DynamicServiceTracker">
+		<argument ref="bundleContext"/>
+		<property name="serviceClassName" value="net.solarnetwork.node.service.DatumQueue"/>
+		<property name="sticky" value="true"/>
+	</bean>
+
+	<!--
+	 !!! Scale filter
+	 -->
+
+	<bean id="scaleMessageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basenames">
+			<array>
+				<value>com.example.solarnode.filter.ScaleDatumFilterService</value>
+				<value>net.solarnetwork.node.service.support.BaseDatumFilterSupport</value>
+				<value>net.solarnetwork.service.support.BasicIdentifiable</value>
+			</array>
+		</property>
+	</bean>
+
+	<service interface="net.solarnetwork.settings.SettingSpecifierProviderFactory">
+		<service-properties>
+			<entry key="role">
+				<array value-type="java.lang.String">
+					<value>user</value>
+					<value>datum-filter</value>
+				</array>
+			</entry>
+		</service-properties>
+		<bean class="net.solarnetwork.settings.support.BasicSettingSpecifierProviderFactory">
+			<property name="displayName" value="Scale Datum Filter"/>
+			<property name="factoryUid" value="com.example.solarnode.filter.scale"/>
+			<property name="messageSource" ref="scaleMessageSource"/>
+		</bean>
+	</service>
+
+	<osgix:managed-service-factory factory-pid="com.example.solarnode.filter.scale" autowire-on-update="true">
+		<osgix:interfaces>
+			<beans:value>net.solarnetwork.service.DatumFilterService</beans:value>
+			<beans:value>net.solarnetwork.settings.SettingSpecifierProvider</beans:value>
+		</osgix:interfaces>
+		<osgix:service-properties>
+			<beans:entry key="settingPid" value="com.example.solarnode.filter.scale"/>
+			<beans:entry key="role">
+				<beans:array value-type="java.lang.String">
+					<beans:value>user</beans:value>
+					<beans:value>datum-filter</beans:value>
+				</beans:array>
+			</beans:entry>
+		</osgix:service-properties>
+		<bean class="com.example.solarnode.filter.ScaleDatumFilterService"
+				init-method="startup" destroy-method="shutdown">
+			<argument ref="datumQueue"/>
+			<property name="messageSource" ref="scaleMessageSource"/>
+			<property name="opModesService" ref="opModesService"/>
+			<property name="transientSettingDao" ref="transientSettingDao"/>
+			<property name="factor" value="2"/>
+		</bean>
+	</osgix:managed-service-factory>
+
+	<!--
+	 !!! Identity filter, which needs a service the simulator does not provide
+	 -->
+
+	<service interface="net.solarnetwork.settings.SettingSpecifierProviderFactory">
+		<service-properties>
+			<entry key="role">
+				<array value-type="java.lang.String">
+					<value>user</value>
+					<value>datum-filter</value>
+				</array>
+			</entry>
+		</service-properties>
+		<bean class="net.solarnetwork.settings.support.BasicSettingSpecifierProviderFactory">
+			<property name="displayName" value="Identity Datum Filter"/>
+			<property name="factoryUid" value="com.example.solarnode.filter.identity"/>
+			<property name="messageSource" ref="scaleMessageSource"/>
+		</bean>
+	</service>
+
+	<osgix:managed-service-factory factory-pid="com.example.solarnode.filter.identity" autowire-on-update="true">
+		<osgix:interfaces>
+			<beans:value>net.solarnetwork.service.DatumFilterService</beans:value>
+		</osgix:interfaces>
+		<osgix:service-properties>
+			<beans:entry key="role">
+				<beans:array value-type="java.lang.String">
+					<beans:value>user</beans:value>
+					<beans:value>datum-filter</beans:value>
+				</beans:array>
+			</beans:entry>
+		</osgix:service-properties>
+		<bean class="com.example.solarnode.filter.IdentityDatumFilterService">
+			<argument ref="identityService"/>
+		</bean>
+	</osgix:managed-service-factory>
+
+</blueprint>

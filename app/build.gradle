@@ -230,6 +230,52 @@ test {
 	maxHeapSize = '1500m'
 }
 
+// A custom filter bundle for the custom filter tests, built like a SolarNode bundle jar that
+// embeds a library jar through its Bundle-ClassPath. It is not on the test class path: the tests
+// load it from the jar named by the sim.test.filterBundle system property, as the simulator
+// loads the jars of sim.filters.path.
+sourceSets {
+	testFilterLib
+	testFilterBundle {
+		compileClasspath += sourceSets.main.compileClasspath + sourceSets.testFilterLib.output
+	}
+}
+
+['compileTestFilterLibJava', 'compileTestFilterBundleJava'].each {
+	tasks.named(it) {
+		options.release = 25
+		options.encoding = 'UTF-8'
+		options.errorprone.enabled = false
+	}
+}
+
+def testFilterLibJar = tasks.register('testFilterLibJar', Jar) {
+	archiveFileName = 'example-scaling.jar'
+	destinationDirectory = layout.buildDirectory.dir('test-filter-bundle/lib')
+	from sourceSets.testFilterLib.output
+}
+
+def testFilterBundleJar = tasks.register('testFilterBundleJar', Jar) {
+	archiveFileName = 'example-filter-bundle.jar'
+	destinationDirectory = layout.buildDirectory.dir('test-filter-bundle')
+	from sourceSets.testFilterBundle.output
+	into('lib') {
+		from testFilterLibJar
+	}
+	manifest {
+		attributes('Bundle-SymbolicName': 'com.example.solarnode.filter;singleton:=true',
+			'Bundle-Version': '1.0.0',
+			'Bundle-ClassPath': '.,lib/example-scaling.jar')
+	}
+}
+
+tasks.named('test') {
+	def bundleJar = testFilterBundleJar.flatMap { it.archiveFile }
+	inputs.file(bundleJar).withPropertyName('testFilterBundle')
+			.withPathSensitivity(PathSensitivity.NONE)
+	systemProperty 'sim.test.filterBundle', bundleJar.get().asFile.absolutePath
+}
+
 spotless {
 	java {
 		targetExclude('**/build/generated/**')

@@ -208,6 +208,38 @@ in execution order, each with its comments or a generated banner. The `Plain` st
 rows like a SolarNode export. A configuration with instance IDs that SolarNode does not allow
 gets a `400` response whose `problems` array lists each one.
 
+# Custom filters
+
+The standard filter types are ported by hand from their bundles' blueprints, in
+`StandardFilterTypes`. Custom filter types, from the jars of `sim.filters.path`, are defined
+from their bundles' blueprints at startup instead (the `custom` package):
+
+1. `CustomFilterLoader` reads each jar's manifest and blueprint XML, and puts all the jars on
+   one `URLClassLoader`, whose parent is the app's. A bundle's `Bundle-ClassPath` jars are
+   extracted to a temporary directory and added too.
+2. `FilterBlueprintInterpreter` (the `blueprint` package) describes each user datum filter
+   type the blueprint defines, as a `FilterTypeDescriptor`.
+3. `BlueprintFilterTypes` turns each description into a `FilterTypeDefinition`, with its
+   `FilterTypeOrigin` (the bundle and its class loader):
+   - `ServiceBindings` maps each service the blueprint gives the filter to one of the
+     `FilterContext` services. A type that needs any other service is not available.
+   - Properties that `SimulationContext.injectServices()` sets (its `INJECTED_PROPERTIES`)
+     are skipped.
+   - A constructor that takes a `Clock` or `InstantSource` before the blueprint's arguments
+     is used when there is one, with the simulated clock.
+   - One filter is created, with simulated services, to check that the type works.
+
+The factory, init and destroy methods, and each filter call, run with the bundle's class loader
+as the thread context class loader. Problems loading a jar, and types that are not available,
+are listed in the startup message.
+
+`BlueprintFilterTypesTests` defines the standard filter types from their own blueprints and
+checks that the smoke fixtures give the same results as with `StandardFilterTypes`. That checks
+the service bindings against real filters. `CustomFilterLoaderTests` loads a test bundle that
+the build makes from the `testFilterBundle` source set, with a library jar from the
+`testFilterLib` source set embedded in it. The bundle is not on the test class path; the
+`sim.test.filterBundle` system property names its jar.
+
 # Building
 
 ```sh

@@ -60,4 +60,34 @@ Allow only programs you trust, as they run on the computer running the simulator
 commands to allow in every simulation can also be set when starting the simulator, with
 `--sim.commands.allowed=/path/to/command,/another/command`.
 
+## Custom filters
+
+The simulator can also run datum filters that you write yourself, from the SolarNode bundle jars
+you build for them. Start the simulator with `--sim.filters.path` (or the `SIM_FILTERS_PATH`
+environment variable) set to the jars, or to directories of jars, separated by commas:
+
+```sh
+java -jar sn-filter-sim-<version>.jar --sim.filters.path=~/dev/my-filters/build/
+```
+
+The simulator reads each bundle's blueprint (`OSGI-INF/blueprint/*.xml`, or the
+`Bundle-Blueprint` manifest header) and adds its user datum filters to the palette, the settings
+forms, settings CSV import and export, and simulations. Its startup message lists the custom
+filters, and any that are not available, with the reason. A filter is only available if every
+service its blueprint gives it is one the simulator provides, such as the Datum Queue, task
+scheduler, datum metadata, metadata services, instruction services, transient settings, and
+metrics.
+
+Custom filters need the JVM build, the `sn-filter-sim` jar of each release, which runs with
+Java 25. The native executable cannot load classes, so it refuses `--sim.filters.path`.
+
+> [!WARNING]
+> A custom filter jar is code that runs with all the permissions of the simulator, so load only
+> jars you trust. The JVM build listens on every network interface; pass
+> `--server.address=127.0.0.1` to accept connections only from your own computer.
+
+All the jars share one class loader, which can also use the classes of the SolarNode bundles the
+simulator includes. Add any library jars your filters need to the path too, or embed them in
+your bundle with its `Bundle-ClassPath` manifest header.
+
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/

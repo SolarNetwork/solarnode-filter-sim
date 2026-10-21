@@ -514,7 +514,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			warn(SimulationMessage.CODE_FILTER_PROBLEM, problem, config.id(), null);
 		}
 		return new TracingDatumFilterService(config.id(), config.factoryUid(), filter, def.isChain(),
-				tracer);
+				tracer, def.classLoader());
 	}
 
 	private static Map<String, String> filterSettings(FilterConfig config,

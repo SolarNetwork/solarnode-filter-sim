@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
@@ -72,6 +73,28 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  * @version 1.0
  */
 public final class SimulationContext implements FilterContext {
+
+	/**
+	 * The properties {@link #injectServices(DatumFilterService, MessageSource)}
+	 * sets, with the class a filter must extend for each one to be set.
+	 *
+	 * <p>
+	 * A custom filter's blueprint wiring of these properties is not needed, as
+	 * the simulated services replace it.
+	 * </p>
+	 */
+	// @formatter:off
+	public static final Map<String, Class<?>> INJECTED_PROPERTIES = Map.of(
+			"messageSource", BasicIdentifiable.class,
+			"expressionServices", BaseIdentifiable.class,
+			"localStateDao", BaseIdentifiable.class,
+			"metadataService", BaseIdentifiable.class,
+			"placeholderService", BaseIdentifiable.class,
+			"locationService", BaseIdentifiable.class,
+			"datumService", BaseDatumFilterSupport.class,
+			"opModesService", BaseDatumFilterSupport.class,
+			"tariffScheduleProviders", BaseDatumFilterSupport.class);
+	// @formatter:on
 
 	private static final com.fasterxml.jackson.databind.ObjectMapper NODE_OBJECT_MAPPER = net.solarnetwork.codec.JsonUtils
 			.newDatumObjectMapper();
@@ -192,6 +215,7 @@ public final class SimulationContext implements FilterContext {
 	 *        the filter message source
 	 */
 	public void injectServices(DatumFilterService filter, MessageSource messageSource) {
+		// keep INJECTED_PROPERTIES up to date with these
 		if ( filter instanceof BasicIdentifiable f ) {
 			f.setMessageSource(messageSource);
 		}

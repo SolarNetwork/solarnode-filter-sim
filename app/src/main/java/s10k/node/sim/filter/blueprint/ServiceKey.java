@@ -30,10 +30,29 @@ import org.jspecify.annotations.Nullable;
  *        the service filter, or {@code null}
  * @param source
  *        how the blueprint obtains the service
+ * @param ignoreEmptyPropertyFilterValues
+ *        the {@code ignoreEmptyPropertyFilterValues} setting of a service
+ *        tracker, which is {@code true} unless the blueprint sets it, and is
+ *        always {@code true} for other sources
  * @author matt
  * @version 1.0
  */
-public record ServiceKey(String serviceClassName, @Nullable String filter, Source source) {
+public record ServiceKey(String serviceClassName, @Nullable String filter, Source source,
+		boolean ignoreEmptyPropertyFilterValues) {
+
+	/**
+	 * Constructor, ignoring empty property filter values.
+	 *
+	 * @param serviceClassName
+	 *        the service interface
+	 * @param filter
+	 *        the service filter, or {@code null}
+	 * @param source
+	 *        how the blueprint obtains the service
+	 */
+	public ServiceKey(String serviceClassName, @Nullable String filter, Source source) {
+		this(serviceClassName, filter, source, true);
+	}
 
 	/** How a blueprint obtains a service. */
 	public enum Source {

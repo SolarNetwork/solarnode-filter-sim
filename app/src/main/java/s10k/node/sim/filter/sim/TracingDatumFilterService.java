@@ -21,6 +21,7 @@ package s10k.node.sim.filter.sim;
 
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.registry.ContextClassLoader;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamplesOperations;
 import net.solarnetwork.service.DatumFilterService;
@@ -43,6 +44,7 @@ public final class TracingDatumFilterService implements DatumFilterService {
 	private final DatumFilterService delegate;
 	private final boolean chain;
 	private final FilterTracer tracer;
+	private final @Nullable ClassLoader classLoader;
 
 	/**
 	 * Constructor.
@@ -60,18 +62,42 @@ public final class TracingDatumFilterService implements DatumFilterService {
 	 */
 	public TracingDatumFilterService(String filterId, String factoryUid, DatumFilterService delegate,
 			boolean chain, FilterTracer tracer) {
+		this(filterId, factoryUid, delegate, chain, tracer, null);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param filterId
+	 *        the filter configuration {@code id}
+	 * @param factoryUid
+	 *        the filter factory UID
+	 * @param delegate
+	 *        the filter
+	 * @param chain
+	 *        {@code true} if the filter is a filter chain
+	 * @param tracer
+	 *        the tracer
+	 * @param classLoader
+	 *        the thread context class loader to run the filter with, for a
+	 *        custom filter, or {@code null}
+	 */
+	public TracingDatumFilterService(String filterId, String factoryUid, DatumFilterService delegate,
+			boolean chain, FilterTracer tracer, @Nullable ClassLoader classLoader) {
 		super();
 		this.filterId = filterId;
 		this.factoryUid = factoryUid;
 		this.delegate = delegate;
 		this.chain = chain;
 		this.tracer = tracer;
+		this.classLoader = classLoader;
 	}
 
 	@Override
 	public @Nullable DatumSamplesOperations filter(Datum datum, DatumSamplesOperations samples,
 			@Nullable Map<String, Object> parameters) {
-		return tracer.invoke(this, datum, samples, parameters);
+		return ContextClassLoader.call(classLoader,
+				() -> tracer.invoke(this, datum, samples, parameters));
 	}
 
 	@Override

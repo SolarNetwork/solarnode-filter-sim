@@ -271,7 +271,7 @@ public class FilterBlueprintInterpreterTests {
 						ServiceKey.Source.Tracker)),
 				new FilterValue.Service(new ServiceKey(
 						"net.solarnetwork.node.service.MetadataService", null,
-						ServiceKey.Source.Tracker))
+						ServiceKey.Source.Tracker, false))
 			);
 
 		final FilterTypeDescriptor chain = descriptors.get(StandardFilterTypes.CHAIN);
@@ -293,7 +293,7 @@ public class FilterBlueprintInterpreterTests {
 			.containsEntry("metadataService", new FilterValue.Service(new ServiceKey(
 					"net.solarnetwork.node.service.MetadataService", "(function=node)",
 					ServiceKey.Source.Tracker)))
-			.containsEntry("startupDelay", new FilterValue.Literal("300000"))
+			.containsEntry("startupDelay", new FilterValue.Literal("300"))
 			.containsEntry("messageSource", new FilterValue.Messages(join.messageSource()))
 			;
 		// @formatter:on

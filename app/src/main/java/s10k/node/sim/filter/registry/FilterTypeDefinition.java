@@ -69,6 +69,9 @@ import net.solarnetwork.service.DatumFilterService;
  * @param check
  *        a check for configuration problems that stop the filter from working,
  *        or {@code null}
+ * @param origin
+ *        the bundle a custom filter type comes from, or {@code null} for the
+ *        standard filter types
  * @author matt
  * @version 1.0
  */
@@ -77,7 +80,7 @@ public record FilterTypeDefinition(String factoryUid, String displayName,
 		FilterFactory factory, @Nullable Consumer<DatumFilterService> init,
 		@Nullable Consumer<DatumFilterService> destroy, Set<FilterCapability> capabilities,
 		@Nullable Function<Map<String, String>, @Nullable String> limitations,
-		@Nullable FilterCheck check) {
+		@Nullable FilterCheck check, @Nullable FilterTypeOrigin origin) {
 
 	/** The factory UID of a SolarNode user filter chain. */
 	public static final String CHAIN_FACTORY_UID = "net.solarnetwork.node.datum.xform.user";
@@ -132,6 +135,17 @@ public record FilterTypeDefinition(String factoryUid, String displayName,
 	}
 
 	/**
+	 * Get the class loader to run the filter with, as its thread context class
+	 * loader.
+	 *
+	 * @return the class loader of a custom filter type, or {@code null} for the
+	 *         standard filter types
+	 */
+	public @Nullable ClassLoader classLoader() {
+		return (origin != null ? origin.classLoader() : null);
+	}
+
+	/**
 	 * Copy this definition, with a check.
 	 *
 	 * @param check
@@ -140,7 +154,7 @@ public record FilterTypeDefinition(String factoryUid, String displayName,
 	 */
 	public FilterTypeDefinition withCheck(FilterCheck check) {
 		return new FilterTypeDefinition(factoryUid, displayName, filterClass, messageSource, factory,
-				init, destroy, capabilities, limitations, check);
+				init, destroy, capabilities, limitations, check, origin);
 	}
 
 }

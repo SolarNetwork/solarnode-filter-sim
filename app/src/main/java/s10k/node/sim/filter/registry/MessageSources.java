@@ -20,8 +20,10 @@
 package s10k.node.sim.filter.registry;
 
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
+import org.springframework.core.io.DefaultResourceLoader;
 import net.solarnetwork.support.PrefixedMessageSource;
 
 /**
@@ -54,7 +56,29 @@ public final class MessageSources {
 	 * @return the message source
 	 */
 	public static ReloadableResourceBundleMessageSource messageSource(String... basenames) {
+		return messageSource((ClassLoader) null, basenames);
+	}
+
+	/**
+	 * Create a message source from resource bundle base names, loaded with a
+	 * class loader.
+	 *
+	 * @param classLoader
+	 *        the class loader to load the {@code .properties} resources with,
+	 *        such as a custom filter bundle's, or {@code null} for the default
+	 *        class loader
+	 * @param basenames
+	 *        the base names, as class names like the SolarNode blueprints use,
+	 *        for example
+	 *        {@code net.solarnetwork.node.datum.filter.expr.ExpressionDatumFilterService}
+	 * @return the message source
+	 */
+	public static ReloadableResourceBundleMessageSource messageSource(@Nullable ClassLoader classLoader,
+			String... basenames) {
 		ReloadableResourceBundleMessageSource ms = new ReloadableResourceBundleMessageSource();
+		if ( classLoader != null ) {
+			ms.setResourceLoader(new DefaultResourceLoader(classLoader));
+		}
 		String[] paths = new String[basenames.length];
 		for ( int i = 0; i < basenames.length; i++ ) {
 			paths[i] = "classpath:" + basenames[i].replace('.', '/');

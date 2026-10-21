@@ -191,15 +191,27 @@ public final class StandardFilterTypes {
 	}
 
 	/**
+	 * Set the {@code sn.home} system property to {@link #NODE_HOME}, unless the
+	 * simulator was started with a value.
+	 *
+	 * <p>
+	 * This must happen before any filter class reads it, as the POA
+	 * Calculator's default command is a constant made from it.
+	 * </p>
+	 */
+	public static void initNodeHome() {
+		if ( System.getProperty(Constants.SYSTEM_PROP_NODE_HOME) == null ) {
+			System.setProperty(Constants.SYSTEM_PROP_NODE_HOME, NODE_HOME);
+		}
+	}
+
+	/**
 	 * Create the standard filter type definitions.
 	 *
 	 * @return the definitions
 	 */
 	public static List<FilterTypeDefinition> definitions() {
-		// before any filter class reads it, for the POA Calculator's default command
-		if ( System.getProperty(Constants.SYSTEM_PROP_NODE_HOME) == null ) {
-			System.setProperty(Constants.SYSTEM_PROP_NODE_HOME, NODE_HOME);
-		}
+		initNodeHome();
 		final List<FilterTypeDefinition> result = new ArrayList<>(18);
 
 		result.add(def(CHAIN, "Datum Filter Chain", DatumFilterChainService.class,
@@ -381,7 +393,7 @@ public final class StandardFilterTypes {
 			@Nullable Consumer<DatumFilterService> destroy, Set<FilterCapability> capabilities,
 			@Nullable Function<Map<String, String>, @Nullable String> limitations) {
 		return new FilterTypeDefinition(factoryUid, displayName, filterClass, messageSource, factory,
-				init, destroy, capabilities, limitations, null);
+				init, destroy, capabilities, limitations, null, null);
 	}
 
 }

@@ -19,6 +19,7 @@
 
 package s10k.node.sim.filter.config;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +28,10 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 import s10k.node.sim.filter.aot.SimulatorRuntimeHints;
 import s10k.node.sim.filter.capture.CaptureService;
 import s10k.node.sim.filter.csv.SettingsCsvService;
+import s10k.node.sim.filter.custom.CustomFilterLoader;
+import s10k.node.sim.filter.custom.CustomFilters;
 import s10k.node.sim.filter.form.SettingsFormService;
+import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.sim.SimulationEngine;
@@ -44,13 +48,38 @@ import net.solarnetwork.common.expr.spel.SpelExpressionService;
 public class SimulatorConfig {
 
 	/**
-	 * The registry of supported filter types.
+	 * The custom filter types, from the SolarNode bundle jars of the
+	 * {@code sim.filters.path} property.
 	 *
+	 * @param path
+	 *        the jars and directories of jars, from the
+	 *        {@code sim.filters.path} property
+	 * @param expressionService
+	 *        the expression service
+	 * @return the custom filters
+	 */
+	@Bean
+	public CustomFilters customFilters(@Value("${sim.filters.path:}") List<String> path,
+			SpelExpressionService expressionService) {
+		final List<String> standard = StandardFilterTypes.definitions().stream()
+				.map(FilterTypeDefinition::factoryUid).toList();
+		return new CustomFilterLoader(expressionService, standard).load(path);
+	}
+
+	/**
+	 * The registry of supported filter types: the standard ones, plus the
+	 * custom ones.
+	 *
+	 * @param customFilters
+	 *        the custom filters
 	 * @return the registry
 	 */
 	@Bean
-	public FilterTypeRegistry filterTypeRegistry() {
-		return new FilterTypeRegistry(StandardFilterTypes.definitions());
+	public FilterTypeRegistry filterTypeRegistry(CustomFilters customFilters) {
+		final List<FilterTypeDefinition> definitions = new ArrayList<>(
+				StandardFilterTypes.definitions());
+		definitions.addAll(customFilters.definitions());
+		return new FilterTypeRegistry(definitions);
 	}
 
 	/**

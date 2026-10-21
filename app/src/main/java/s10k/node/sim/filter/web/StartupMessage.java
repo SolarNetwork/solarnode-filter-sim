@@ -19,6 +19,7 @@
 
 package s10k.node.sim.filter.web;
 
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -28,6 +29,7 @@ import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import s10k.node.sim.filter.custom.CustomFilters;
 
 /**
  * Print a message with the application's URL once it has started, in place of
@@ -46,16 +48,21 @@ import org.springframework.stereotype.Component;
 public class StartupMessage implements ApplicationListener<ApplicationReadyEvent> {
 
 	private final @Nullable BuildProperties buildProperties;
+	private final CustomFilters customFilters;
 
 	/**
 	 * Constructor.
 	 *
 	 * @param buildProperties
 	 *        the build properties, if available
+	 * @param customFilters
+	 *        the custom filters, if available
 	 */
-	public StartupMessage(ObjectProvider<BuildProperties> buildProperties) {
+	public StartupMessage(ObjectProvider<BuildProperties> buildProperties,
+			ObjectProvider<CustomFilters> customFilters) {
 		super();
 		this.buildProperties = buildProperties.getIfAvailable();
+		this.customFilters = customFilters.getIfAvailable(() -> CustomFilters.NONE);
 	}
 
 	@Override
@@ -68,6 +75,9 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 			return;
 		}
 		System.out.println();
+		for ( String line : customFilters.describe(Locale.getDefault()) ) {
+			System.out.println(line);
+		}
 		System.out.println(message(url(ctx.getEnvironment(), server.getPort())));
 	}
 
