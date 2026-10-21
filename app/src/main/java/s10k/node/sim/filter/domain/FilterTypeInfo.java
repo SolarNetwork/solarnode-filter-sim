@@ -37,11 +37,14 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        {@code true} if the filter is a filter chain
  * @param capabilities
  *        the filter capabilities
+ * @param bundle
+ *        the bundle of a custom filter type, or {@code null} for the standard
+ *        filter types
  * @author matt
  * @version 1.0
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record FilterTypeInfo(String factoryUid, String name, @Nullable String description, boolean chain,
-		Set<FilterCapability> capabilities) {
+		Set<FilterCapability> capabilities, @Nullable FilterBundleInfo bundle) {
 
 }

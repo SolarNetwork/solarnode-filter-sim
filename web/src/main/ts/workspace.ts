@@ -8,6 +8,7 @@ import {
 	type FilterConfig,
 	type FilterTypeInfo,
 	type SimConfig,
+	type UnavailableFilterType,
 } from "./model.ts";
 import { quoted } from "./view.ts";
 
@@ -126,6 +127,7 @@ export class Workspace extends EventTarget {
 	#state: WorkspaceState;
 	#view?: View;
 	readonly #types: Map<string, FilterTypeInfo>;
+	readonly #unavailable: Map<string, UnavailableFilterType>;
 	readonly #undo: string[] = [];
 	readonly #redo: string[] = [];
 	#saveTimer?: number;
@@ -137,10 +139,16 @@ export class Workspace extends EventTarget {
 	 *
 	 * @param types the supported filter types
 	 * @param state the initial state, or `undefined` for an empty workspace
+	 * @param unavailable the filter types the simulator knows of but cannot run
 	 */
-	constructor(types: FilterTypeInfo[], state?: WorkspaceState) {
+	constructor(
+		types: FilterTypeInfo[],
+		state?: WorkspaceState,
+		unavailable: UnavailableFilterType[] = [],
+	) {
 		super();
 		this.#types = new Map(types.map((t) => [t.factoryUid, t]));
+		this.#unavailable = new Map(unavailable.map((t) => [t.factoryUid, t]));
 		this.#state = state ?? this.#emptyState();
 	}
 
@@ -148,9 +156,13 @@ export class Workspace extends EventTarget {
 	 * Load the workspace saved in the browser.
 	 *
 	 * @param types the supported filter types
+	 * @param unavailable the filter types the simulator knows of but cannot run
 	 * @returns the workspace, which is empty if nothing valid was saved
 	 */
-	static load(types: FilterTypeInfo[]): Workspace {
+	static load(
+		types: FilterTypeInfo[],
+		unavailable: UnavailableFilterType[] = [],
+	): Workspace {
 		let state: WorkspaceState | undefined;
 		try {
 			const json = localStorage.getItem(STORAGE_KEY);
@@ -160,7 +172,7 @@ export class Workspace extends EventTarget {
 		} catch (e) {
 			console.warn("Unable to load the saved workspace", e);
 		}
-		return new Workspace(types, state);
+		return new Workspace(types, state, unavailable);
 	}
 
 	/**
@@ -397,6 +409,16 @@ export class Workspace extends EventTarget {
 	 */
 	type(factoryUid: string): FilterTypeInfo | undefined {
 		return this.#types.get(factoryUid);
+	}
+
+	/**
+	 * Get a filter type the simulator knows of but cannot run.
+	 *
+	 * @param factoryUid the factory UID
+	 * @returns the type, or `undefined` if it is not one
+	 */
+	unavailableType(factoryUid: string): UnavailableFilterType | undefined {
+		return this.#unavailable.get(factoryUid);
 	}
 
 	/**

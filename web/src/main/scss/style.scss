@@ -171,6 +171,11 @@ body {
 	gap: 0.5rem;
 }
 
+// a heading in the palette, such as Custom, on its own row
+.sim-palette-group {
+	grid-column: 1 / -1;
+}
+
 .sim-palette-item {
 	display: flex;
 	flex-direction: column;

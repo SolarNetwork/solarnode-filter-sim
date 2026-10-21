@@ -104,7 +104,8 @@ public record FilterTypeDefinition(String factoryUid, String displayName,
 	public FilterTypeInfo info(Locale locale) {
 		final String title = messageSource.getMessage("title", null, null, locale);
 		return new FilterTypeInfo(factoryUid, title != null ? title : displayName,
-				messageSource.getMessage("desc", null, null, locale), isChain(), capabilities);
+				messageSource.getMessage("desc", null, null, locale), isChain(), capabilities,
+				origin != null ? origin.info() : null);
 	}
 
 	/**

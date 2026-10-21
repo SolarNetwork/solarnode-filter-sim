@@ -4,6 +4,7 @@ import {
 	exportSettings,
 	getFilterTypes,
 	getInfo,
+	getUnavailableFilterTypes,
 	importSettings,
 	mergeSettings,
 	simulate,
@@ -36,6 +37,7 @@ import {
 	type ExportStyle,
 	type FilterTypeInfo,
 	type SimulationResult,
+	type UnavailableFilterType,
 } from "./model.ts";
 import { renderPalette } from "./palette.ts";
 import {
@@ -45,7 +47,9 @@ import {
 	type DebugMark,
 } from "./results.ts";
 import {
+	customFilterNotes,
 	isSimulationFile,
+	type CustomFilterRef,
 	parseSimulation,
 	SIMULATION_FILE_NAME,
 	simulationJson,
@@ -127,6 +131,11 @@ class App {
 	readonly #results: ResultsPanel;
 	readonly #capture: CapturePanel;
 	readonly #info: Promise<AppInfo | null>;
+	/**
+	 * The custom filter types of the simulation file opened last, so saving
+	 * keeps the bundles of those the simulator does not have.
+	 */
+	#openedCustomFilters: CustomFilterRef[] = [];
 	#running = false;
 	#rerunTimer?: number;
 
@@ -136,9 +145,13 @@ class App {
 	 * @param types the supported filter types
 	 * @param info the application info, for simulation files
 	 */
-	constructor(types: FilterTypeInfo[], info: Promise<AppInfo | null>) {
+	constructor(
+		types: FilterTypeInfo[],
+		unavailable: UnavailableFilterType[],
+		info: Promise<AppInfo | null>,
+	) {
 		this.#info = info;
-		const ws = Workspace.load(types);
+		const ws = Workspace.load(types, unavailable);
 		const inputs = RunInputs.load();
 		this.#ws = ws;
 		this.#inputs = inputs;
@@ -236,7 +249,12 @@ class App {
 	 * browser.
 	 */
 	async saveSimulation(): Promise<void> {
-		const json = simulationJson(this.#ws, this.#inputs, await this.#info);
+		const json = simulationJson(
+			this.#ws,
+			this.#inputs,
+			await this.#info,
+			this.#openedCustomFilters,
+		);
 		download(json, SIMULATION_FILE_NAME, "application/json");
 		showToast(`The simulation was saved as ${SIMULATION_FILE_NAME}.`);
 	}
@@ -268,11 +286,21 @@ class App {
 		this.#closeResults();
 		// the workspace first, so the Entry Point input finds its filter
 		this.#ws.replaceState(simulation.workspace, "Open simulation");
+		this.#openedCustomFilters = simulation.customFilters;
 		this.#inputs.replace(simulation.inputs);
 		this.#inputPanel.reload();
 		this.#canvas.select(null);
 		this.#canvas.fit();
-		showToast(`Opened the simulation in ${file.name}.`);
+		const notes = customFilterNotes(simulation.customFilters, this.#ws);
+		if (notes.length) {
+			showMessages({
+				title: "Simulation opened",
+				summary: `Opened the simulation in ${file.name}, which uses custom filters that the simulator does not have as they were.`,
+				notes,
+			});
+		} else {
+			showToast(`Opened the simulation in ${file.name}.`);
+		}
 	}
 
 	/**
@@ -291,6 +319,7 @@ class App {
 		}
 		this.#closeResults();
 		this.#ws.reset("New simulation");
+		this.#openedCustomFilters = [];
 		this.#inputs.clear();
 		this.#inputPanel.reload();
 		this.#canvas.select(null);
@@ -921,12 +950,16 @@ class App {
 async function startApp(): Promise<void> {
 	const info = showAppInfo($("#app-version"));
 	let types: FilterTypeInfo[] = [];
+	let unavailable: UnavailableFilterType[] = [];
 	try {
-		types = await getFilterTypes();
+		[types, unavailable] = await Promise.all([
+			getFilterTypes(),
+			getUnavailableFilterTypes(),
+		]);
 	} catch (e) {
 		showError("The simulator server is not available", e);
 	}
-	new App(types, info);
+	new App(types, unavailable, info);
 }
 
 if (document.readyState === "loading") {

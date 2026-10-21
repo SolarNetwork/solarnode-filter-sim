@@ -30,12 +30,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.jar.JarFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import s10k.node.sim.filter.custom.CustomFilterLoader;
 import s10k.node.sim.filter.custom.CustomFilters;
 import s10k.node.sim.filter.custom.FilterBundle;
+import s10k.node.sim.filter.custom.ImportCheck;
 import s10k.node.sim.filter.domain.DatumTrace;
+import s10k.node.sim.filter.domain.FilterBundleInfo;
 import s10k.node.sim.filter.domain.FilterCapability;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.FilterStep;
@@ -47,6 +50,7 @@ import s10k.node.sim.filter.domain.SettingsForm;
 import s10k.node.sim.filter.domain.SettingsFormRequest;
 import s10k.node.sim.filter.domain.SettingsImport;
 import s10k.node.sim.filter.domain.SimConfig;
+import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.csv.SettingsCsvService;
@@ -54,8 +58,10 @@ import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.sim.SimulationEngine;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
+import net.solarnetwork.node.datum.filter.std.PropertyDatumFilterService;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -101,7 +107,14 @@ public class CustomFilterLoaderTests {
 	private static FilterTypeRegistry registry(CustomFilters custom) {
 		final List<FilterTypeDefinition> defs = new ArrayList<>(StandardFilterTypes.definitions());
 		defs.addAll(custom.definitions());
-		return new FilterTypeRegistry(defs);
+		return new FilterTypeRegistry(defs, custom.unavailable());
+	}
+
+	private static List<FilterConfig> identityChain() {
+		return List.of(
+				new FilterConfig("main", StandardFilterTypes.CHAIN, null, Map.of("uid", "Chain - Main"),
+						List.of("id")),
+				new FilterConfig("id", IDENTITY, null, Map.of("uid", "ID"), null));
 	}
 
 	private static List<FilterConfig> scaleChain(String factor) {
@@ -165,10 +178,10 @@ public class CustomFilterLoaderTests {
 		then(result.unavailable())
 			.as("The Identity filter type is not available, because of its service")
 			.singleElement()
-			.returns(IDENTITY, from(CustomFilters.UnavailableFilterType::factoryUid))
-			.returns("Identity Datum Filter", from(CustomFilters.UnavailableFilterType::displayName))
-			.returns(BUNDLE + " 1.0.0", from(CustomFilters.UnavailableFilterType::bundle))
-			.extracting(CustomFilters.UnavailableFilterType::reason)
+			.returns(IDENTITY, from(UnavailableFilterType::factoryUid))
+			.returns("Identity Datum Filter", from(UnavailableFilterType::displayName))
+			.returns(new FilterBundleInfo(BUNDLE, "1.0.0"), from(UnavailableFilterType::bundle))
+			.extracting(UnavailableFilterType::reason)
 			.asString()
 			.contains("net.solarnetwork.node.service.IdentityService")
 			;
@@ -226,11 +239,13 @@ public class CustomFilterLoaderTests {
 			.containsExactly(BUNDLE)
 			;
 		then(result.describe(Locale.ENGLISH))
-			.as("The description lists the available and unavailable types")
-			.hasSize(3)
+			.as("The description lists the available types, the import warnings, and the unavailable types")
+			.hasSize(5)
 			.satisfies(lines -> then(lines.get(0)).isEqualTo("Custom filters: 1 available from 1 jar"))
 			.satisfies(lines -> then(lines.get(1)).contains(BUNDLE + " 1.0.0", "Scale Filter (" + SCALE + ")"))
-			.satisfies(lines -> then(lines.get(2)).contains("Not available: Identity Datum Filter"))
+			.satisfies(lines -> then(lines.get(2)).startsWith("    Warning: ").contains("com.example.missing"))
+			.satisfies(lines -> then(lines.get(3)).startsWith("    Warning: ").contains("net.solarnetwork.service"))
+			.satisfies(lines -> then(lines.get(4)).contains("Not available: Identity Datum Filter"))
 			;
 		// @formatter:on
 	}
@@ -301,11 +316,7 @@ public class CustomFilterLoaderTests {
 	public void simulate_unavailable() {
 		// GIVEN
 		SimulationEngine engine = new SimulationEngine(registry(load()), expressionService);
-		List<FilterConfig> filters = List.of(
-				new FilterConfig("main", StandardFilterTypes.CHAIN, null, Map.of("uid", "Chain - Main"),
-						List.of("id")),
-				new FilterConfig("id", IDENTITY, null, Map.of("uid", "ID"), null));
-		SimulationRequest req = new SimulationRequest(new SimConfig(filters, "main"), null,
+		SimulationRequest req = new SimulationRequest(new SimConfig(identityChain(), "main"), null,
 				List.of(JSON.readTree("""
 						{"created":"2025-10-01 00:00:00Z","sourceId":"/meter/1","i":{"watts":100}}""")),
 				null, null, null);
@@ -316,9 +327,93 @@ public class CustomFilterLoaderTests {
 		// THEN
 		// @formatter:off
 		then(result.messages())
-			.as("The unavailable type is unsupported, so datum pass through it")
-			.extracting(m -> m.code())
-			.contains("UnsupportedFilter")
+			.as("The unavailable type is unsupported, so datum pass through it, with the reason")
+			.singleElement()
+			.returns(SimulationMessage.CODE_UNSUPPORTED_FILTER, from(SimulationMessage::code))
+			.returns("id", from(SimulationMessage::filterId))
+			.extracting(SimulationMessage::message)
+			.asString()
+			.contains("Identity Datum Filter", "not available",
+					"net.solarnetwork.node.service.IdentityService")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void csvRoundTrip_unavailable() {
+		// GIVEN
+		FilterTypeRegistry registry = registry(load());
+		SettingsCsvService csv = new SettingsCsvService(registry,
+				new SettingsFormService(registry, expressionService));
+
+		// WHEN
+		SettingsExport export = csv.exportCsv(new SettingsExportRequest(
+				new SimConfig(identityChain(), "main"), SettingsExportRequest.Style.Organized, null));
+		SettingsImport imported = csv.importCsv(export.csv());
+
+		// THEN
+		// @formatter:off
+		then(export.csv())
+			.as("The export names the unavailable type in its banner")
+			.contains("Identity Datum Filter: ID")
+			;
+		then(imported.config().filters())
+			.as("The import keeps the unavailable filter, with its settings")
+			.filteredOn(f -> IDENTITY.equals(f.factoryUid()))
+			.singleElement()
+			.extracting(FilterConfig::settings)
+			.satisfies(s -> then(s).containsEntry("uid", "ID"))
+			;
+		then(imported.messages())
+			.as("The import says the type is not available, and why")
+			.filteredOn(m -> SimulationMessage.CODE_UNSUPPORTED_FILTER.equals(m.code()))
+			.singleElement()
+			.extracting(SimulationMessage::message)
+			.asString()
+			.contains("Identity Datum Filter", "net.solarnetwork.node.service.IdentityService")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void load_importWarnings() {
+		// WHEN
+		CustomFilters result = load();
+
+		// THEN
+		// @formatter:off
+		then(result.bundles().getFirst().warnings())
+			.as("Warnings for the missing package and the version the simulator does not have, "
+					+ "but not for optional, JDK, ignored, or non-SolarNetwork version imports")
+			.satisfiesExactly(
+				w -> then(w).contains("com.example.missing").doesNotContain("com.example.optional"),
+				w -> then(w).contains("net.solarnetwork.service [9.0,10.0)"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importCheck_standardBundle() throws Exception {
+		// GIVEN
+		ImportCheck check = new ImportCheck(getClass().getClassLoader());
+		String importPackage;
+		try (JarFile jar = new JarFile(Path.of(PropertyDatumFilterService.class.getProtectionDomain()
+				.getCodeSource().getLocation().toURI()).toFile())) {
+			importPackage = jar.getManifest().getMainAttributes().getValue("Import-Package");
+		}
+
+		// WHEN
+		List<String> warnings = check.check(importPackage);
+
+		// THEN
+		// @formatter:off
+		then(importPackage)
+			.as("The standard bundle imports packages")
+			.isNotBlank()
+			;
+		then(warnings)
+			.as("No warnings for the imports of a bundle the simulator runs")
+			.isEmpty()
 			;
 		// @formatter:on
 	}

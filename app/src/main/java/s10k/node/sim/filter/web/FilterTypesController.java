@@ -25,7 +25,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
+import s10k.node.sim.filter.domain.UnavailableFilterTypeInfo;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 
 /**
  * Web API for the supported filter types.
@@ -60,6 +62,17 @@ public class FilterTypesController {
 	@GetMapping("/filter-types")
 	public List<FilterTypeInfo> filterTypes(Locale locale) {
 		return registry.filterTypes(locale);
+	}
+
+	/**
+	 * Get the filter types the simulator knows of but cannot run, such as
+	 * custom filter types that need a service the simulator does not provide.
+	 *
+	 * @return the filter types, sorted by name
+	 */
+	@GetMapping("/filter-types/unavailable")
+	public List<UnavailableFilterTypeInfo> unavailableFilterTypes() {
+		return registry.unavailableTypes().stream().map(UnavailableFilterType::info).toList();
 	}
 
 }

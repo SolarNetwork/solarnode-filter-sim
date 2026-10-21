@@ -34,6 +34,7 @@ import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.sim.SimulationEngine;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
 
@@ -68,7 +69,7 @@ public class SimulatorConfig {
 
 	/**
 	 * The registry of supported filter types: the standard ones, plus the
-	 * custom ones.
+	 * custom ones, and the filter types that are not available.
 	 *
 	 * @param customFilters
 	 *        the custom filters
@@ -79,7 +80,10 @@ public class SimulatorConfig {
 		final List<FilterTypeDefinition> definitions = new ArrayList<>(
 				StandardFilterTypes.definitions());
 		definitions.addAll(customFilters.definitions());
-		return new FilterTypeRegistry(definitions);
+		final List<UnavailableFilterType> unavailable = new ArrayList<>(
+				StandardFilterTypes.unsupported());
+		unavailable.addAll(customFilters.unavailable());
+		return new FilterTypeRegistry(definitions, unavailable);
 	}
 
 	/**

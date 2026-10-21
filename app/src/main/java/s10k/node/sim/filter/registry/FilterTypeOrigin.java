@@ -21,6 +21,7 @@ package s10k.node.sim.filter.registry;
 
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.domain.FilterBundleInfo;
 
 /**
  * The bundle a custom filter type comes from.
@@ -48,6 +49,15 @@ public record FilterTypeOrigin(String bundleName, @Nullable String bundleVersion
 	 */
 	public String label() {
 		return (bundleVersion != null ? bundleName + " " + bundleVersion : bundleName);
+	}
+
+	/**
+	 * Get the bundle information, for the API.
+	 *
+	 * @return the information
+	 */
+	public FilterBundleInfo info() {
+		return new FilterBundleInfo(bundleName, bundleVersion);
 	}
 
 }

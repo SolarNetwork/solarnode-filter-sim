@@ -6,6 +6,7 @@ import type {
 	ExternalSettings,
 	ExternalSettingsFile,
 	FilterTypeInfo,
+	UnavailableFilterType,
 	ProblemDetail,
 	SettingsExport,
 	SettingsForm,
@@ -68,6 +69,13 @@ export function getInfo(): Promise<AppInfo> {
 /** Get the supported filter types, sorted by name. */
 export function getFilterTypes(): Promise<FilterTypeInfo[]> {
 	return request<FilterTypeInfo[]>("api/filter-types");
+}
+
+/**
+ * Get the filter types the simulator knows of but cannot run, sorted by name.
+ */
+export function getUnavailableFilterTypes(): Promise<UnavailableFilterType[]> {
+	return request<UnavailableFilterType[]>("api/filter-types/unavailable");
 }
 
 /**

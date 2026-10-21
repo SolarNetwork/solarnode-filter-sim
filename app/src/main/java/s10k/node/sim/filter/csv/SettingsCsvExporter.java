@@ -59,6 +59,7 @@ import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.settings.SettingsApplier;
 import s10k.node.sim.filter.sim.SimulationException;
 
@@ -492,8 +493,9 @@ final class SettingsCsvExporter {
 		if ( !comment.isEmpty() ) {
 			return new Section(comment, rows);
 		}
+		final UnavailableFilterType unavailable = registry.unavailable(c.factoryUid());
 		final String type = (def != null ? def.info(LOCALE).name()
-				: StandardFilterTypes.UNSUPPORTED.getOrDefault(c.factoryUid(), c.factoryUid()));
+				: unavailable != null ? unavailable.name() : c.factoryUid());
 		final String uid = uid(c);
 		return new Section(banner(type + ": " + (uid != null ? uid : instanceKey)), rows);
 	}

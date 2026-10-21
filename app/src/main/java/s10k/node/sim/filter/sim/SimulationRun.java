@@ -79,6 +79,7 @@ import s10k.node.sim.filter.domain.SimulationStats;
 import s10k.node.sim.filter.domain.UserMetadataConfig;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.settings.SettingsApplier;
 import s10k.node.sim.filter.sim.FilterTracer.DatumRecord;
 import s10k.node.sim.filter.sim.FilterTracer.StepRecord;
@@ -479,10 +480,19 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 								.formatted(label(config.id(), settings)),
 						config.id(), null);
 			} else {
-				warn(SimulationMessage.CODE_UNSUPPORTED_FILTER,
-						"The filter type %s is not supported, so datum pass through the filter %s unchanged."
-								.formatted(config.factoryUid(), label(config.id(), settings)),
-						config.id(), null);
+				final UnavailableFilterType unavailable = registry.unavailable(config.factoryUid());
+				if ( unavailable != null ) {
+					warn(SimulationMessage.CODE_UNSUPPORTED_FILTER,
+							"The filter type %s (%s) is not available, so datum pass through the filter %s unchanged. %s"
+									.formatted(unavailable.name(), config.factoryUid(),
+											label(config.id(), settings), unavailable.reason()),
+							config.id(), null);
+				} else {
+					warn(SimulationMessage.CODE_UNSUPPORTED_FILTER,
+							"The filter type %s is not supported, so datum pass through the filter %s unchanged."
+									.formatted(config.factoryUid(), label(config.id(), settings)),
+							config.id(), null);
+				}
 			}
 			return new TracingDatumFilterService(config.id(), config.factoryUid(),
 					new UnsupportedDatumFilterService(config.factoryUid(), settings.get(UID_SETTING)),

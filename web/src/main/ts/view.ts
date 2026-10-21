@@ -2,7 +2,12 @@
  * Rendering helpers shared by the execution flow, debug views, and dialogs.
  */
 
-import type { MessageLevel, SamplesInfo, SimulationMessage } from "./model.ts";
+import type {
+	FilterBundleInfo,
+	MessageLevel,
+	SamplesInfo,
+	SimulationMessage,
+} from "./model.ts";
 
 /**
  * Quote a name in a sentence, such as a Service Name, which can have spaces
@@ -13,6 +18,16 @@ import type { MessageLevel, SamplesInfo, SimulationMessage } from "./model.ts";
  */
 export function quoted(name: string): string {
 	return `"${name}"`;
+}
+
+/**
+ * Get a bundle's name and version, for messages.
+ *
+ * @param bundle the bundle
+ * @returns the label, such as `com.example.filter 1.2.0`
+ */
+export function bundleLabel(bundle: FilterBundleInfo): string {
+	return bundle.version ? `${bundle.name} ${bundle.version}` : bundle.name;
 }
 
 /** The badge class of each message level. */

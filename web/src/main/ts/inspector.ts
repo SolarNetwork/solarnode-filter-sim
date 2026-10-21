@@ -10,7 +10,7 @@ import {
 	type SettingProblem,
 	type SettingsForm,
 } from "./model.ts";
-import { externalFilesText, quoted } from "./view.ts";
+import { bundleLabel, externalFilesText, quoted } from "./view.ts";
 import type { ChainSlot, SettingChanges, Workspace } from "./workspace.ts";
 
 /** What the inspector's buttons do. */
@@ -368,7 +368,10 @@ export class Inspector {
 		} else if (ws.isUnknown(filter)) {
 			title = "Unknown Filter";
 		} else {
-			title = type?.name ?? "Unsupported Filter";
+			title =
+				type?.name ??
+				ws.unavailableType(filter.factoryUid)?.name ??
+				"Unsupported Filter";
 		}
 		header.append(element("h2", "h5 mb-1", title));
 		const about = element("div", "small text-body-secondary sim-about");
@@ -379,11 +382,23 @@ export class Inspector {
 			about.textContent =
 				"A chain uses this filter by its Service Name, but its settings are not in this configuration. Datum pass through it unchanged, and an export keeps only the chain's reference to it.";
 		} else if (!type) {
-			about.textContent = `The simulator does not support the ${filter.factoryUid} filter type, so datum pass through it unchanged. Its settings are kept as they are.`;
+			const unavailable = ws.unavailableType(filter.factoryUid);
+			about.textContent = unavailable
+				? `The filter type ${unavailable.name} (${filter.factoryUid})${unavailable.bundle ? `, from ${bundleLabel(unavailable.bundle)},` : ""} is not available, so datum pass through it unchanged. Its settings are kept as they are. ${unavailable.reason}`
+				: `The simulator does not support the ${filter.factoryUid} filter type, so datum pass through it unchanged. Its settings are kept as they are.`;
 		} else if (type.description) {
 			about.append(safeHtml(type.description));
 		}
 		header.append(about);
+		if (type?.bundle) {
+			header.append(
+				element(
+					"div",
+					"small text-body-secondary mt-1",
+					`A custom filter, from ${bundleLabel(type.bundle)}.`,
+				),
+			);
+		}
 		const files = ws.externalFilesOf(filter.id);
 		if (files.length) {
 			const external = element("div", "small mt-2 sim-external-note");

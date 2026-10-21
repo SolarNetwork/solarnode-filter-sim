@@ -37,9 +37,11 @@ import s10k.node.sim.filter.domain.FilterTypeInfo;
 public class FilterTypeRegistry {
 
 	private final Map<String, FilterTypeDefinition> definitions;
+	private final Map<String, UnavailableFilterType> unavailable;
 
 	/**
-	 * Constructor.
+	 * Constructor, with the {@link StandardFilterTypes#unsupported()} filter
+	 * types as the unavailable ones.
 	 *
 	 * @param definitions
 	 *        the filter type definitions
@@ -47,6 +49,22 @@ public class FilterTypeRegistry {
 	 *         if more than one definition has the same factory UID
 	 */
 	public FilterTypeRegistry(Collection<FilterTypeDefinition> definitions) {
+		this(definitions, StandardFilterTypes.unsupported());
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param definitions
+	 *        the filter type definitions
+	 * @param unavailable
+	 *        the filter types the simulator knows of but cannot run; those with
+	 *        the factory UID of a definition are ignored
+	 * @throws IllegalArgumentException
+	 *         if more than one definition has the same factory UID
+	 */
+	public FilterTypeRegistry(Collection<FilterTypeDefinition> definitions,
+			Collection<UnavailableFilterType> unavailable) {
 		super();
 		Map<String, FilterTypeDefinition> map = new LinkedHashMap<>(definitions.size());
 		for ( FilterTypeDefinition def : definitions ) {
@@ -56,6 +74,48 @@ public class FilterTypeRegistry {
 			}
 		}
 		this.definitions = Map.copyOf(map);
+		Map<String, UnavailableFilterType> u = new LinkedHashMap<>(unavailable.size());
+		for ( UnavailableFilterType type : unavailable ) {
+			if ( !map.containsKey(type.factoryUid()) ) {
+				u.putIfAbsent(type.factoryUid(), type);
+			}
+		}
+		this.unavailable = Map.copyOf(u);
+	}
+
+	/**
+	 * Get a filter type the simulator knows of but cannot run.
+	 *
+	 * @param factoryUid
+	 *        the factory UID
+	 * @return the filter type, or {@code null} if it is not one
+	 */
+	public @Nullable UnavailableFilterType unavailable(String factoryUid) {
+		return unavailable.get(factoryUid);
+	}
+
+	/**
+	 * Get the filter types the simulator knows of but cannot run, sorted by
+	 * name.
+	 *
+	 * @return the filter types
+	 */
+	public List<UnavailableFilterType> unavailableTypes() {
+		return unavailable.values().stream()
+				.sorted(Comparator.comparing(UnavailableFilterType::name, String.CASE_INSENSITIVE_ORDER))
+				.toList();
+	}
+
+	/**
+	 * Test if a factory UID is a filter type the simulator knows of: a
+	 * supported one, or an unavailable one.
+	 *
+	 * @param factoryUid
+	 *        the factory UID
+	 * @return {@code true} if the simulator knows of the filter type
+	 */
+	public boolean isFilterType(String factoryUid) {
+		return (definitions.containsKey(factoryUid) || unavailable.containsKey(factoryUid));
 	}
 
 	/**

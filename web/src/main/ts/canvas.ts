@@ -25,7 +25,7 @@ import {
 } from "./layout.ts";
 import { UNASSIGNED_UID, type DatumTrace, type FilterConfig } from "./model.ts";
 import type { DatumPath, FilterRunStats } from "./results.ts";
-import { externalFilesText, quoted } from "./view.ts";
+import { bundleLabel, externalFilesText, quoted } from "./view.ts";
 import type {
 	ChainSlot,
 	Point,
@@ -1144,9 +1144,19 @@ export class Canvas extends EventTarget {
 			return `${quoted(ws.label(filter))}: an unknown filter, which a chain uses by its Service Name but whose settings are not in this configuration. Datum pass through it unchanged.`;
 		}
 		const type = ws.type(filter.factoryUid);
+		const unavailable = type
+			? undefined
+			: ws.unavailableType(filter.factoryUid);
 		const lines = [
-			type ? type.name : `Unsupported filter type ${filter.factoryUid}`,
+			type
+				? type.name
+				: unavailable
+					? `${unavailable.name}: not available. ${unavailable.reason}`
+					: `Unsupported filter type ${filter.factoryUid}`,
 		];
+		if (type?.bundle) {
+			lines.push(`A custom filter, from ${bundleLabel(type.bundle)}.`);
+		}
 		if (filter.instanceKey) {
 			lines.push(`Instance ID: ${filter.instanceKey}`);
 		}

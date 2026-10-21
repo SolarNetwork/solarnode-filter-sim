@@ -25,8 +25,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.domain.FilterBundleInfo;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 
 /**
  * The custom filter types loaded from the custom filters path.
@@ -45,23 +46,6 @@ import s10k.node.sim.filter.registry.FilterTypeDefinition;
  */
 public record CustomFilters(List<FilterTypeDefinition> definitions,
 		List<UnavailableFilterType> unavailable, List<FilterBundle> bundles, List<String> problems) {
-
-	/**
-	 * A filter type that is not available.
-	 *
-	 * @param factoryUid
-	 *        the factory UID
-	 * @param displayName
-	 *        the display name, or {@code null}
-	 * @param bundle
-	 *        the label of the bundle that provides the type
-	 * @param reason
-	 *        why the filter type is not available, as a sentence
-	 */
-	public record UnavailableFilterType(String factoryUid, @Nullable String displayName, String bundle,
-			String reason) {
-
-	}
 
 	/** No custom filters. */
 	public static final CustomFilters NONE = new CustomFilters(List.of(), List.of(), List.of(),
@@ -99,11 +83,14 @@ public record CustomFilters(List<FilterTypeDefinition> definitions,
 					.collect(Collectors.joining(", "));
 			lines.add("  %s, %s: %s".formatted(bundle.label(), bundle.file(), !types.isEmpty() ? types
 					: bundle.blueprint() ? "no available filter types" : "library"));
+			for ( String warning : bundle.warnings() ) {
+				lines.add("    Warning: " + warning);
+			}
 		}
 		for ( UnavailableFilterType u : unavailable ) {
-			lines.add("  Not available: %s (%s), from %s. %s".formatted(
-					u.displayName() != null ? u.displayName() : u.factoryUid(), u.factoryUid(),
-					u.bundle(), u.reason()));
+			final FilterBundleInfo bundle = u.bundle();
+			lines.add("  Not available: %s (%s)%s. %s".formatted(u.name(), u.factoryUid(),
+					bundle != null ? ", from " + bundle.label() : "", u.reason()));
 		}
 		for ( String problem : problems ) {
 			lines.add("  Problem: " + problem);

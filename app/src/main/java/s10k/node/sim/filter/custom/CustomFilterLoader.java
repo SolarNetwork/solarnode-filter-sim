@@ -48,9 +48,9 @@ import s10k.node.sim.filter.blueprint.BlueprintReader;
 import s10k.node.sim.filter.blueprint.FilterBlueprintInterpreter;
 import s10k.node.sim.filter.blueprint.FilterBlueprintInterpreter.Interpretation;
 import s10k.node.sim.filter.blueprint.FilterTypeDescriptor;
-import s10k.node.sim.filter.custom.CustomFilters.UnavailableFilterType;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeOrigin;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 import net.solarnetwork.service.ExpressionService;
 
 /**
@@ -70,7 +70,8 @@ import net.solarnetwork.service.ExpressionService;
  * if that header is missing or has {@code .}. It reads the blueprint XML that
  * the {@code Bundle-Blueprint} header names, or
  * {@code OSGI-INF/blueprint/*.xml} by default. A jar without blueprint XML is a
- * library for the other jars.
+ * library for the other jars. Each jar's {@code Import-Package} header is
+ * checked (see {@link ImportCheck}), for warnings about packages it needs.
  * </p>
  *
  * <p>
@@ -98,13 +99,16 @@ public final class CustomFilterLoader {
 	/** The bundle blueprint manifest header. */
 	public static final String BUNDLE_BLUEPRINT = "Bundle-Blueprint";
 
+	/** The import package manifest header. */
+	public static final String IMPORT_PACKAGE = "Import-Package";
+
 	private final ExpressionService expressionService;
 	private final Set<String> reservedFactoryUids;
 	private final BlueprintReader reader = new BlueprintReader();
 
 	/** A jar read from the path. */
 	private record BundleJar(Path file, String name, @Nullable String version, List<Path> classPath,
-			List<Blueprint> blueprints) {
+			List<Blueprint> blueprints, @Nullable String importPackage) {
 
 		private String label() {
 			return (version != null ? name + " " + version : name);
@@ -173,6 +177,7 @@ public final class CustomFilterLoader {
 		final List<UnavailableFilterType> unavailable = new ArrayList<>(2);
 		final List<FilterBundle> bundles = new ArrayList<>(jars.size());
 		final Set<String> factoryUids = new HashSet<>(8);
+		final ImportCheck imports = new ImportCheck(classLoader);
 		for ( BundleJar jar : jars ) {
 			final List<String> available = new ArrayList<>(4);
 			if ( !jar.blueprints().isEmpty() ) {
@@ -187,12 +192,12 @@ public final class CustomFilterLoader {
 					final String uid = descriptor.factoryUid();
 					if ( reservedFactoryUids.contains(uid) ) {
 						unavailable.add(new UnavailableFilterType(uid, descriptor.displayName(),
-								jar.label(), "It has the factory UID of a standard filter type."));
+								origin.info(), "It has the factory UID of a standard filter type."));
 						continue;
 					}
 					if ( !factoryUids.add(uid) ) {
 						unavailable.add(
-								new UnavailableFilterType(uid, descriptor.displayName(), jar.label(),
+								new UnavailableFilterType(uid, descriptor.displayName(), origin.info(),
 										"Another jar earlier in the path has the same factory UID."));
 						continue;
 					}
@@ -207,13 +212,13 @@ public final class CustomFilterLoader {
 						}
 						case BlueprintFilterTypes.Unavailable(var u, var name, var reason) -> {
 							factoryUids.remove(u);
-							unavailable.add(new UnavailableFilterType(u, name, jar.label(), reason));
+							unavailable.add(new UnavailableFilterType(u, name, origin.info(), reason));
 						}
 					}
 				}
 			}
 			bundles.add(new FilterBundle(jar.name(), jar.version(), jar.file(), List.copyOf(available),
-					!jar.blueprints().isEmpty()));
+					!jar.blueprints().isEmpty(), imports.check(jar.importPackage())));
 		}
 		return new CustomFilters(List.copyOf(definitions), List.copyOf(unavailable),
 				List.copyOf(bundles), List.copyOf(problems));
@@ -299,7 +304,8 @@ public final class CustomFilterLoader {
 							entry.getName(), e.getMessage()));
 				}
 			}
-			return new BundleJar(file, name, version, List.copyOf(classPath), List.copyOf(blueprints));
+			return new BundleJar(file, name, version, List.copyOf(classPath), List.copyOf(blueprints),
+					attrs.getValue(IMPORT_PACKAGE));
 		}
 	}
 

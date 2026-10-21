@@ -38,11 +38,14 @@ import org.jspecify.annotations.Nullable;
  * @param blueprint
  *        {@code true} if the bundle has blueprint XML; a jar without it is a
  *        library for other bundles
+ * @param warnings
+ *        problems with the bundle's manifest that might stop its filters from
+ *        working, such as packages it imports that are missing
  * @author matt
  * @version 1.0
  */
 public record FilterBundle(String name, @Nullable String version, Path file, List<String> factoryUids,
-		boolean blueprint) {
+		boolean blueprint, List<String> warnings) {
 
 	/**
 	 * Get the bundle name and version, for messages.

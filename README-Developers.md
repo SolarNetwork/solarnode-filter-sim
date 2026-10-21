@@ -89,7 +89,8 @@ records in the `s10k.node.sim.filter.domain` package.
 | Endpoint | Description |
 |:---------|:------------|
 | `GET /api/info` | The application name and version. |
-| `GET /api/filter-types` | The supported filter types, sorted by name. |
+| `GET /api/filter-types` | The supported filter types, sorted by name. A custom filter type has its `bundle` (`name` and `version`). |
+| `GET /api/filter-types/unavailable` | The filter types the simulator knows of but cannot run, such as custom filter types that need a service it does not provide, sorted by name, each with its `reason`. |
 | `POST /api/settings-form` | Get a filter's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. |
 | `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out. |
 | `POST /api/settings/merge` | Add a settings CSV file to a configuration, the way a node imports a file: a `SettingsMergeRequest` (`config` and `csv`) in, a `SettingsImport` with the combined configuration out. |
@@ -231,7 +232,18 @@ from their bundles' blueprints at startup instead (the `custom` package):
 
 The factory, init and destroy methods, and each filter call, run with the bundle's class loader
 as the thread context class loader. Problems loading a jar, and types that are not available,
-are listed in the startup message.
+are listed in the startup message, as are the warnings of `ImportCheck`. It checks each jar's
+`Import-Package` header for packages that nothing has, and for `net.solarnetwork` packages
+whose version range excludes the simulator's. It does not check the versions of other
+libraries, as the simulator runs the SolarNode bundles with newer ones than they import (such as
+Spring 7).
+
+The registry also holds the types that are not available (`UnavailableFilterType`), with
+`StandardFilterTypes.UNSUPPORTED`. A settings CSV import keeps their filters, and a simulation
+passes datum through them unchanged, with the reason in its message. The UI shows the reason
+in the inspector and on the canvas, puts the custom types under **Custom** in the palette, and
+saves the bundle of each custom type a simulation uses in simulation files
+(`customFilters`), to say which bundles are missing when a file is opened.
 
 `BlueprintFilterTypesTests` defines the standard filter types from their own blueprints and
 checks that the smoke fixtures give the same results as with `StandardFilterTypes`. That checks

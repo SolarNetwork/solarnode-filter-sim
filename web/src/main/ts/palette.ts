@@ -1,6 +1,7 @@
 import { FILTER_TYPE_MIME, UNASSIGNED_MIME } from "./canvas.ts";
 import { filterIcon } from "./icons.ts";
 import { UNASSIGNED_UID, type FilterTypeInfo } from "./model.ts";
+import { bundleLabel, element } from "./view.ts";
 import { shortTypeName } from "./workspace.ts";
 
 /**
@@ -31,7 +32,8 @@ const UNASSIGNED_ICON = "dash-square-dotted";
 
 /**
  * Show the filter palette: Unassigned and the filter chain first, then the
- * other filter types by name.
+ * other filter types by name, then the custom filter types by name, under a
+ * heading.
  *
  * @param el the palette element
  * @param types the supported filter types
@@ -51,6 +53,30 @@ export function renderPalette(
 				: 1
 			: paletteName(a).localeCompare(paletteName(b)),
 	);
+	const item = (type: FilterTypeInfo): HTMLElement => {
+		const description = plainText(type.description);
+		const bundle = type.bundle
+			? `\n\nA custom filter, from ${bundleLabel(type.bundle)}.`
+			: "";
+		return paletteItem(
+			paletteName(type),
+			filterIcon(type.factoryUid),
+			`${type.name}${description ? `: ${description}` : ""}${bundle}
+
+Drag onto the canvas, or click to add it to the end of the Main chain.`,
+			FILTER_TYPE_MIME,
+			type.factoryUid,
+			() => onAdd(type),
+		);
+	};
+	const custom = sorted.filter((t) => t.bundle);
+	const heading = element(
+		"h3",
+		"sim-palette-group h6 small text-body-secondary mt-2 mb-0",
+		"Custom",
+	);
+	heading.title =
+		"The filters of the jars the simulator was started with, with --sim.filters.path.";
 	el.replaceChildren(
 		paletteItem(
 			UNASSIGNED_UID,
@@ -62,19 +88,8 @@ Drag onto a link of a chain, or click to add it to the end of the Main chain.`,
 			UNASSIGNED_UID,
 			onAddUnassigned,
 		),
-		...sorted.map((type) => {
-			const description = plainText(type.description);
-			return paletteItem(
-				paletteName(type),
-				filterIcon(type.factoryUid),
-				`${type.name}${description ? `: ${description}` : ""}
-
-Drag onto the canvas, or click to add it to the end of the Main chain.`,
-				FILTER_TYPE_MIME,
-				type.factoryUid,
-				() => onAdd(type),
-			);
-		}),
+		...sorted.filter((t) => !t.bundle).map(item),
+		...(custom.length ? [heading, ...custom.map(item)] : []),
 	);
 }
 

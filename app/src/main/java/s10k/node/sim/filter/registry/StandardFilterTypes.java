@@ -147,6 +147,20 @@ public final class StandardFilterTypes {
 	 */
 	public static final Map<String, String> UNSUPPORTED = Map.of();
 
+	/** The reason the {@link #UNSUPPORTED} filter types are not available. */
+	public static final String UNSUPPORTED_REASON = "The simulator does not support it.";
+
+	/**
+	 * Get the {@link #UNSUPPORTED} filter types.
+	 *
+	 * @return the filter types
+	 */
+	public static List<UnavailableFilterType> unsupported() {
+		return UNSUPPORTED.entrySet().stream()
+				.map(e -> new UnavailableFilterType(e.getKey(), e.getValue(), null, UNSUPPORTED_REASON))
+				.toList();
+	}
+
 	/**
 	 * The SolarNode home directory on a node, which the {@code sn.home} system
 	 * property gives, unless the simulator is started with another value.

@@ -71,6 +71,7 @@ import s10k.node.sim.filter.domain.SettingsMergeRequest;
 import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
+import s10k.node.sim.filter.domain.UnavailableFilterTypeInfo;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.web.InfoController;
@@ -212,9 +213,10 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		for ( Class<?> type : API_TYPES ) {
 			registerElementArrayTypes(hints, type, false, walked);
 		}
-		// GET /api/filter-types returns a list, and a 400 problem detail can
-		// have a list of messages
+		// GET /api/filter-types and /api/filter-types/unavailable return lists,
+		// and a 400 problem detail can have a list of messages
 		registerElementArrayTypes(hints, FilterTypeInfo.class, true, walked);
+		registerElementArrayTypes(hints, UnavailableFilterTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, SimulationMessage.class, true, walked);
 	}
 

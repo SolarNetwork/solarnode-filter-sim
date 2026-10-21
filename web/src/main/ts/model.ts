@@ -27,6 +27,13 @@ export interface AppInfo {
 	version?: string;
 }
 
+/** The bundle a custom filter type comes from. */
+export interface FilterBundleInfo {
+	/** The bundle symbolic name, or the jar file name if it has none. */
+	name: string;
+	version?: string;
+}
+
 /** A supported filter type. */
 export interface FilterTypeInfo {
 	factoryUid: string;
@@ -35,6 +42,22 @@ export interface FilterTypeInfo {
 	description?: string;
 	chain: boolean;
 	capabilities?: string[];
+	/** The bundle of a custom filter type, from the custom filters path. */
+	bundle?: FilterBundleInfo;
+}
+
+/**
+ * A filter type the simulator knows of but cannot run, such as a custom filter
+ * type that needs a service the simulator does not provide.
+ */
+export interface UnavailableFilterType {
+	factoryUid: string;
+	/** The display name, or the factory UID if it is not known. */
+	name: string;
+	/** The bundle of a custom filter type. */
+	bundle?: FilterBundleInfo;
+	/** Why the type is not available, as a sentence. */
+	reason: string;
 }
 
 /** The configuration of one filter instance. */

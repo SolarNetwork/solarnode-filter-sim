@@ -262,10 +262,19 @@ def testFilterBundleJar = tasks.register('testFilterBundleJar', Jar) {
 	into('lib') {
 		from testFilterLibJar
 	}
+	// the imports have a missing package and a version the simulator does not have, for the
+	// import check, plus imports it must not warn about
 	manifest {
 		attributes('Bundle-SymbolicName': 'com.example.solarnode.filter;singleton:=true',
 			'Bundle-Version': '1.0.0',
-			'Bundle-ClassPath': '.,lib/example-scaling.jar')
+			'Bundle-ClassPath': '.,lib/example-scaling.jar',
+			'Import-Package': ['com.example.missing;version="[1.0,2.0)"',
+				'com.example.optional;resolution:=optional',
+				'java.time',
+				'net.solarnetwork.common.osgi.service;version="[1.0,2.0)"',
+				'net.solarnetwork.node.service;net.solarnetwork.node.service.support;version="[1.15,2.0)"',
+				'net.solarnetwork.service;version="[9.0,10.0)"',
+				'org.springframework.context;version="[6.2,7.0)"'].join(','))
 	}
 }
 

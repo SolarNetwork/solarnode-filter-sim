@@ -88,6 +88,41 @@ Java 25. The native executable cannot load classes, so it refuses `--sim.filters
 
 All the jars share one class loader, which can also use the classes of the SolarNode bundles the
 simulator includes. Add any library jars your filters need to the path too, or embed them in
-your bundle with its `Bundle-ClassPath` manifest header.
+your bundle with its `Bundle-ClassPath` manifest header. The startup message warns about the
+packages a bundle's `Import-Package` header names that no jar has, and about `net.solarnetwork`
+packages it imports in a version range that does not include the simulator's version.
+
+Custom filters appear under **Custom** in the palette. A saved simulation file names the bundle
+and version of each custom filter it uses, so opening it in a simulator without that bundle, or
+with another version, says which bundle it needs.
+
+### Writing filters the simulator can run
+
+The simulator creates each filter the way SolarNode does: with the blueprint's constructor
+arguments and properties, then its settings, then its init method. It does not call an
+`update-method` such as `configurationChanged`.
+
+- **Time:** if the filter class also has a constructor that takes a `Clock` or `InstantSource`
+  before the blueprint's arguments, the simulator uses it, with a clock that follows the datum
+  timestamps. Give a filter that reads the time such a constructor, as the standard filters
+  have, so it behaves the same in a simulation as on a node.
+- **Services:** the blueprint can give the filter these services, as a `<reference>`, or with a
+  `DynamicServiceTracker`:
+  - `DatumQueue`, `DatumMetadataService`, `InstructionExecutionService`, and `ReactorService`
+  - `TaskScheduler`, `TransientSettingDao`, and `MetricDao`
+  - `MetadataService`: with the `(function=node)` filter, the Node Metadata Service, otherwise the
+    metadata services of the simulation's environment
+  - `TemporalTariffEvaluator` and `TariffScheduleProvider` (trackers only), and the filters, as a
+    `<reference-list>` of `DatumFilterService`
+  - the object mapper of an `ObjectMapperService` (`factory-method="getObjectMapper"`)
+- **Common services:** the services that `BaseIdentifiable` and `BaseDatumFilterSupport` filters
+  use (expressions, datum history, operational modes, placeholders, metadata, location, tariff
+  schedules, and Local State) are always the simulator's, whatever the blueprint wires.
+- **Not supported:** any other service, such as `IdentityService`, giving the filter the
+  `bundleContext`, and a filter bean with a `factory-method`. A filter type that needs one of
+  these is not available; datum pass through its filters unchanged, and imports keep their
+  settings.
+- **Settings:** the settings form comes from the filter's `getSettingSpecifiers()` and the
+  message source of its `SettingSpecifierProviderFactory` service, as on a node.
 
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/

@@ -63,6 +63,7 @@ import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
+import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.settings.SettingsApplier;
 import s10k.node.sim.filter.sim.SimulationException;
 
@@ -757,8 +758,7 @@ final class SettingsCsvImporter {
 	}
 
 	private boolean isFilterType(String factoryUid) {
-		return (registry.definition(factoryUid) != null
-				|| StandardFilterTypes.UNSUPPORTED.containsKey(factoryUid));
+		return registry.isFilterType(factoryUid);
 	}
 
 	private List<String> ignore(Component c) {
@@ -809,10 +809,10 @@ final class SettingsCsvImporter {
 	}
 
 	private List<String> filterTypeUids() {
-		final List<String> result = new ArrayList<>(
-				registry.definitions().size() + StandardFilterTypes.UNSUPPORTED.size());
+		final List<UnavailableFilterType> unavailable = registry.unavailableTypes();
+		final List<String> result = new ArrayList<>(registry.definitions().size() + unavailable.size());
 		registry.definitions().forEach(d -> result.add(d.factoryUid()));
-		result.addAll(StandardFilterTypes.UNSUPPORTED.keySet());
+		unavailable.forEach(u -> result.add(u.factoryUid()));
 		return result;
 	}
 
@@ -998,11 +998,11 @@ final class SettingsCsvImporter {
 	}
 
 	private void instanceMessages(Instance instance) {
-		final String name = StandardFilterTypes.UNSUPPORTED.get(instance.factoryUid());
-		if ( name != null ) {
+		final UnavailableFilterType unavailable = registry.unavailable(instance.factoryUid());
+		if ( unavailable != null ) {
 			messages.add(info(SimulationMessage.CODE_UNSUPPORTED_FILTER,
-					"The %s %s is not supported, so datum pass through it unchanged. Its settings are kept as they are."
-							.formatted(name, instance.label()),
+					"The %s %s is not available, so datum pass through it unchanged. Its settings are kept as they are. %s"
+							.formatted(unavailable.name(), instance.label(), unavailable.reason()),
 					instance.id()));
 		}
 		final String problem = InstanceIds.problem(instance.instanceKey());
