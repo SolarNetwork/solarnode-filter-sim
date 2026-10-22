@@ -51,6 +51,11 @@ port. The native executable listens only on the local machine (`127.0.0.1`); pas
 `--server.address=0.0.0.0` to accept connections from other machines. It logs only warnings and
 errors; pass `--logging.level.root=info` for the full log.
 
+The native executable also opens its URL in your web browser when it starts (on Linux, only when
+there is a graphical display). Pass `--sim.browser.open=false` (or set the `SIM_BROWSER_OPEN`
+environment variable to `false`) to turn this off, or `--sim.browser.open=true` to turn it on when
+running from source.
+
 ## External commands
 
 The POA Calculator (pvlib) filter runs an external command, normally the `ghi-to-poa` script of

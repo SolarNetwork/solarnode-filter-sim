@@ -31,9 +31,9 @@ public class FilterSimulatorApplication {
 			// default properties have the lowest precedence, so --server.port,
 			// --server.address, --logging.level.root, and the like still override these;
 			// the root level stays at WARN, not OFF, as FilterLogCapture needs filter
-			// warnings logged
+			// warnings logged; the browser opens on startup, unless --sim.browser.open=false
 			app.setDefaultProperties(Map.of("server.port", NATIVE_DEFAULT_PORT, "server.address",
-					NATIVE_DEFAULT_ADDRESS, "logging.level.root", "WARN"));
+					NATIVE_DEFAULT_ADDRESS, "logging.level.root", "WARN", "sim.browser.open", true));
 		}
 		app.run(args);
 	}

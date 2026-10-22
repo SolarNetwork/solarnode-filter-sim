@@ -17,11 +17,12 @@
  * ==================================================================
  */
 
-package s10k.node.sim.filter.web;
+package s10k.node.sim.filter;
 
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.web.server.WebServer;
@@ -31,6 +32,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.custom.CustomFilters;
+import s10k.node.sim.filter.web.InfoController;
 
 /**
  * Print a message with the application's URL once it has started, in place of
@@ -50,6 +52,7 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 
 	private final @Nullable BuildProperties buildProperties;
 	private final @Nullable CustomFilterService customFilters;
+	private final boolean openBrowser;
 
 	/**
 	 * Constructor.
@@ -58,12 +61,17 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 	 *        the build properties, if available
 	 * @param customFilters
 	 *        the custom filters service, if available
+	 * @param openBrowser
+	 *        {@code true} to open the URL in the user's web browser, from the
+	 *        {@code sim.browser.open} property
 	 */
 	public StartupMessage(ObjectProvider<BuildProperties> buildProperties,
-			ObjectProvider<CustomFilterService> customFilters) {
+			ObjectProvider<CustomFilterService> customFilters,
+			@Value("${sim.browser.open:false}") boolean openBrowser) {
 		super();
 		this.buildProperties = buildProperties.getIfAvailable();
 		this.customFilters = customFilters.getIfAvailable();
+		this.openBrowser = openBrowser;
 	}
 
 	@Override
@@ -81,7 +89,11 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 				.describe(Locale.getDefault()) ) {
 			System.out.println(line);
 		}
-		System.out.println(message(url(ctx.getEnvironment(), server.getPort())));
+		final String url = url(ctx.getEnvironment(), server.getPort());
+		System.out.println(message(url));
+		if ( openBrowser ) {
+			BrowserLauncher.open(url);
+		}
 	}
 
 	/**
