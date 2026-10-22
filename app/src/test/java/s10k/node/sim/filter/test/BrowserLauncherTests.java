@@ -36,8 +36,8 @@ public class BrowserLauncherTests {
 
 	@Test
 	public void command_mac() {
-		then(BrowserLauncher.command("Mac OS X", Map.of(), URL)).as("Uses open")
-				.containsExactly("open", URL);
+		then(BrowserLauncher.command("Mac OS X", Map.of(), URL)).as("Uses open").containsExactly("open",
+				URL);
 	}
 
 	@Test

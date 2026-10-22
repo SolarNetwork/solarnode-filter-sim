@@ -92,8 +92,7 @@ public final class BrowserLauncher {
 	 * @return the command, or {@code null} if there is no graphical display to
 	 *         open a browser on
 	 */
-	public static @Nullable List<String> command(String osName, Map<String, String> env,
-			String url) {
+	public static @Nullable List<String> command(String osName, Map<String, String> env, String url) {
 		final String os = osName.toLowerCase(Locale.ROOT);
 		if ( os.startsWith("mac") || os.startsWith("darwin") ) {
 			return List.of("open", url);

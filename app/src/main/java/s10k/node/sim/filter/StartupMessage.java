@@ -32,7 +32,6 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.custom.CustomFilters;
-import s10k.node.sim.filter.web.InfoController;
 
 /**
  * Print a message with the application's URL once it has started, in place of
@@ -106,7 +105,7 @@ public class StartupMessage implements ApplicationListener<ApplicationReadyEvent
 	public String message(String url) {
 		final BuildProperties props = this.buildProperties;
 		final String name = (props != null && props.getName() != null ? props.getName()
-				: InfoController.DEFAULT_APP_NAME);
+				: FilterSimulatorApplication.DEFAULT_APP_NAME);
 		final String version = (props != null ? props.getVersion() : null);
 		return "%s%s started, visit%n%s".formatted(name, version != null ? " (" + version + ")" : "",
 				url);

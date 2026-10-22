@@ -25,6 +25,7 @@ import org.springframework.boot.info.BuildProperties;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import s10k.node.sim.filter.FilterSimulatorApplication;
 import s10k.node.sim.filter.custom.CustomFilterService;
 
 /**
@@ -36,11 +37,6 @@ import s10k.node.sim.filter.custom.CustomFilterService;
 @RestController
 @RequestMapping("/api")
 public class InfoController {
-
-	/**
-	 * The application name returned when build information is not available.
-	 */
-	public static final String DEFAULT_APP_NAME = "sn-filter-sim";
 
 	private final @Nullable BuildProperties buildProperties;
 	private final boolean customFilters;
@@ -85,10 +81,11 @@ public class InfoController {
 	public AppInfo info() {
 		final BuildProperties props = this.buildProperties;
 		if ( props == null ) {
-			return new AppInfo(DEFAULT_APP_NAME, null, customFilters);
+			return new AppInfo(FilterSimulatorApplication.DEFAULT_APP_NAME, null, customFilters);
 		}
 		final String name = props.getName();
-		return new AppInfo(name != null ? name : DEFAULT_APP_NAME, props.getVersion(), customFilters);
+		return new AppInfo(name != null ? name : FilterSimulatorApplication.DEFAULT_APP_NAME,
+				props.getVersion(), customFilters);
 	}
 
 }

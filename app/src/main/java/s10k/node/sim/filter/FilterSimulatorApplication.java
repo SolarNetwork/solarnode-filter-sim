@@ -22,6 +22,11 @@ public class FilterSimulatorApplication {
 	 */
 	public static final String NATIVE_DEFAULT_ADDRESS = "127.0.0.1";
 
+	/**
+	 * The application name returned when build information is not available.
+	 */
+	public static final String DEFAULT_APP_NAME = "sn-filter-sim";
+
 	public static void main(String[] args) {
 		InterfaceInitializer.initialize();
 		SpringApplication app = new SpringApplication(FilterSimulatorApplication.class);
