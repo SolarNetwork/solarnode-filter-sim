@@ -18,6 +18,12 @@ const LINE_WIDTH = 2;
  */
 const LANE = LINE_WIDTH + 4.5;
 
+/**
+ * How far the lanes nearest a link are from its middle: clear of the link's
+ * line, which is as wide as a route's, so a route is never hidden under it.
+ */
+const LINK_CLEARANCE = LINE_WIDTH + 1.5;
+
 /** The narrowest a route's click area gets. */
 const MIN_HIT_WIDTH = 7;
 
@@ -276,7 +282,15 @@ export function drawRoutes(
 	const spacing =
 		n === 1 ? 0 : Math.max(MIN_LANE, Math.min(LANE, MAX_BAND / (n - 1)));
 	const width = LINE_WIDTH;
-	const bandHalf = ((n - 1) * spacing) / 2 + width / 2;
+	// the lanes run either side of the link, none along its middle; with an
+	// odd number, the extra lane is on the right
+	const left = Math.floor(n / 2);
+	const laneOffset = (lane: number) =>
+		lane < left
+			? -(LINK_CLEARANCE + (left - 1 - lane) * spacing)
+			: LINK_CLEARANCE + (lane - left) * spacing;
+	const bandHalf =
+		LINK_CLEARANCE + (Math.max(left, n - left) - 1) * spacing + width / 2;
 	const groups = new Map<string, ChipGroup>();
 	const chip = (key: string, group: Omit<ChipGroup, "chips">) => {
 		let g = groups.get(key);
@@ -293,7 +307,7 @@ export function drawRoutes(
 	const hits: SVGElement[] = [];
 	lines.forEach((line, lane) => {
 		const { route } = line;
-		const d = (lane - (n - 1) / 2) * spacing;
+		const d = laneOffset(lane);
 		const { points, queued } = routePoints(line, geo);
 		const out = line.dim ? dimmed : shown;
 		const cls = `sim-route${line.dim ? " is-dim" : ""}`;
