@@ -1,0 +1,102 @@
+.options-explicit-col-widths th:nth-child(1) { width: 8em !important; min-width: 8em !important; }
+.options-explicit-col-widths th:nth-child(2) { width: 12em !important; min-width: 12em !important; }
+/*.options-explicit-col-widths th:nth-child(3) { width: 40%; }*/
+
+.props-explicit-col-widths th:nth-child(1) { width: 20%; }
+.props-explicit-col-widths th:nth-child(2) { width: 10%; }
+.props-explicit-col-widths th:nth-child(3) { width: 40%; }
+
+@font-face {
+	font-family: 'Suisse Screen';
+	font-weight: 100 599;
+	src: url('../fonts/SuisseScreen-Monitor-WebXL.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Suisse Screen';
+	font-weight: 600 1000;
+	src: url('../fonts/SuisseScreen-SemiBold-WebXL.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Suisse Works';
+	src: url('../fonts/SuisseWorks-Regular-WebXL.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Source Code Pro';
+	font-style: normal;
+	font-weight: 300;
+	src: url('../fonts/source-code-pro-v22-latin-300.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Source Code Pro';
+	font-style: italic;
+	font-weight: 300;
+	src: url('../fonts/source-code-pro-v22-latin-300italic.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Source Code Pro';
+	font-style: normal;
+	font-weight: 400;
+	src: url('../fonts/source-code-pro-v22-latin-regular.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Source Code Pro';
+	font-style: italic;
+	font-weight: 400;
+	src: url('../fonts/source-code-pro-v22-latin-italic.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Source Code Pro';
+	font-style: normal;
+	font-weight: 700;
+	src: url('../fonts/source-code-pro-v22-latin-700.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Source Code Pro';
+	font-style: italic;
+	font-weight: 700;
+	src: url('../fonts/source-code-pro-v22-latin-700italic.woff2') format('woff2');
+}
+
+:root {
+	--md-text-font: "Suisse Screen";
+	--md-code-font: "Source Code Pro";
+	--md-hue: 47;
+}
+
+[data-md-color-scheme="default"] {
+	--md-primary-fg-color:#f7c819;
+}
+
+[data-md-color-scheme="slate"] {
+	--md-default-fg-color: hsla(var(--md-hue),15%,90%,0.87);
+	--md-primary-fg-color:#f7c819;
+}
+
+/** Lighten up heading enumerations */
+.enumerate-headings-plugin {
+	filter: opacity(35%);
+}
+
+.limit-height {
+	max-height: 400px;
+	overflow-y: hidden;
+}
+
+.gdesc-inner {
+	background-color: rgba(122, 122, 122, 0.2);
+}
+
+figure {
+	border-width: 1px 0;
+	border-color: rgba(122, 122, 122, 0.8);
+	border-style: dotted;
+	padding: 0rem 2rem;
+}
