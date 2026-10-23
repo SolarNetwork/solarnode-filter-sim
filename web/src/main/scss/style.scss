@@ -420,6 +420,15 @@ rect.sim-badge {
 	}
 }
 
+// a halo in the background color keeps labels readable over the links
+.sim-node-label,
+.sim-end-label {
+	stroke: var(--bs-body-bg);
+	stroke-width: 4px;
+	stroke-linejoin: round;
+	paint-order: stroke;
+}
+
 .sim-node-label {
 	fill: var(--bs-body-color);
 	pointer-events: none;

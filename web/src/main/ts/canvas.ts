@@ -51,6 +51,9 @@ const DETACH_DISTANCE = 60;
 /** The pixels in a line, for mouse wheel steps given in lines. */
 const WHEEL_LINE = 16;
 
+/** The width of the flow lines between filters. */
+const FLOW_WIDTH = 1;
+
 type DrawnNode = FilterNode | EndNode;
 type DrawnLink = FlowLink | ContinuationLink;
 
@@ -209,8 +212,8 @@ const FlowShape = shapes.standard.Link.define("sim.Flow", {
 	attrs: {
 		line: {
 			class: "sim-flow",
-			strokeWidth: 2,
-			targetMarker: { type: "path", d: "M 9 -5 0 0 9 5 z" },
+			strokeWidth: FLOW_WIDTH,
+			targetMarker: { type: "path", d: "M 6 -3.5 0 0 6 3.5 z" },
 		},
 	},
 	router: { name: "rightAngle", args: { margin: 18 } },
@@ -224,7 +227,6 @@ const ContinuationShape = shapes.standard.Link.define("sim.Continuation", {
 			strokeWidth: 2,
 			strokeDasharray: "1 6",
 			strokeLinecap: "round",
-			strokeOpacity: 0.5,
 			targetMarker: null,
 		},
 		wrapper: { class: "sim-continuation-wrapper" },
@@ -258,12 +260,38 @@ function linkColors(): LinkColors {
 	const style = getComputedStyle(document.body);
 	const color = (name: string, fallback: string) =>
 		style.getPropertyValue(name).trim() || fallback;
+	// an opaque grey, which keeps the filter names readable and the lines
+	// even where they cross or overlap
+	const lineColor = mixedColor(
+		"var(--bs-body-color) 40%, var(--bs-body-bg)",
+		"#adb5bd",
+	);
 	return {
-		flow: color("--bs-secondary-color", "#6c757d"),
+		flow: "#709BCB",
 		drop: color("--bs-primary", "#0d6efd"),
-		continuation: color("--bs-secondary-color", "#6c757d"),
+		continuation: lineColor,
 		grid: color("--bs-border-color", "#dee2e6"),
 	};
+}
+
+/**
+ * Resolve a CSS `color-mix()` of theme colors to a plain color.
+ *
+ * @param mix the `color-mix()` colors, after the interpolation method
+ * @param fallback the color to use if the mix cannot be resolved
+ * @returns the resolved color
+ */
+function mixedColor(mix: string, fallback: string): string {
+	const el = document.createElement("span");
+	el.style.color = `color-mix(in srgb, ${mix})`;
+	if (!el.style.color) {
+		return fallback;
+	}
+	el.style.display = "none";
+	document.body.append(el);
+	const result = getComputedStyle(el).color;
+	el.remove();
+	return result || fallback;
 }
 
 function isWithin(key: string, base: string): boolean {
@@ -427,6 +455,14 @@ export class Canvas extends EventTarget {
 			...drawing.ends.map((end) => this.#endCell(end)),
 			...drawing.links.map((link) => this.#linkCell(link)),
 		];
+		// draw the continuations under the flows, and both under the nodes
+		// so their labels show over them
+		cells.forEach((cell) =>
+			cell.set(
+				"z",
+				cell instanceof ContinuationShape ? 1 : cell.isLink() ? 2 : 3,
+			),
+		);
 		this.paper.freeze();
 		this.graph.resetCells(cells);
 		// embed nodes in the chain they are drawn under, so they move with it
@@ -1556,7 +1592,7 @@ export class Canvas extends EventTarget {
 		if (previous?.cell.isLink()) {
 			previous.cell.attr("line", {
 				stroke: this.#colors.flow,
-				strokeWidth: 2,
+				strokeWidth: FLOW_WIDTH,
 			});
 		} else if (previous) {
 			this.#refreshNode(String(previous.cell.id));
