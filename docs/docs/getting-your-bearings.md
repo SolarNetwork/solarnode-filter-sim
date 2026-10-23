@@ -4,12 +4,56 @@ When you first visit the application, you are presented with four main panes:
 
 ![User interface structure diagram](./images/ui-structure@2x.png){width=1920}
 
-* [Setup](#setup-pane) (top left) - where you configure the overall parameters of the simulation, such as the datum to run through the filters, node metadata,
-and placeholders.
-* [Control](#control-pane) (middle left) - where you can start the simulation as well as import or export the filter settings as CSV files.
-* [Filter Palette](#filter-palette) (bottom left) - a list of the available filters that you can drag onto the canvas.
+* [Toolbar](#toolbar) (top bar) - the application version and some action buttons.
+* [Setup](#setup-pane) (top left) - where you configure the overall parameters of the simulation,
+  such as the datum to run through the filters, node metadata, and placeholders.
+* [Control](#control-pane) (middle left) - where you can start the simulation as well as import or
+  export the filter settings as CSV files.
+* [Filter Palette](#filter-palette) (bottom left) - a list of the available filters that you can
+  drag onto the canvas.
 * [Canvas](#canvas) (middle) - a flow chart style visualization of the simulation.
-* [Inspector](#inspector) - shows the editable properties of a filter after you click on one in the canvas.
+* [Inspector](#inspector) - shows the editable properties of a filter after you click on one in the
+  canvas.
+
+## Toolbar
+
+<figure markdown>
+![Application toolbar](./images/toolbar@2x.png){width=856}
+</figure>
+
+The top of the window contains the application name and version, along with some
+action buttons on the right side.
+
+### Pane toggle buttons
+
+<figure markdown>
+![Application toolbar pane toggle buttons](./images/toolbar-toggle-buttons-annotated@2x.png){width=527}
+</figure>
+
+The first two buttons in the toolbar allow you to toggle the left and right applicaiton pane
+visibility, to give the [Canvas](#canvas) more room.
+
+### Simulation buttons
+
+<figure markdown>
+![Application toolbar simulation buttons](./images/toolbar-simulation-buttons@2x.png){width=224}
+<figcaption markdown>Buttons to reset, open, or export the simulation.</figcaption>
+</figure>
+
+The **New**, **Open**, and **Save** buttons on the right side of the toolbar are for managing
+the entire simulation:
+
+| Button | Description |
+|:-------|:------------|
+| **New** | Reset the simulation back to an empty state. |
+| **Open** | Upload a saved simulation file, replacing the current simulation. |
+| **Save** | Download the simulation as a file. |
+
+!!! tip
+
+	A saved simulation file contains everything you configure in the simulation, including the
+	inputs in the [Setup](#setup-pane). You can share this file with others so they can run your
+	simulation exactly as you have.
 
 ## Setup pane
 
@@ -38,7 +82,7 @@ SolarNode.
 The Control pane is where you can:
 
 * import filter settings from a SolarNode
-* export the simulation's filter settings, so you can apply them to a SolarNOde
+* export the simulation's filter settings, so you can apply them to a SolarNode
 * add _external_ filter settings, like those contributed by `solarnode-config-*` packages in
   SolarNodeOS; these are not exported with your simulation settings
 * run (or debug) the simulation
@@ -63,12 +107,33 @@ on any connector line between filters to insert that filter into the execution f
 
 ## Canvas
 
-TODO
+<figure markdown>
+![The Canvas when the application first starts](./images/canvas-start@2x.png){width=706}
+<figcaption>The Canvas when the application first starts.</figcaption>
+</figure>
+
+The Canvas is where the filter flow diagram is drawn. You can drag filters from the Filter palette
+and drop them onto the Canvas to add them to your simulation. The Canvas has a toolbar in the
+upper-right of the pane:
+
+<figure markdown>
+![The Canvas toolbar](./images/canvas-toolbar-annotated@2x.png){width=237}
+<figcaption>The Canvas toolbar.</figcaption>
+</figure>
+
+The **Toggle datum routes** button is used to show or hide lines representing "routes" each
+datum takes as it flows through the filters during a simulation run.
 
 ## Inspector
 
-TODO
+<figure markdown>
+![The Inspector showing an example filter's settings](./images/inspector-example@2x.png){width=384}
+<figcaption>The Inspector showing an example filter's settings.</figcaption>
+</figure>
 
+If you click on a filter in the Canvas, the Inspector will show you an editable form for that
+filter's settings. The form looks and works much the same way as it does in SolarNode, except that
+changes are saved automatically.
 
 [datum]: https://solarnetwork.github.io/solarnode-handbook/users/datum/
 [datum-sources]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/

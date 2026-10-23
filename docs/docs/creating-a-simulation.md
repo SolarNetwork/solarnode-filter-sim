@@ -17,6 +17,10 @@ Drop filters onto a connection line to insert the filter into that position with
 Drop filters anywhere else on the canvas if you would like to configure its settings without it
 participating in the main flow.
 
+<video controls poster="../images/filter-palette-drag-to-canvas@2x.png">
+<source src="../images/filter-palette-drag-to-canvas.mp4" type="video/mp4">
+</video>
+
 ## Import filter settings from SolarNode
 
 You can import the settings from a SolarNode that already has filters configured, so you can then
