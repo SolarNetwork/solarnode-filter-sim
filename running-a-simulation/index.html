@@ -444,6 +444,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#generated-datum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated datum
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -489,6 +500,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#generated-datum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated datum
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -524,7 +546,7 @@
 </figure>
 <h2 id="simulation-result">Simulation result<a class="headerlink" href="#simulation-result" title="Permanent link">¶</a></h2>
 <p>After running a simulation, an <strong>Execution Flow</strong> pane will appear below the Canvas, with the results
-of the simulation.</p>
+of the simulation. The <a href="../getting-your-bearings/#canvas">Canvas</a> will show datum input/output counts above each filter.</p>
 <figure>
 <p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/example-downsample%402x.png" data-title="Example simulation. In this run 5 datum were passed through the filters, and a Downsample filter discarded the first 4, emitting a modified &quot;downsampled&quot; 5th datum." data-desc-position="bottom"><img alt="Example simulation. In this run 5 datum were passed through the filters, and a Downsample filter discarded the first 4, emitting a modified &quot;downsampled&quot; 5th datum." src="../images/example-downsample%402x.png" width="1920"></a></p>
 <figcaption>
@@ -533,6 +555,25 @@ and a <a href="https://solarnetwork.github.io/solarnode-handbook/users/datum-fil
 5<sup>th</sup> datum.</p>
 </figcaption>
 </figure>
+<p>Here is an annotated version of that screen shot that showcases some high-level aspects
+of what you are seeing:</p>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/example-downsample-annotated%402x.png" data-title="Example simulation, annotated." data-desc-position="bottom"><img alt="Example simulation, annotated." src="../images/example-downsample-annotated%402x.png" width="1920"></a></p>
+</figure>
+<h2 id="generated-datum">Generated datum<a class="headerlink" href="#generated-datum" title="Permanent link">¶</a></h2>
+<p>Some filters like <a href="https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/split/">Split</a> generate <em>new</em> datum. These datum are added to SolarNode's
+<a href="https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/#datum-queue">Datum Queue</a> and then processed like any other datum, running through the
+configured filters themselves.</p>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/example-flow%402x.png" data-title="Example simulation with generated datum" data-desc-position="bottom"><img alt="Example simulation with generated datum" src="../images/example-flow%402x.png" width="1920"></a></p>
+<figcaption>
+<p>An example simulation with generated datum.</p>
+</figcaption>
+</figure>
+<p>In this example the <strong>Split - All to EV</strong> Split filter generated a new <code>/ev/3</code> datum (#14 in the
+simulation). The Canvas shows a dotted line that goes from that filter back to the starting point.
+You can then see datum #14's route through the entire flow, ending at the <strong>Output</strong> at the far
+right.</p>
 
 
 

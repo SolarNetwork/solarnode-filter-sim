@@ -355,6 +355,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
+  <a href="#toolbar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Toolbar
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Toolbar">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pane-toggle-buttons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pane toggle buttons
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simulation-buttons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Simulation buttons
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#setup-pane" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -525,6 +564,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
       
         <li class="md-nav__item">
+  <a href="#toolbar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Toolbar
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Toolbar">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pane-toggle-buttons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pane toggle buttons
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simulation-buttons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Simulation buttons
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#setup-pane" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -608,13 +686,66 @@
 <p>When you first visit the application, you are presented with four main panes:</p>
 <p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/ui-structure%402x.png" data-title="User interface structure diagram" data-desc-position="bottom"><img alt="User interface structure diagram" src="../images/ui-structure%402x.png" width="1920"></a></p>
 <ul>
-<li><a href="#setup-pane">Setup</a> (top left) - where you configure the overall parameters of the simulation, such as the datum to run through the filters, node metadata,
-and placeholders.</li>
-<li><a href="#control-pane">Control</a> (middle left) - where you can start the simulation as well as import or export the filter settings as CSV files.</li>
-<li><a href="#filter-palette">Filter Palette</a> (bottom left) - a list of the available filters that you can drag onto the canvas.</li>
+<li><a href="#toolbar">Toolbar</a> (top bar) - the application version and some action buttons.</li>
+<li><a href="#setup-pane">Setup</a> (top left) - where you configure the overall parameters of the simulation,
+  such as the datum to run through the filters, node metadata, and placeholders.</li>
+<li><a href="#control-pane">Control</a> (middle left) - where you can start the simulation as well as import or
+  export the filter settings as CSV files.</li>
+<li><a href="#filter-palette">Filter Palette</a> (bottom left) - a list of the available filters that you can
+  drag onto the canvas.</li>
 <li><a href="#canvas">Canvas</a> (middle) - a flow chart style visualization of the simulation.</li>
-<li><a href="#inspector">Inspector</a> - shows the editable properties of a filter after you click on one in the canvas.</li>
+<li><a href="#inspector">Inspector</a> - shows the editable properties of a filter after you click on one in the
+  canvas.</li>
 </ul>
+<h2 id="toolbar">Toolbar<a class="headerlink" href="#toolbar" title="Permanent link">¶</a></h2>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/toolbar%402x.png" data-title="Application toolbar" data-desc-position="bottom"><img alt="Application toolbar" src="../images/toolbar%402x.png" width="856"></a></p>
+</figure>
+<p>The top of the window contains the application name and version, along with some
+action buttons on the right side.</p>
+<h3 id="pane-toggle-buttons">Pane toggle buttons<a class="headerlink" href="#pane-toggle-buttons" title="Permanent link">¶</a></h3>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/toolbar-toggle-buttons-annotated%402x.png" data-title="Application toolbar pane toggle buttons" data-desc-position="bottom"><img alt="Application toolbar pane toggle buttons" src="../images/toolbar-toggle-buttons-annotated%402x.png" width="527"></a></p>
+</figure>
+<p>The first two buttons in the toolbar allow you to toggle the left and right applicaiton pane
+visibility, to give the <a href="#canvas">Canvas</a> more room.</p>
+<h3 id="simulation-buttons">Simulation buttons<a class="headerlink" href="#simulation-buttons" title="Permanent link">¶</a></h3>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/toolbar-simulation-buttons%402x.png" data-title="Application toolbar simulation buttons" data-desc-position="bottom"><img alt="Application toolbar simulation buttons" src="../images/toolbar-simulation-buttons%402x.png" width="224"></a></p>
+<figcaption>
+<p>Buttons to reset, open, or export the simulation.</p>
+</figcaption>
+</figure>
+<p>The <strong>New</strong>, <strong>Open</strong>, and <strong>Save</strong> buttons on the right side of the toolbar are for managing
+the entire simulation:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Button</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>New</strong></td>
+<td style="text-align: left;">Reset the simulation back to an empty state.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Open</strong></td>
+<td style="text-align: left;">Upload a saved simulation file, replacing the current simulation.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Save</strong></td>
+<td style="text-align: left;">Download the simulation as a file.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>A saved simulation file contains everything you configure in the simulation, including the
+inputs in the <a href="#setup-pane">Setup</a>. You can share this file with others so they can run your
+simulation exactly as you have.</p>
+</div>
 <h2 id="setup-pane">Setup pane<a class="headerlink" href="#setup-pane" title="Permanent link">¶</a></h2>
 <figure>
 <p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/setup-tabs%402x.png" data-title="Setup pane tabs" data-desc-position="bottom"><img alt="Setup pane tabs" src="../images/setup-tabs%402x.png" width="2106"></a></p>
@@ -638,7 +769,7 @@ SolarNode.</p>
 <p>The Control pane is where you can:</p>
 <ul>
 <li>import filter settings from a SolarNode</li>
-<li>export the simulation's filter settings, so you can apply them to a SolarNOde</li>
+<li>export the simulation's filter settings, so you can apply them to a SolarNode</li>
 <li>add <em>external</em> filter settings, like those contributed by <code>solarnode-config-*</code> packages in
   SolarNodeOS; these are not exported with your simulation settings</li>
 <li>run (or debug) the simulation</li>
@@ -658,9 +789,27 @@ on any connector line between filters to insert that filter into the execution f
 </video>
 
 <h2 id="canvas">Canvas<a class="headerlink" href="#canvas" title="Permanent link">¶</a></h2>
-<p>TODO</p>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/canvas-start%402x.png" data-title="The Canvas when the application first starts" data-desc-position="bottom"><img alt="The Canvas when the application first starts" src="../images/canvas-start%402x.png" width="706"></a></p>
+<figcaption>The Canvas when the application first starts.</figcaption>
+</figure>
+<p>The Canvas is where the filter flow diagram is drawn. You can drag filters from the Filter palette
+and drop them onto the Canvas to add them to your simulation. The Canvas has a toolbar in the
+upper-right of the pane:</p>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/canvas-toolbar-annotated%402x.png" data-title="The Canvas toolbar" data-desc-position="bottom"><img alt="The Canvas toolbar" src="../images/canvas-toolbar-annotated%402x.png" width="237"></a></p>
+<figcaption>The Canvas toolbar.</figcaption>
+</figure>
+<p>The <strong>Toggle datum routes</strong> button is used to show or hide lines representing "routes" each
+datum takes as it flows through the filters during a simulation run.</p>
 <h2 id="inspector">Inspector<a class="headerlink" href="#inspector" title="Permanent link">¶</a></h2>
-<p>TODO</p>
+<figure>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/inspector-example%402x.png" data-title="The Inspector showing an example filter's settings" data-desc-position="bottom"><img alt="The Inspector showing an example filter's settings" src="../images/inspector-example%402x.png" width="384"></a></p>
+<figcaption>The Inspector showing an example filter's settings.</figcaption>
+</figure>
+<p>If you click on a filter in the Canvas, the Inspector will show you an editable form for that
+filter's settings. The form looks and works much the same way as it does in SolarNode, except that
+changes are saved automatically.</p>
 
 
 
