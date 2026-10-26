@@ -2,26 +2,30 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://solarnetwork.github.io/solarnode-filter-sim/</loc>
-         <lastmod>2026-10-23</lastmod>
+         <lastmod>2026-10-26</lastmod>
+    </url>
+    <url>
+         <loc>https://solarnetwork.github.io/solarnode-filter-sim/controls-and-instructions/</loc>
+         <lastmod>2026-10-26</lastmod>
     </url>
     <url>
          <loc>https://solarnetwork.github.io/solarnode-filter-sim/creating-a-simulation/</loc>
-         <lastmod>2026-10-23</lastmod>
+         <lastmod>2026-10-26</lastmod>
     </url>
     <url>
          <loc>https://solarnetwork.github.io/solarnode-filter-sim/getting-your-bearings/</loc>
-         <lastmod>2026-10-23</lastmod>
+         <lastmod>2026-10-26</lastmod>
     </url>
     <url>
          <loc>https://solarnetwork.github.io/solarnode-filter-sim/install/</loc>
-         <lastmod>2026-10-23</lastmod>
+         <lastmod>2026-10-26</lastmod>
     </url>
     <url>
          <loc>https://solarnetwork.github.io/solarnode-filter-sim/running-a-simulation/</loc>
-         <lastmod>2026-10-23</lastmod>
+         <lastmod>2026-10-26</lastmod>
     </url>
     <url>
          <loc>https://solarnetwork.github.io/solarnode-filter-sim/sharing-a-simulation/</loc>
-         <lastmod>2026-10-23</lastmod>
+         <lastmod>2026-10-26</lastmod>
     </url>
 </urlset>

@@ -11,6 +11,8 @@
         <link rel="prev" href="../sharing-a-simulation/">
       
       
+        <link rel="next" href="../controls-and-instructions/">
+      
       
         
       
@@ -455,10 +457,48 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#instruction-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instruction runs
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../controls-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Controls and Instructions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -505,6 +545,17 @@
     <span class="md-ellipsis">
       
         Generated datum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instruction-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Instruction runs
       
     </span>
   </a>
@@ -574,6 +625,21 @@ configured filters themselves.</p>
 simulation). The Canvas shows a dotted line that goes from that filter back to the starting point.
 You can then see datum #14's route through the entire flow, ending at the <strong>Output</strong> at the far
 right.</p>
+<h2 id="instruction-runs">Instruction runs<a class="headerlink" href="#instruction-runs" title="Permanent link">¶</a></h2>
+<p>A <a href="https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/">Control Conductor</a> task, or an Instructor instruction with a future
+<code>executionDate</code>, waits for SolarNode's Instruction Execution Job. When the job runs one on the
+simulated clock, the Execution Flow shows it as a dashed card between the datum, before the datum
+processed after it. The card shows when it ran, the conductor and task (like <code>Control Conductor
+"HVAC DR" task 1</code>), its status, the control it set, links to the datum the control published, and
+the filter step that issued it. Click the card to see its instructions. The <strong>Instruction runs</strong>
+pill above the datum shows or hides the cards.</p>
+<p>A filter step's instruction chip shows each instruction it issued, and its details list the
+instructions with their status messages (such as a Predicate Expression that declined), with the
+tasks a conductor scheduled, and when they are due, indented below. A datum a task's control
+published reads like "Published by control /hvac/1/mode, set by Control Conductor "HVAC DR" task 1
+at 2025-10-01 00:09:00Z", and its route on the Canvas starts at the filter that issued the
+instruction. Instructions still waiting when the simulation ends are listed in the final state. In
+debug mode, the <strong>Instructions</strong> tab shows the instructions waiting as of each filter step.</p>
 
 
 

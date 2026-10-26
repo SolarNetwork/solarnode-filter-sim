@@ -537,6 +537,33 @@
   
 
     
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../controls-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Controls and Instructions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
   </ul>
 </nav>
                   </div>
@@ -757,11 +784,15 @@ simulation exactly as you have.</p>
 must provide the initial <a href="https://solarnetwork.github.io/solarnode-handbook/users/datum/">datum</a> to send into the filter execution flow. These initial datum
 represent data captured from SolarNode <a href="https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/">Datum Sources</a> that read from devices like
 meters and power inverters.</p>
-<p>The <strong>History</strong>, <strong>Environment</strong>, <strong>Node Metadata</strong>, <strong>User Metadata</strong>, and <strong>Datum Metadata</strong> tabs
-in this pane allow you to configure other simulated SolarNode services like <a href="https://github.com/SolarNetwork/solarnetwork/wiki/SolarNet-API-global-objects#metadata">Metadata</a>,
+<p>The <strong>History</strong>, <strong>Environment</strong>, <strong>Metadata</strong>, and <strong>Controls</strong> tabs in this pane allow you to
+configure other simulated SolarNode services like <a href="https://github.com/SolarNetwork/solarnetwork/wiki/SolarNet-API-global-objects#metadata">Metadata</a>,
 <a href="https://solarnetwork.github.io/solarnode-handbook/users/placeholders/">Placeholders</a>, <a href="https://solarnetwork.github.io/solarnode-handbook/users/op-modes/">Operational Modes</a>, <a href="https://solarnetwork.github.io/solarnode-handbook/users/local-state/">Local State</a>, and more.
 Generally you need to configure everything your filters expect to be available when they run in
 SolarNode.</p>
+<p>The <strong>Metadata</strong> tab holds the node's metadata, the metadata of each datum stream (one per source
+ID), and any User Metadata Services.</p>
+<p>The <strong>Controls</strong> tab holds the node's simulated controls, which filters like the Control Updater
+set. See <a href="../controls-and-instructions/">Controls and Instructions</a> for more details.</p>
 <h2 id="control-pane">Control pane<a class="headerlink" href="#control-pane" title="Permanent link">¶</a></h2>
 <figure>
 <p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../images/control-pane%402x.png" data-title="Control pane" data-desc-position="bottom"><img alt="Control pane" src="../images/control-pane%402x.png" width="351"></a></p>

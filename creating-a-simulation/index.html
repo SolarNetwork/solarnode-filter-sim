@@ -476,6 +476,33 @@
   
 
     
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../controls-and-instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Controls and Instructions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
   </ul>
 </nav>
                   </div>
@@ -589,7 +616,25 @@ and click the <strong>Export to file</strong> button to download the node's sett
 </figure>
 <p>The exported file will include all of SolarNode's settings. The SolarNode Filter Simulator will
 ignore non-filter settings so you do not have to worry about any other settings are included in the
-export.</p>
+export, <strong>except</strong> for some controls and Control Conductors, which the Simulator adds to the
+<strong>Controls</strong> tab:</p>
+<ul>
+<li>Each <a href="https://solarnetwork.github.io/solarnode-handbook/users/controls/modbus/">Modbus</a> or <a href="https://solarnetwork.github.io/solarnode-handbook/users/controls/bacnet/">BACnet</a> Control becomes a control of its type,
+  without a starting value, which publishes a datum every time it is set. A Modbus control keeps
+  its datum property name.</li>
+<li>Each Output control of a <a href="https://solarnetwork.github.io/solarnode-handbook/users/controls/gpio/">GPIO</a> Control becomes a Boolean control starting at
+  <code>false</code>, which publishes a datum every time it is set, with its datum property name and type. Input controls are not supported.</li>
+<li>Each Mock Control becomes a control with its type and initial value, which publishes a datum when
+  its value changes.</li>
+<li>Any <a href="https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/control/">Control Datum Sources</a> are used to decide whether each control publishes at all,
+  and whether its datum are persisted. A file without Control Datum Sources publishes every
+  control's datum, without persisting them, like a Control Datum Source with its default settings.</li>
+<li>Each <a href="https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/">Control Conductor</a> keeps its settings.</li>
+</ul>
+<p>When you add a file to a simulation, its controls replace those with the same control ID, and its
+conductors those with the same Service Name. When you replace the simulation with a file that has
+controls or conductors, they replace all of them. <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-z">Z</kbd></span> does not undo changes to the
+<strong>Controls</strong> tab. Exports include only the filter settings.</p>
 <p>Now in the Simulator, click on the <strong>Import settings</strong> button in the <a href="../getting-your-bearings/#control-pane">Control pane</a>
 and select the file you exported from SolarNode.</p>
 <figure>
