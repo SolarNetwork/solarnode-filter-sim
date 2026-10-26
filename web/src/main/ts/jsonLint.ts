@@ -24,9 +24,7 @@ export type JsonSchema =
 	/** A datum, or an array of datum. */
 	| "datumList"
 	/** Metadata, like `{"m":{…},"pm":{…},"t":[…]}`. */
-	| "metadata"
-	/** Metadata by source ID. */
-	| "datumMetadata";
+	| "metadata";
 
 /** A JSON value, with its place in the text. */
 type JsonValue =
@@ -441,25 +439,6 @@ function check(
 			break;
 		case "metadata":
 			checkMetadata(p, v, "The metadata");
-			break;
-		case "datumMetadata":
-			if (v.kind !== "object") {
-				p.error(
-					v,
-					`Datum metadata must be an object of source IDs and metadata, like {"/meter/1": {"pm": {…}}}.`,
-				);
-			} else {
-				p.duplicates(v);
-				for (const prop of v.props) {
-					if (prop.value) {
-						checkMetadata(
-							p,
-							prop.value,
-							`The metadata of ${prop.name}`,
-						);
-					}
-				}
-			}
 			break;
 	}
 	return p.list;

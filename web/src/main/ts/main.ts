@@ -169,6 +169,10 @@ class App {
 			isCommandAllowed: (command) =>
 				inputs.allowedCommands.includes(command),
 			allowCommand: (command) => inputs.allowCommand(command),
+			controlIds: () => inputs.controlIds,
+			addControl: (controlId) => this.#inputPanel.addControl(controlId),
+			conductorUids: () => inputs.conductorUids,
+			addConductor: (uid) => this.#inputPanel.addConductor(uid),
 		});
 		this.#inputPanel = new InputPanel(inputs, ws);
 		this.#results = new ResultsPanel($("#results"), ws);
@@ -206,11 +210,22 @@ class App {
 			this.#changed();
 		});
 		inputs.addEventListener("change", () => this.#changed());
-		// the inspector warns about commands that are not allowed
+		// the inspector warns about commands that are not allowed, and
+		// controls and Control Conductors that are missing
 		let allowed = inputs.state.allowedCommands;
+		let controlIds = inputs.controlIds.join("\n");
+		let conductorUids = inputs.conductorUids.join("\n");
 		inputs.addEventListener("change", () => {
-			if (inputs.state.allowedCommands !== allowed) {
+			const ids = inputs.controlIds.join("\n");
+			const uids = inputs.conductorUids.join("\n");
+			if (
+				inputs.state.allowedCommands !== allowed ||
+				ids !== controlIds ||
+				uids !== conductorUids
+			) {
 				allowed = inputs.state.allowedCommands;
+				controlIds = ids;
+				conductorUids = uids;
 				this.#inspector.refreshAlerts();
 			}
 		});
@@ -350,6 +365,15 @@ class App {
 				mode === "add"
 					? this.#ws.mergeConfig(result.config)
 					: this.#ws.importConfig(result.config);
+			const environmentNotes = this.#inputs.importEnvironment(
+				result.controls,
+				result.conductors,
+				mode === "replace",
+			);
+			if (environmentNotes.length) {
+				this.#inputPanel.reload();
+				notes.push(...environmentNotes);
+			}
 			this.#canvas.select(null);
 			this.#canvas.fit();
 			const filters = (result.config.filters ?? []).filter(
@@ -370,7 +394,9 @@ class App {
 			) {
 				showMessages({
 					title: "Settings imported",
-					summary: `${summary} You can undo the import with Ctrl+Z.`,
+					summary: environmentNotes.length
+						? `${summary} You can undo the filter changes with Ctrl+Z, but not the Controls tab changes.`
+						: `${summary} You can undo the import with Ctrl+Z.`,
 					notes,
 					messages: result.messages,
 					ignored: result.ignored,
@@ -535,6 +561,7 @@ class App {
 			stats: filterRunStats(result),
 			output: result.stats.output,
 			datum: result.datum,
+			instructionRuns: result.instructionRuns,
 		});
 		if (debug) {
 			this.#results.showDebug(result, mark);

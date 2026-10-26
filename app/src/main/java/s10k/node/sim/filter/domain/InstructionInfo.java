@@ -19,23 +19,57 @@
 
 package s10k.node.sim.filter.domain;
 
+import java.time.Instant;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * An instruction issued by a filter.
+ * An instruction issued by a filter, a Control Conductor, or the simulated
+ * Instruction Execution Job.
  *
+ * <p>
+ * Each instruction is recorded once in a step (or instruction run), with its
+ * latest state, even when it is stored, executed, and stored again.
+ * </p>
+ *
+ * @param number
+ *        the instruction's number in the simulation, from {@code 1}; SolarNode
+ *        local instruction IDs differ between runs, so the simulation numbers
+ *        instructions itself
+ * @param id
+ *        the SolarNode instruction ID, which a {@code CancelInstruction}
+ *        instruction's {@code id} parameter refers to, or {@code null}
  * @param topic
  *        the instruction topic, for example {@code SetControlParameter}
  * @param parameters
  *        the instruction parameters
  * @param state
- *        the simulated instruction state, or {@code null}
+ *        the simulated instruction state, or {@code null} if no handler handled
+ *        the instruction, like a {@code SetControlParameter} instruction for a
+ *        control the simulation does not have
+ * @param parent
+ *        the number of the instruction that issued this one, or {@code null}
+ * @param executeAt
+ *        for an instruction stored for the Instruction Execution Job to run
+ *        later, its execution date, or {@code null}
+ * @param message
+ *        the status {@code message} result parameter, or {@code null}
+ * @param code
+ *        the status error {@code code} result parameter, or {@code null}
+ * @param conductor
+ *        for a Control Conductor task's {@code Signal} instruction, the
+ *        conductor's Service Name, or {@code null}
+ * @param task
+ *        for a Control Conductor task's {@code Signal} instruction, the task
+ *        number, from {@code 1}, or {@code null}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
-public record InstructionInfo(String topic, Map<String, String> parameters, @Nullable String state) {
+public record InstructionInfo(int number, @Nullable Long id, String topic,
+		Map<String, String> parameters, @Nullable String state, @Nullable Integer parent,
+		@Nullable Instant executeAt, @Nullable String message, @Nullable String code,
+		@Nullable String conductor, @Nullable Integer task) {
 
 }

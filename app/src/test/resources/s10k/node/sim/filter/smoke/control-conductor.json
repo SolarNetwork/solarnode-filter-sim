@@ -1,0 +1,111 @@
+{
+ "config": {
+  "mainChainId": "main",
+  "filters": [
+   {
+    "id": "main",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Main"
+    },
+    "filterIds": [
+     "instr",
+     "level"
+    ]
+   },
+   {
+    "id": "instr",
+    "factoryUid": "net.solarnetwork.node.datum.filter.instructor",
+    "settings": {
+     "uid": "Demand Response",
+     "sourceId": "^/meter/1$",
+     "instructorConfigsCount": "1",
+     "instructorConfigs[0].predicate.expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "instructorConfigs[0].predicate.expression": "watts > 1000",
+     "instructorConfigs[0].instructionsCount": "1",
+     "instructorConfigs[0].instructions[0].topic": "OrchestrateControls",
+     "instructorConfigs[0].instructions[0].parametersCount": "4",
+     "instructorConfigs[0].instructions[0].parameters[0].name": "service",
+     "instructorConfigs[0].instructions[0].parameters[0].expression": "HVAC DR",
+     "instructorConfigs[0].instructions[0].parameters[1].name": "date",
+     "instructorConfigs[0].instructions[0].parameters[1].expression": "2025-10-01T00:10:00Z",
+     "instructorConfigs[0].instructions[0].parameters[2].name": "mode",
+     "instructorConfigs[0].instructions[0].parameters[2].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "instructorConfigs[0].instructions[0].parameters[2].expression": "watts > 2000 ? 'Cool' : 'Heat'",
+     "instructorConfigs[0].instructions[0].parameters[3].name": "duration",
+     "instructorConfigs[0].instructions[0].parameters[3].expression": "PT1M1S",
+     "instructorConfigs[0].instructions[0].responsesCount": "1",
+     "instructorConfigs[0].instructions[0].responses[0].name": "drState",
+     "instructorConfigs[0].instructions[0].responses[0].datumPropertyTypeKey": "s",
+     "instructorConfigs[0].instructions[0].responses[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "instructorConfigs[0].instructions[0].responses[0].expression": "instructionResult.completed && instructionResult.instructionId != null ? instruction.topic + ' ' + instructionResult.instructionState : 'none'"
+    }
+   },
+   {
+    "id": "level",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+    "settings": {
+     "uid": "Mode Level",
+     "sourceId": "^/hvac/",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].name": "level",
+     "expressionConfigs[0].datumPropertyTypeKey": "i",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "mode * 10"
+    }
+   }
+  ]
+ },
+ "datum": [
+  {
+   "created": "2025-10-01 00:05:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 500
+   }
+  },
+  {
+   "created": "2025-10-01 00:05:10Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 1500
+   }
+  }
+ ],
+ "environment": {
+  "controls": [
+   {
+    "controlId": "/hvac/1/mode",
+    "type": "Integer",
+    "value": "0",
+    "publish": "Change",
+    "persist": true,
+				"propertyName": "mode",
+				"propertyType": "Instantaneous"
+   }
+  ],
+  "conductors": [
+   {
+    "settings": {
+     "uid": "HVAC DR",
+     "predicate.expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "predicate.expression": "mode != null",
+     "taskConfigsCount": "3",
+     "taskConfigs[0].controlId": "/hvac/1/mode",
+     "taskConfigs[0].executionOffset": "-PT1M",
+     "taskConfigs[0].value": "mode == 'Cool' ? 1 : mode == 'Heat' ? 3 : 2",
+     "taskConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "taskConfigs[1].controlId": "/hvac/1/mode",
+     "taskConfigs[1].executionOffset": "0",
+     "taskConfigs[1].value": "4",
+     "taskConfigs[2].controlId": "/hvac/1/mode",
+     "taskConfigs[2].executionOffset": "{duration}",
+     "taskConfigs[2].value": "0"
+    }
+   }
+  ]
+ },
+ "options": {
+  "runAfter": "PT10M"
+ }
+}

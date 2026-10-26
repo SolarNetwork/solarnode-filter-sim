@@ -33,6 +33,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the Local State entries
  * @param metrics
  *        the metrics filters saved, oldest first
+ * @param controls
+ *        the simulated controls
+ * @param instructions
+ *        the stored instructions waiting for the Instruction Execution Job, in
+ *        the order it would run them
  * @param localStateCsv
  *        the Local State in the SolarNode Local State CSV format, or
  *        {@code null}
@@ -46,12 +51,12 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the sequence numbers of datum waiting in the Datum Queue, or
  *        {@code null}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SimulationState(List<String> opModes, List<LocalStateInfo> localState,
-		List<MetricInfo> metrics, @Nullable String localStateCsv,
-		@Nullable Map<String, List<DatumInfo>> history,
+		List<MetricInfo> metrics, List<ControlInfo> controls, List<InstructionInfo> instructions,
+		@Nullable String localStateCsv, @Nullable Map<String, List<DatumInfo>> history,
 		@Nullable Map<String, List<DatumInfo>> unfilteredHistory, @Nullable List<Integer> queue) {
 
 }

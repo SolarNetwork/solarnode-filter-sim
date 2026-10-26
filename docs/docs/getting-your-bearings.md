@@ -67,11 +67,17 @@ must provide the initial [datum][datum] to send into the filter execution flow. 
 represent data captured from SolarNode [Datum Sources][datum-sources] that read from devices like
 meters and power inverters.
 
-The **History**, **Environment**, **Node Metadata**, **User Metadata**, and **Datum Metadata** tabs
-in this pane allow you to configure other simulated SolarNode services like [Metadata][metadata],
+The **History**, **Environment**, **Metadata**, and **Controls** tabs in this pane allow you to
+configure other simulated SolarNode services like [Metadata][metadata],
 [Placeholders][placeholders], [Operational Modes][op-modes], [Local State][local-state], and more.
 Generally you need to configure everything your filters expect to be available when they run in
 SolarNode.
+
+The **Metadata** tab holds the node's metadata, the metadata of each datum stream (one per source
+ID), and any User Metadata Services.
+
+The **Controls** tab holds the node's simulated controls, which filters like the Control Updater
+set. See [Controls and Instructions](./controls-and-instructions.md) for more details.
 
 ## Control pane
 
@@ -137,6 +143,8 @@ changes are saved automatically.
 
 [datum]: https://solarnetwork.github.io/solarnode-handbook/users/datum/
 [datum-sources]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/
+[control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
+[instructor]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/instructor/
 [local-state]: https://solarnetwork.github.io/solarnode-handbook/users/local-state/
 [main-filter-chain]: https://solarnetwork.github.io/solarnode-handbook/recipes/datum-filters/main-filter-chain/
 [metadata]: https://github.com/SolarNetwork/solarnetwork/wiki/SolarNet-API-global-objects#metadata

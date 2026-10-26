@@ -3,7 +3,11 @@
  */
 
 import type {
+	ControlInfo,
+	DatumOrigin,
 	FilterBundleInfo,
+	InstructionInfo,
+	InstructionRun,
 	MessageLevel,
 	SamplesInfo,
 	SimulationMessage,
@@ -337,4 +341,265 @@ export function messageItem(
 		copy,
 	);
 	return item;
+}
+
+/**
+ * A table of the simulated controls, with their starting values when they
+ * changed.
+ */
+export function controlsTable(
+	controls: ControlInfo[],
+	changed?: Set<string>,
+): HTMLElement {
+	const section = element("div", "mt-2");
+	section.append(element("div", "fw-semibold", "Controls"));
+	const table = element("table", "table table-sm mb-0 sim-samples-table");
+	const head = element("thead");
+	const headRow = element("tr");
+	headRow.append(
+		element("th", undefined, "Control ID"),
+		element("th", undefined, "Type"),
+		element("th", undefined, "Value"),
+		element("th", undefined, "Last set"),
+		element("th", "text-end", "Sets"),
+	);
+	head.append(headRow);
+	const rows = element("tbody");
+	for (const c of controls) {
+		const row = element("tr");
+		const value = element("td", "font-monospace text-break", c.value ?? "");
+		if (c.value === undefined) {
+			value.append(element("span", "text-body-secondary", "none"));
+		}
+		if (c.initialValue !== c.value) {
+			value.append(
+				element(
+					"span",
+					"text-body-secondary",
+					` (from ${c.initialValue ?? "none"})`,
+				),
+			);
+		}
+		row.append(
+			element("td", "font-monospace", c.controlId),
+			element("td", "text-body-secondary", c.type),
+			value,
+			element(
+				"td",
+				"text-nowrap",
+				c.modified ? formatTimestamp(c.modified) : "",
+			),
+			element("td", "text-end", String(c.updates)),
+		);
+		if (changed?.has(c.controlId)) {
+			row.classList.add("table-active");
+		}
+		rows.append(row);
+	}
+	table.append(head, rows);
+	section.append(table);
+	return section;
+}
+
+/**
+ * Name an instruction: a Control Conductor task by its conductor and task,
+ * like `Control Conductor "HVAC DR" task 1`, else its topic.
+ *
+ * @param instruction the instruction
+ * @returns the name
+ */
+export function instructionLabel(instruction: InstructionInfo): string {
+	return instruction.conductor
+		? `Control Conductor ${quoted(instruction.conductor)} task ${instruction.task ?? "?"}`
+		: instruction.topic;
+}
+
+/**
+ * Describe where a datum published during an instruction run came from, like
+ * "Published by control /hvac/1/mode, set by Control Conductor "HVAC DR" task
+ * 1 at 2025-10-01 00:09:00Z".
+ *
+ * @param origin the datum's origin, of type `Instruction`
+ * @param runs the result's instruction runs
+ * @returns the description, starting with a capital letter
+ */
+export function instructionOriginText(
+	origin: DatumOrigin,
+	runs: readonly InstructionRun[] | undefined,
+): string {
+	const run = runs?.find((r) => r.instruction.number === origin.instruction);
+	const by = run
+		? `${instructionLabel(run.instruction)} at ${formatTimestamp(run.date)}`
+		: `instruction #${origin.instruction ?? "?"}`;
+	return origin.controlId
+		? `Published by control ${origin.controlId}, set by ${by}`
+		: `Generated while running ${by}`;
+}
+
+/** The text class of an instruction state. */
+function stateClass(state: string | undefined): string {
+	return state === "Completed"
+		? "text-body-secondary"
+		: state === "Received" || state === "Executing"
+			? "text-info-emphasis"
+			: "text-danger-emphasis";
+}
+
+/**
+ * A list of instructions, each with its status, message, and parameters, and
+ * the instructions it issued indented below it.
+ *
+ * @param instructions the instructions
+ * @returns the list
+ */
+export function instructionsList(
+	instructions: readonly InstructionInfo[],
+): HTMLElement {
+	const section = element("div", "mt-2 sim-instructions");
+	const numbers = new Set(instructions.map((i) => i.number));
+	const item = (instr: InstructionInfo, child: boolean): HTMLElement => {
+		const el = element("div", "sim-instruction");
+		const heading = element(
+			"div",
+			"d-flex flex-wrap align-items-baseline gap-2",
+		);
+		const name = element(
+			"span",
+			"fw-semibold",
+			`#${instr.number} ${instr.topic}`,
+		);
+		if (instr.id !== undefined) {
+			name.title = `SolarNode instruction ID ${instr.id}`;
+		}
+		heading.append(name);
+		if (instr.conductor) {
+			heading.append(element("span", undefined, instructionLabel(instr)));
+		}
+		heading.append(
+			element(
+				"span",
+				stateClass(instr.state),
+				instr.state ?? "not handled: no control or service handles it",
+			),
+		);
+		if (instr.executeAt) {
+			heading.append(
+				element(
+					"span",
+					"text-body-secondary",
+					`due ${formatTimestamp(instr.executeAt)}`,
+				),
+			);
+		}
+		el.append(heading);
+		if (instr.message || instr.code) {
+			el.append(
+				element(
+					"div",
+					instr.state === "Declined"
+						? "text-danger-emphasis"
+						: "text-body-secondary",
+					[instr.message, instr.code ? `(${instr.code})` : ""]
+						.filter((t) => t)
+						.join(" "),
+				),
+			);
+		}
+		const params = Object.entries(instr.parameters ?? {});
+		if (params.length) {
+			const table = element(
+				"table",
+				"table table-sm mb-1 sim-samples-table",
+			);
+			const rows = element("tbody");
+			for (const [k, v] of params) {
+				const row = element("tr");
+				row.append(
+					element("td", "font-monospace", k),
+					element("td", "font-monospace text-break", v),
+				);
+				rows.append(row);
+			}
+			table.append(rows);
+			if (child) {
+				// a task's parameters are mostly its parent's, so they start hidden
+				const more = element("details", "sim-instruction-params");
+				more.append(
+					element(
+						"summary",
+						"text-body-secondary",
+						`${params.length} parameter${params.length === 1 ? "" : "s"}`,
+					),
+					table,
+				);
+				el.append(more);
+			} else {
+				el.append(table);
+			}
+		}
+		const children = instructions.filter(
+			(i) => i.parent === instr.number && i !== instr,
+		);
+		if (children.length) {
+			const list = element("div", "sim-instruction-children");
+			list.append(...children.map((c) => item(c, true)));
+			el.append(list);
+		}
+		return el;
+	};
+	for (const instr of instructions) {
+		if (instr.parent === undefined || !numbers.has(instr.parent)) {
+			section.append(item(instr, false));
+		}
+	}
+	return section;
+}
+
+/**
+ * A table of the instructions waiting for the Instruction Execution Job.
+ *
+ * @param instructions the instructions
+ * @param marked the numbers of the instructions to mark, like those a step
+ *     stored
+ * @returns the table
+ */
+export function waitingInstructionsTable(
+	instructions: readonly InstructionInfo[],
+	marked?: ReadonlySet<number>,
+): HTMLElement {
+	const table = element("table", "table table-sm mb-0 sim-samples-table");
+	const head = element("thead");
+	const headRow = element("tr");
+	headRow.append(
+		element("th", undefined, "#"),
+		element("th", undefined, "Instruction"),
+		element("th", undefined, "Due"),
+	);
+	head.append(headRow);
+	const rows = element("tbody");
+	for (const i of instructions) {
+		const row = element("tr");
+		row.title = Object.entries(i.parameters ?? {})
+			.map(([k, v]) => `${k} = ${v}`)
+			.join("\n");
+		row.append(
+			element("td", "text-body-secondary", String(i.number)),
+			element(
+				"td",
+				undefined,
+				i.conductor ? instructionLabel(i) : i.topic,
+			),
+			element(
+				"td",
+				"text-nowrap",
+				i.executeAt ? formatTimestamp(i.executeAt) : "now",
+			),
+		);
+		if (marked?.has(i.number)) {
+			row.classList.add("table-active");
+		}
+		rows.append(row);
+	}
+	table.append(head, rows);
+	return table;
 }

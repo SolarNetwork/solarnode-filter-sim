@@ -1,9 +1,9 @@
 {
   "messages" : [ "PendingTasks" ],
   "stats" : {
-    "processed" : "13",
-    "generated" : "9",
-    "output" : "10",
+    "processed" : "19",
+    "generated" : "15",
+    "output" : "16",
     "discarded" : "3"
   },
   "datum" : [ {
@@ -28,6 +28,18 @@
     }
   }, {
     "seq" : "2",
+    "sourceId" : "/ctl/1",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "100"
+      },
+      "s" : {
+        "val" : "100"
+      }
+    }
+  }, {
+    "seq" : "3",
     "sourceId" : "/meter/1/v",
     "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Unchanged", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
     "output" : {
@@ -37,11 +49,11 @@
       }
     }
   }, {
-    "seq" : "3",
+    "seq" : "4",
     "sourceId" : "/joined",
     "steps" : [ "main:Dropped", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Dropped" ]
   }, {
-    "seq" : "4",
+    "seq" : "5",
     "sourceId" : "/meter/1",
     "steps" : [ "main:Changed", "prop:Changed", "ts:Changed", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Changed", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
     "output" : {
@@ -58,11 +70,35 @@
       }
     }
   }, {
-    "seq" : "5",
+    "seq" : "6",
+    "sourceId" : "/ctl/1",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "200"
+      },
+      "s" : {
+        "val" : "200"
+      }
+    }
+  }, {
+    "seq" : "7",
+    "sourceId" : "/ctl/2",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "200"
+      },
+      "s" : {
+        "val" : "200"
+      }
+    }
+  }, {
+    "seq" : "8",
     "sourceId" : "/meter/1/v",
     "steps" : [ "main:Dropped", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Dropped" ]
   }, {
-    "seq" : "6",
+    "seq" : "9",
     "sourceId" : "/joined",
     "steps" : [ "main:Changed", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Changed", "timeout:Skipped" ],
     "output" : {
@@ -98,7 +134,7 @@
       }
     }
   }, {
-    "seq" : "7",
+    "seq" : "10",
     "sourceId" : "/meter/1",
     "steps" : [ "main:Changed", "prop:Changed", "ts:Changed", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Changed", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
     "output" : {
@@ -115,7 +151,31 @@
       }
     }
   }, {
-    "seq" : "8",
+    "seq" : "11",
+    "sourceId" : "/ctl/1",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "160"
+      },
+      "s" : {
+        "val" : "160"
+      }
+    }
+  }, {
+    "seq" : "12",
+    "sourceId" : "/ctl/2",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "160"
+      },
+      "s" : {
+        "val" : "160"
+      }
+    }
+  }, {
+    "seq" : "13",
     "sourceId" : "/meter/1/v",
     "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Unchanged", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
     "output" : {
@@ -125,11 +185,11 @@
       }
     }
   }, {
-    "seq" : "9",
+    "seq" : "14",
     "sourceId" : "/joined",
     "steps" : [ "main:Dropped", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Dropped" ]
   }, {
-    "seq" : "10",
+    "seq" : "15",
     "sourceId" : "/meter/1",
     "steps" : [ "main:Changed", "prop:Changed", "ts:Unchanged", "exp:Changed", "vm:Changed", "param:Unchanged", "opmode:Unchanged", "ctl:Unchanged", "instr:Unchanged", "unchangedprop:Unchanged", "inner:Unchanged", "split:Unchanged", "join:Unchanged", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Unchanged" ],
     "output" : {
@@ -149,7 +209,19 @@
       }
     }
   }, {
-    "seq" : "11",
+    "seq" : "16",
+    "sourceId" : "/ctl/1",
+    "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "50"
+      },
+      "s" : {
+        "val" : "50"
+      }
+    }
+  }, {
+    "seq" : "17",
     "sourceId" : "/meter/1/v",
     "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Unchanged", "throttle:Unchanged", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
     "output" : {
@@ -159,7 +231,7 @@
       }
     }
   }, {
-    "seq" : "12",
+    "seq" : "18",
     "sourceId" : "/joined",
     "steps" : [ "main:Changed", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Unchanged", "downsample:Changed", "timeout:Skipped" ],
     "output" : {
@@ -195,9 +267,18 @@
       }
     }
   }, {
-    "seq" : "13",
+    "seq" : "19",
     "sourceId" : "/meter/1/timeout",
     "steps" : [ "main:Unchanged", "prop:Skipped", "ts:Skipped", "exp:Skipped", "vm:Skipped", "param:Skipped", "opmode:Skipped", "ctl:Skipped", "instr:Skipped", "unchangedprop:Skipped", "inner:Unchanged", "split:Skipped", "join:Skipped", "throttle:Skipped", "unchanged:Skipped", "downsample:Skipped", "timeout:Skipped" ],
     "output" : { }
+  } ],
+  "controls" : [ {
+    "controlId" : "/ctl/1",
+    "value" : "50",
+    "updates" : "4"
+  }, {
+    "controlId" : "/ctl/2",
+    "value" : "160",
+    "updates" : "2"
   } ]
 }

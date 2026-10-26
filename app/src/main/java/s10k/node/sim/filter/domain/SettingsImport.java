@@ -20,6 +20,8 @@
 package s10k.node.sim.filter.domain;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * The result of importing a SolarNode settings CSV file.
@@ -31,10 +33,20 @@ import java.util.List;
  * @param ignored
  *        the components with settings that are not filter settings, which are
  *        ignored
+ * @param controls
+ *        the simulated controls from the file's Mock, Modbus, and BACnet
+ *        control settings, for the simulation's environment, or {@code null} if
+ *        there are none; the export never includes them
+ * @param conductors
+ *        the Control Conductors from the file's settings, for the simulation's
+ *        environment, or {@code null} if there are none; the export never
+ *        includes them
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record SettingsImport(SimConfig config, List<SimulationMessage> messages,
-		List<IgnoredComponent> ignored) {
+		List<IgnoredComponent> ignored, @Nullable List<NodeControlConfig> controls,
+		@Nullable List<ControlConductorConfig> conductors) {
 
 }

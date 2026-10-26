@@ -93,6 +93,31 @@ body {
 	}
 }
 
+.sim-control-type {
+	flex: 0 0 7.5rem;
+}
+
+.sim-conductor-task {
+	border: var(--bs-border-width) solid var(--bs-border-color-translucent);
+	border-radius: var(--bs-border-radius);
+	padding: 0 0.5rem 0.5rem;
+	margin-bottom: 0.5rem;
+}
+
+.sim-conductor-control {
+	min-width: 0;
+}
+
+.sim-conductor-offset {
+	flex: 0 0 7rem;
+}
+
+.sim-conductor-language {
+	// shrinks, as the long option would otherwise widen the left panel
+	flex: 0 1 13rem;
+	min-width: 0;
+}
+
 .sim-tab-error {
 	position: absolute;
 	top: 0.2rem;
@@ -715,6 +740,41 @@ rect.sim-badge {
 	}
 }
 
+// an instruction a step or instruction run issued, with the ones it issued
+.sim-instruction + .sim-instruction {
+	margin-top: 0.5rem;
+}
+
+.sim-instruction-children {
+	margin: 0.25rem 0 0 0.25rem;
+	padding-left: 0.75rem;
+	border-left: 2px solid var(--bs-border-color);
+}
+
+.sim-instruction-params > summary {
+	cursor: pointer;
+}
+
+// an instruction the Instruction Execution Job ran, between the datum
+.sim-instruction-run {
+	border-style: dashed;
+
+	> details > summary {
+		cursor: pointer;
+		list-style: none;
+		border-bottom: 0;
+
+		&::-webkit-details-marker {
+			display: none;
+		}
+	}
+
+	> details[open] > summary {
+		border-bottom: var(--bs-card-border-width) solid
+			var(--bs-card-border-color);
+	}
+}
+
 .sim-step-filter {
 	font-size: inherit;
 	text-decoration: none;
@@ -1063,6 +1123,7 @@ rect.sim-badge {
 // a message or datum hidden by its filter pill
 .sim-messages .is-filtered,
 .sim-datum.is-filtered,
+.sim-instruction-run.is-filtered,
 .sim-step.is-filtered {
 	display: none !important;
 }

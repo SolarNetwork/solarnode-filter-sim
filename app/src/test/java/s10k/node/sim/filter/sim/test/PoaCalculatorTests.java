@@ -238,8 +238,8 @@ public class PoaCalculatorTests {
 		// GIVEN
 		final String cmd = script("ghi-to-poa.sh");
 		final SimulationEnvironment env = new SimulationEnvironment(null, null, null, null, null, null,
-				new NodeLocation(new BigDecimal("-41.3"), new BigDecimal("174.8"),
-						new BigDecimal("20")));
+				new NodeLocation(new BigDecimal("-41.3"), new BigDecimal("174.8"), new BigDecimal("20")),
+				null);
 
 		// WHEN
 		SimulationResult result = engine
@@ -266,7 +266,7 @@ public class PoaCalculatorTests {
 		final String cmd = script("ghi-to-poa.sh");
 		final SimulationEnvironment env = new SimulationEnvironment(null, null, null, null, null,
 				Map.of("/weather/1", JSON.readTree("""
-						{"pm":{"pv":{"lat":-43.5,"lon":172.6,"pvArrayTilt":15}}}""")), null);
+						{"pm":{"pv":{"lat":-43.5,"lon":172.6,"pvArrayTilt":15}}}""")), null, null);
 
 		// WHEN
 		SimulationResult result = engine

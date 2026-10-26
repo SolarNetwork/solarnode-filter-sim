@@ -32,11 +32,13 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import s10k.node.sim.filter.domain.CommandInfo;
+import s10k.node.sim.filter.domain.ControlUpdate;
 import s10k.node.sim.filter.domain.DatumInfo;
 import s10k.node.sim.filter.domain.DatumOrigin;
 import s10k.node.sim.filter.domain.DatumTrace;
 import s10k.node.sim.filter.domain.FilterStep;
 import s10k.node.sim.filter.domain.InstructionInfo;
+import s10k.node.sim.filter.domain.InstructionRun;
 import s10k.node.sim.filter.domain.LocalStateChange;
 import s10k.node.sim.filter.domain.MetricInfo;
 import s10k.node.sim.filter.domain.OpModeChange;
@@ -55,8 +57,12 @@ import net.solarnetwork.service.DatumFilterStats;
  *
  * <p>
  * Changes the simulated services observe, like Local State changes, issued
- * instructions, saved metrics, and external commands, are attributed to the
- * innermost filter step running at the time.
+ * instructions, saved metrics, external commands, and control values set, are
+ * attributed to the innermost filter step running at the time. Between datum,
+ * issued instructions and control values set are attributed to the stored
+ * instruction the Instruction Execution Job is running. An instruction is
+ * recorded once, with its latest state, however often it is stored and
+ * executed.
  * </p>
  *
  * <p>
@@ -67,7 +73,7 @@ import net.solarnetwork.service.DatumFilterStats;
  * </p>
  *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 public final class FilterTracer {
 
@@ -77,6 +83,7 @@ public final class FilterTracer {
 	private final OperationalModesService opModesService;
 	private final Deque<StepRecord> active = new ArrayDeque<>(4);
 	private @Nullable DatumRecord datum;
+	private @Nullable RunRecord run;
 	private int nextStepId = 1;
 
 	/**
@@ -234,8 +241,63 @@ public final class FilterTracer {
 	void instructionIssued(InstructionInfo instruction) {
 		final StepRecord step = currentStep();
 		if ( step != null ) {
-			step.instructions.add(instruction);
+			merge(step.instructions, instruction);
+			return;
 		}
+		final RunRecord r = this.run;
+		if ( r != null ) {
+			if ( instruction.number() == r.instruction.number() ) {
+				r.instruction = instruction;
+			} else {
+				merge(r.instructions, instruction);
+			}
+		}
+	}
+
+	/**
+	 * Add an instruction to a list, or replace the one with the same number.
+	 *
+	 * @param list
+	 *        the list
+	 * @param instruction
+	 *        the instruction
+	 */
+	private static void merge(List<InstructionInfo> list, InstructionInfo instruction) {
+		for ( int i = 0; i < list.size(); i++ ) {
+			if ( list.get(i).number() == instruction.number() ) {
+				list.set(i, instruction);
+				return;
+			}
+		}
+		list.add(instruction);
+	}
+
+	/**
+	 * Start recording a stored instruction the Instruction Execution Job runs,
+	 * between datum.
+	 *
+	 * @param record
+	 *        the run record
+	 */
+	void beginRun(RunRecord record) {
+		this.run = record;
+	}
+
+	/**
+	 * Stop recording an instruction run.
+	 */
+	void endRun() {
+		this.run = null;
+	}
+
+	/**
+	 * Get the instruction run being recorded.
+	 *
+	 * @return the run, or {@code null}
+	 */
+	@Nullable
+	RunRecord currentRun() {
+		return run;
 	}
 
 	/**
@@ -261,6 +323,24 @@ public final class FilterTracer {
 		final StepRecord step = currentStep();
 		if ( step != null ) {
 			step.commands.add(command);
+		}
+	}
+
+	/**
+	 * Handle a control value set.
+	 *
+	 * @param update
+	 *        the update
+	 */
+	void controlUpdated(ControlUpdate update) {
+		final StepRecord step = currentStep();
+		if ( step != null ) {
+			step.controls.add(update);
+			return;
+		}
+		final RunRecord r = this.run;
+		if ( r != null ) {
+			r.controls.add(update);
 		}
 	}
 
@@ -362,6 +442,39 @@ public final class FilterTracer {
 	}
 
 	/**
+	 * A stored instruction the Instruction Execution Job runs, between datum.
+	 */
+	static final class RunRecord {
+
+		final Instant date;
+		final @Nullable Integer afterSeq;
+		final SimInstructionService.@Nullable Issuer issuer;
+		InstructionInfo instruction;
+		final List<InstructionInfo> instructions = new ArrayList<>(2);
+		final List<ControlUpdate> controls = new ArrayList<>(1);
+		final List<Integer> generated = new ArrayList<>(1);
+		@Nullable
+		String error;
+
+		RunRecord(Instant date, @Nullable Integer afterSeq, InstructionInfo instruction,
+				SimInstructionService.@Nullable Issuer issuer) {
+			super();
+			this.date = date;
+			this.afterSeq = afterSeq;
+			this.instruction = instruction;
+			this.issuer = issuer;
+		}
+
+		InstructionRun toRun() {
+			final SimInstructionService.Issuer i = issuer;
+			return new InstructionRun(date, afterSeq, instruction, instructions, controls, generated,
+					i != null ? i.datumSeq() : null, i != null ? i.stepId() : null,
+					i != null ? i.filterId() : null, error);
+		}
+
+	}
+
+	/**
 	 * A filter step being recorded.
 	 */
 	static final class StepRecord {
@@ -377,6 +490,7 @@ public final class FilterTracer {
 		final List<InstructionInfo> instructions = new ArrayList<>(2);
 		final List<MetricInfo> metrics = new ArrayList<>(2);
 		final List<CommandInfo> commands = new ArrayList<>(1);
+		final List<ControlUpdate> controls = new ArrayList<>(1);
 		List<SkipReason> skipReasons = List.of();
 		FilterStep.Status status = FilterStep.Status.Unchanged;
 		@Nullable
@@ -404,7 +518,7 @@ public final class FilterTracer {
 		FilterStep toStep() {
 			return new FilterStep(id, filterId, uid, factoryUid, depth, status, input, output,
 					outputTimestamp, parameters, opModes, localState, generated, instructions, metrics,
-					commands, skipReasons, error, durationMicros);
+					commands, controls, skipReasons, error, durationMicros);
 		}
 
 	}

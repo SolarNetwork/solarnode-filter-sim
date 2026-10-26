@@ -42,7 +42,26 @@ simulation). The Canvas shows a dotted line that goes from that filter back to t
 You can then see datum #14's route through the entire flow, ending at the **Output** at the far
 right.
 
+## Instruction runs
+
+A [Control Conductor][control-conductor] task, or an Instructor instruction with a future
+`executionDate`, waits for SolarNode's Instruction Execution Job. When the job runs one on the
+simulated clock, the Execution Flow shows it as a dashed card between the datum, before the datum
+processed after it. The card shows when it ran, the conductor and task (like `Control Conductor
+"HVAC DR" task 1`), its status, the control it set, links to the datum the control published, and
+the filter step that issued it. Click the card to see its instructions. The **Instruction runs**
+pill above the datum shows or hides the cards.
+
+A filter step's instruction chip shows each instruction it issued, and its details list the
+instructions with their status messages (such as a Predicate Expression that declined), with the
+tasks a conductor scheduled, and when they are due, indented below. A datum a task's control
+published reads like "Published by control /hvac/1/mode, set by Control Conductor "HVAC DR" task 1
+at 2025-10-01 00:09:00Z", and its route on the Canvas starts at the filter that issued the
+instruction. Instructions still waiting when the simulation ends are listed in the final state. In
+debug mode, the **Instructions** tab shows the instructions waiting as of each filter step.
+
 [canvas]: ./getting-your-bearings.md#canvas
+[control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
 [control-pane]: ./getting-your-bearings.md#control-pane
 [datum-queue]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/#datum-queue
 [downsample]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/downsample/

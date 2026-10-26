@@ -124,8 +124,6 @@ function keysAt(schema: JsonSchema, path: string[]): KeyInfo[] {
 			return path[path.length - 1] === "samples" ? SAMPLE_KEYS : [];
 		case "metadata":
 			return path.length === 0 ? METADATA_KEYS : [];
-		case "datumMetadata":
-			return path.length === 1 && path[0] !== "[]" ? METADATA_KEYS : [];
 	}
 }
 

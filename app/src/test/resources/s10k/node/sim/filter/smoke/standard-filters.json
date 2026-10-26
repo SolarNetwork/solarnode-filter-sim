@@ -282,7 +282,21 @@
   }
  ],
  "environment": {
-  "localStateCsv": "Key,Created,Modified,Type,Value\nvm:/meter/1.wattsHours:date,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Int64,1759319940000\nvm:/meter/1.wattsHours:value,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Decimal,90\nvm:/meter/1.wattsHours:reading,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Decimal,500"
+  "localStateCsv": "Key,Created,Modified,Type,Value\nvm:/meter/1.wattsHours:date,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Int64,1759319940000\nvm:/meter/1.wattsHours:value,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Decimal,90\nvm:/meter/1.wattsHours:reading,2025-10-01T11:59:00Z,2025-10-01T11:59:00Z,Decimal,500",
+  "controls": [
+   {
+    "controlId": "/ctl/1",
+    "type": "Float",
+    "value": "0",
+    "publish": "Update"
+   },
+   {
+    "controlId": "/ctl/2",
+    "type": "Float",
+    "publish": "Change",
+    "persist": true
+   }
+  ]
  },
  "options": {
   "runAfter": "PT2M"

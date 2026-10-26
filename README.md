@@ -6,6 +6,8 @@ The SolarNode Filter Simulator is a web application for designing and testing So
  * build a filter chain on a canvas, starting from the main filter chain on the Datum Queue,
    including nested chains
  * configure each filter with the same settings SolarNode provides
+ * simulate the node's controls and Control Conductors, which filters like the Control Updater
+   and Instructor use
  * run sample datum through the chain, and see how each filter transformed them
  * record the datum a real SolarNode captures, as they arrive, to use as sample datum
  * see the route each datum took through the filters, drawn on the canvas
@@ -124,7 +126,8 @@ arguments and properties, then its settings, then its init method. It does not c
   have, so it behaves the same in a simulation as on a node.
 - **Services:** the blueprint can give the filter these services, as a `<reference>`, or with a
   `DynamicServiceTracker`:
-  - `DatumQueue`, `DatumMetadataService`, `InstructionExecutionService`, and `ReactorService`
+  - `DatumQueue`, `DatumMetadataService`, `InstructionExecutionService` (which gives
+    `SetControlParameter` instructions to the simulation's controls), and `ReactorService`
   - `TaskScheduler`, `TransientSettingDao`, and `MetricDao`
   - `MetadataService`: with the `(function=node)` filter, the Node Metadata Service, otherwise the
     metadata services of the simulation's environment

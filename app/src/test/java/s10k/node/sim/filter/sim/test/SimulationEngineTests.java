@@ -173,7 +173,7 @@ public class SimulationEngineTests {
 	private static SimulationEnvironment metadataEnvironment(JsonNode nodeMetadata,
 			UserMetadataConfig... userMetadata) {
 		return new SimulationEnvironment(null, null, nodeMetadata,
-				userMetadata.length > 0 ? List.of(userMetadata) : null, null, null, null);
+				userMetadata.length > 0 ? List.of(userMetadata) : null, null, null, null, null);
 	}
 
 	private static Object rate(DatumTrace trace) {
@@ -224,6 +224,45 @@ public class SimulationEngineTests {
 	}
 
 	@Test
+	public void expression_simulatedClock() {
+		// GIVEN
+		SimulationRequest req = request(
+				List.of(chain("main", "Chain - Main", "exp"),
+						expression("exp", "EXP", "ts", "timestamp().toEpochMilli()", "later",
+								"datePlus(timestamp(), 'PT2M').toEpochMilli()", "minute",
+								"nowTz('UTC').minute", "year", "today('UTC').year")),
+				METER_DATUM, """
+						{"created":"2025-10-01 00:05:00Z","sourceId":"/meter/1","i":{"watts":1}}""");
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		final Instant date = Instant.parse("2025-10-01T00:00:00Z");
+		// @formatter:off
+		then(result.datum())
+			.as("Two datum processed")
+			.hasSize(2)
+			;
+		then(result.datum().getFirst().output().samples().i())
+			.as("Current time functions use the datum's simulated time")
+			.hasEntrySatisfying("ts", v -> then(number(v).longValue())
+					.isEqualTo(date.toEpochMilli()))
+			.hasEntrySatisfying("later", v -> then(number(v).longValue())
+					.isEqualTo(date.plusSeconds(120).toEpochMilli()))
+			.hasEntrySatisfying("minute", v -> then(number(v).intValue()).isEqualTo(0))
+			.hasEntrySatisfying("year", v -> then(number(v).intValue()).isEqualTo(2025))
+			;
+		then(result.datum().getLast().output().samples().i())
+			.as("Simulated time follows each datum")
+			.hasEntrySatisfying("ts", v -> then(number(v).longValue())
+					.isEqualTo(date.plusSeconds(300).toEpochMilli()))
+			.hasEntrySatisfying("minute", v -> then(number(v).intValue()).isEqualTo(5))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void history() {
 		// GIVEN
 		SimulationHistory history = new SimulationHistory(List.of(json("""
@@ -264,7 +303,7 @@ public class SimulationEngineTests {
 		SimulationEnvironment env = new SimulationEnvironment(null, """
 				Key,Created,Modified,Type,Value
 				counter,,,Int64,41
-				""", null, null, null, null, null);
+				""", null, null, null, null, null, null);
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						expression("exp", "EXP", "count",
@@ -315,7 +354,7 @@ public class SimulationEngineTests {
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
 				List.of(json(METER_DATUM)), null,
-				new SimulationEnvironment(List.of(), null, null, null, null, null, null), null);
+				new SimulationEnvironment(List.of(), null, null, null, null, null, null, null), null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -405,7 +444,8 @@ public class SimulationEngineTests {
 				List.of(chain("main", "Chain - Main", "exp"),
 						new FilterConfig("exp", StandardFilterTypes.EXPRESSION, null, settings, null)),
 				List.of(json(METER_DATUM)), null,
-				new SimulationEnvironment(List.of(" BOOST "), null, null, null, null, null, null), null);
+				new SimulationEnvironment(List.of(" BOOST "), null, null, null, null, null, null, null),
+				null);
 
 		// WHEN
 		SimulationResult result = engine.simulate(req);
@@ -1035,7 +1075,7 @@ public class SimulationEngineTests {
 		ObjectNode meta = JSON.createObjectNode();
 		meta.putObject("pm").putObject("panel").put("efficiency", 0.2);
 		SimulationEnvironment env = new SimulationEnvironment(null, null, null, null,
-				Map.of("factor", "2"), Map.of("/meter/1", meta), null);
+				Map.of("factor", "2"), Map.of("/meter/1", meta), null, null);
 		SimulationRequest req = request(
 				List.of(chain("main", "Chain - Main", "exp"),
 						expression("exp", "EXP", "doubled", "watts * factor", "panel",

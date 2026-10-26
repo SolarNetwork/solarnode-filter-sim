@@ -119,6 +119,7 @@ dependencies {
 	implementation(libs.sn.common, snExcludes)
 	implementation(libs.sn.common.expr.spel, snExcludes)
 	implementation(libs.sn.node, snExcludes)
+	implementation(libs.sn.node.control.conductor, snExcludes)
 	implementation(libs.sn.node.datum.filter.standard, snExcludes)
 	implementation(libs.sn.node.datum.filter.tariff, snExcludes)
 	implementation(libs.sn.node.datum.filter.pvlib, snExcludes)
@@ -548,6 +549,18 @@ abstract class NativeSmokeTest extends DefaultTask {
 		def metrics = (result.finalState?.metrics ?: []).collect { [name: it.name, value: it.value] }
 		if ( metrics ) {
 			summary.metrics = metrics
+		}
+		def controls = (result.finalState?.controls ?: []).collect {
+			[controlId: it.controlId, value: it.value, updates: it.updates] }
+		if ( controls ) {
+			summary.controls = controls
+		}
+		def runs = (result.instructionRuns ?: []).collect {
+			[date: it.date, topic: it.instruction?.topic, state: it.instruction?.state,
+				conductor: it.instruction?.conductor, task: it.instruction?.task,
+				generated: it.generated] }
+		if ( runs ) {
+			summary.instructionRuns = runs
 		}
 		normalized(summary)
 	}

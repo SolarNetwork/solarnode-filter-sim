@@ -1,0 +1,88 @@
+{
+  "messages" : [ ],
+  "stats" : {
+    "processed" : "5",
+    "generated" : "3",
+    "output" : "5",
+    "discarded" : "0"
+  },
+  "datum" : [ {
+    "seq" : "1",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Unchanged", "instr:Unchanged", "level:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "500"
+      }
+    }
+  }, {
+    "seq" : "2",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "instr:Changed", "level:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "1500"
+      },
+      "s" : {
+        "drState" : "OrchestrateControls Completed"
+      }
+    }
+  }, {
+    "seq" : "3",
+    "sourceId" : "/hvac/1/mode",
+    "steps" : [ "main:Changed", "instr:Skipped", "level:Changed" ],
+    "output" : {
+      "i" : {
+        "mode" : "3",
+        "level" : "30"
+      }
+    }
+  }, {
+    "seq" : "4",
+    "sourceId" : "/hvac/1/mode",
+    "steps" : [ "main:Changed", "instr:Skipped", "level:Changed" ],
+    "output" : {
+      "i" : {
+        "mode" : "4",
+        "level" : "40"
+      }
+    }
+  }, {
+    "seq" : "5",
+    "sourceId" : "/hvac/1/mode",
+    "steps" : [ "main:Changed", "instr:Skipped", "level:Changed" ],
+    "output" : {
+      "i" : {
+        "mode" : "0",
+        "level" : "0"
+      }
+    }
+  } ],
+  "controls" : [ {
+    "controlId" : "/hvac/1/mode",
+    "value" : "0",
+    "updates" : "3"
+  } ],
+  "instructionRuns" : [ {
+    "date" : "2025-10-01T00:09:00Z",
+    "topic" : "Signal",
+    "state" : "Completed",
+    "conductor" : "HVAC DR",
+    "task" : "1",
+    "generated" : [ "3" ]
+  }, {
+    "date" : "2025-10-01T00:10:00Z",
+    "topic" : "Signal",
+    "state" : "Completed",
+    "conductor" : "HVAC DR",
+    "task" : "2",
+    "generated" : [ "4" ]
+  }, {
+    "date" : "2025-10-01T00:11:10Z",
+    "topic" : "Signal",
+    "state" : "Completed",
+    "conductor" : "HVAC DR",
+    "task" : "3",
+    "generated" : [ "5" ]
+  } ]
+}

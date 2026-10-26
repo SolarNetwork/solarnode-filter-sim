@@ -39,6 +39,22 @@ export interface InspectorActions {
 	 * @param command the command path
 	 */
 	allowCommand(command: string): void;
+	/** Get the IDs of the simulated controls. */
+	controlIds(): string[];
+	/**
+	 * Add a simulated control.
+	 *
+	 * @param controlId the control ID
+	 */
+	addControl(controlId: string): void;
+	/** Get the Service Names of the simulated Control Conductors. */
+	conductorUids(): string[];
+	/**
+	 * Add a simulated Control Conductor.
+	 *
+	 * @param uid the Service Name
+	 */
+	addConductor(uid: string): void;
 }
 
 /** How long after typing stops, in milliseconds, the settings are checked. */
@@ -50,11 +66,41 @@ const CHAIN_FILTERS = "transformUids";
 /** The setting of a filter's external command, like the POA Calculator's. */
 const COMMAND_SETTING = "command";
 
+/** The factory UID of the Control Updater filter. */
+const CONTROL_UPDATER_FACTORY_UID =
+	"net.solarnetwork.node.datum.filter.control.update";
+
+/** The Control Updater's control ID settings. */
+const CONTROL_ID_SETTING = /^controlConfigs\[\d+\]\.controlId$/;
+
+/** The factory UID of the Instructor filter. */
+const INSTRUCTOR_FACTORY_UID = "net.solarnetwork.node.datum.filter.instructor";
+
+/** The topic of the instruction Control Conductors handle. */
+const ORCHESTRATE_CONTROLS_TOPIC = "OrchestrateControls";
+
+/**
+ * The Instructor's instruction parameter value settings, with the
+ * instruction and parameter key prefixes as groups 1 and 2.
+ */
+const INSTRUCTION_PARAM_SETTING =
+	/^(instructorConfigs\[\d+\]\.instructions\[\d+\])\.(parameters\[\d+\])\.expression$/;
+
 /** A rendered setting, for showing its problems. */
 interface Control {
 	/** The element marked invalid. */
 	control: HTMLElement;
 	feedback: HTMLElement;
+}
+
+/** The names a Choose menu offers. */
+interface Choices {
+	/** Get the names. */
+	names: () => string[];
+	/** The text shown when there are none. */
+	none: string;
+	/** The button's tooltip. */
+	title: string;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -455,6 +501,14 @@ export class Inspector {
 		if (command) {
 			alerts.push(this.#commandAlert(command));
 		}
+		const missing = this.#missingControls(node, form);
+		if (missing.length) {
+			alerts.push(this.#controlsAlert(missing));
+		}
+		const conductors = this.#missingConductors(node, form);
+		if (conductors.length) {
+			alerts.push(this.#conductorsAlert(conductors));
+		}
 		if (form && form.problems.length > 0) {
 			const problems = element(
 				"div",
@@ -513,9 +567,177 @@ export class Inspector {
 		return el;
 	}
 
+	/** Test if a setting is one of the Control Updater's control IDs. */
+	#isControlIdField(field: SettingField, filter: FilterConfig): boolean {
+		return (
+			filter.factoryUid === CONTROL_UPDATER_FACTORY_UID &&
+			!!field.key &&
+			CONTROL_ID_SETTING.test(field.key)
+		);
+	}
+
 	/**
-	 * Check the shown filter again, such as after the Allowed Commands
-	 * change.
+	 * Get the control IDs a Control Updater sets that are not simulated
+	 * controls. IDs with placeholders, resolved for each datum, are left out.
+	 *
+	 * @returns the control IDs, without repeats
+	 */
+	#missingControls(
+		node: FilterNode,
+		form: SettingsForm | undefined,
+	): string[] {
+		const filter = this.#ws.filter(node.filterId);
+		if (!form || filter?.factoryUid !== CONTROL_UPDATER_FACTORY_UID) {
+			return [];
+		}
+		const available = new Set(this.#actions.controlIds());
+		const missing = new Set<string>();
+		const collect = (fields: SettingField[]) => {
+			for (const f of fields) {
+				const id = (f.value ?? "").trim();
+				if (
+					f.key &&
+					CONTROL_ID_SETTING.test(f.key) &&
+					id &&
+					!id.includes("{") &&
+					!available.has(id)
+				) {
+					missing.add(id);
+				}
+				collect(f.fields ?? []);
+			}
+		};
+		collect(form.fields);
+		return [...missing];
+	}
+
+	#controlsAlert(controlIds: string[]): HTMLElement {
+		const el = element("div", "alert alert-warning small py-2 mb-2");
+		const text = element("div", "mb-1");
+		const one = controlIds.length === 1;
+		text.append(one ? "The control " : "The controls ");
+		controlIds.forEach((id, i) => {
+			if (i > 0) {
+				text.append(", ");
+			}
+			text.append(element("code", "text-break", id));
+		});
+		text.append(
+			one
+				? " is not one of the simulation's Controls, so setting it fails, as on a node without that control."
+				: " are not among the simulation's Controls, so setting them fails, as on a node without those controls.",
+		);
+		const add = element(
+			"button",
+			"btn btn-sm btn-outline-secondary",
+			one ? "Add this control" : "Add these controls",
+		);
+		add.type = "button";
+		add.addEventListener("click", () => {
+			for (const id of controlIds) {
+				this.#actions.addControl(id);
+			}
+			void this.#validate();
+		});
+		el.append(text, add);
+		return el;
+	}
+
+	/**
+	 * Test if a setting is the value of an Instructor `OrchestrateControls`
+	 * instruction's `service` parameter, which names a Control Conductor.
+	 */
+	#isConductorServiceField(
+		field: SettingField,
+		filter: FilterConfig,
+	): boolean {
+		const m =
+			filter.factoryUid === INSTRUCTOR_FACTORY_UID && field.key
+				? INSTRUCTION_PARAM_SETTING.exec(field.key)
+				: null;
+		const settings = filter.settings ?? {};
+		return (
+			!!m &&
+			settings[`${m[1]}.topic`]?.trim() === ORCHESTRATE_CONTROLS_TOPIC &&
+			settings[`${m[1]}.${m[2]}.name`]?.trim() === "service"
+		);
+	}
+
+	/**
+	 * Get the Service Names an Instructor's `OrchestrateControls`
+	 * instructions name that are not simulated Control Conductors. Like the
+	 * server's check, a `service` parameter that is an expression is left out.
+	 *
+	 * @returns the Service Names, without repeats
+	 */
+	#missingConductors(
+		node: FilterNode,
+		form: SettingsForm | undefined,
+	): string[] {
+		const filter = this.#ws.filter(node.filterId);
+		if (!form || filter?.factoryUid !== INSTRUCTOR_FACTORY_UID) {
+			return [];
+		}
+		const values = new Map<string, string>();
+		const collect = (fields: SettingField[]) => {
+			for (const f of fields) {
+				if (f.key) {
+					values.set(f.key, f.value ?? "");
+				}
+				collect(f.fields ?? []);
+			}
+		};
+		collect(form.fields);
+		const available = new Set(
+			this.#actions.conductorUids().map((uid) => uid.toLowerCase()),
+		);
+		const missing = new Map<string, string>();
+		for (const [key, value] of values) {
+			const m = INSTRUCTION_PARAM_SETTING.exec(key);
+			const name = value.trim();
+			if (
+				m &&
+				name &&
+				values.get(`${m[1]}.topic`)?.trim() ===
+					ORCHESTRATE_CONTROLS_TOPIC &&
+				values.get(`${m[1]}.${m[2]}.name`)?.trim() === "service" &&
+				!values.get(`${m[1]}.${m[2]}.expressionServiceId`) &&
+				!available.has(name.toLowerCase())
+			) {
+				missing.set(name.toLowerCase(), name);
+			}
+		}
+		return [...missing.values()];
+	}
+
+	#conductorsAlert(uids: string[]): HTMLElement {
+		const el = element("div", "alert alert-warning small py-2 mb-2");
+		const text = element("div", "mb-1");
+		const one = uids.length === 1;
+		text.append(
+			one
+				? `An OrchestrateControls instruction names the Control Conductor ${quoted(uids[0])}, which is not one of the simulation's Control Conductors, so nothing handles it, as on a node without that conductor.`
+				: `OrchestrateControls instructions name the Control Conductors ${uids.map((u) => quoted(u)).join(", ")}, which are not among the simulation's Control Conductors, so nothing handles them, as on a node without those conductors.`,
+		);
+		const add = element(
+			"button",
+			"btn btn-sm btn-outline-secondary",
+			one ? "Add a Control Conductor" : "Add these Control Conductors",
+		);
+		add.type = "button";
+		add.addEventListener("click", () => {
+			for (const uid of uids) {
+				this.#actions.addConductor(uid);
+			}
+			void this.#validate();
+		});
+		el.append(text, add);
+		return el;
+	}
+
+	/**
+	 * Check the shown filter again, such as after the Allowed Commands or
+	 * controls change.
 	 */
 	refreshAlerts(): void {
 		void this.#validate();
@@ -726,16 +948,43 @@ export class Inspector {
 		input.addEventListener("input", () =>
 			this.#editValue(filter, field.key!, input.value),
 		);
-		const wrapper =
-			field.relatedServiceFilter && !field.readOnly && !multiline
-				? this.#setting(
-						field,
-						filter,
-						this.#chooser(field, filter, input),
-						id,
-						input,
-					)
-				: this.#setting(field, filter, input, id);
+		// a service parameter's value is a text area, like every Instructor
+		// parameter's
+		const choices: Choices | undefined = field.readOnly
+			? undefined
+			: this.#isConductorServiceField(field, filter)
+				? {
+						names: () => this.#actions.conductorUids(),
+						none: "No Control Conductors: add them on the Controls tab",
+						title: "Choose from the simulated Control Conductors",
+					}
+				: multiline
+					? undefined
+					: field.relatedServiceFilter
+						? {
+								names: () =>
+									this.#actions.relatedServices(
+										field.relatedServiceFilter!,
+									),
+								none: "No matching services",
+								title: "Choose from the simulated services",
+							}
+						: this.#isControlIdField(field, filter)
+							? {
+									names: () => this.#actions.controlIds(),
+									none: "No controls: add them on the Controls tab",
+									title: "Choose from the simulated controls",
+								}
+							: undefined;
+		const wrapper = choices
+			? this.#setting(
+					field,
+					filter,
+					this.#chooser(field, filter, input, choices),
+					id,
+					input,
+				)
+			: this.#setting(field, filter, input, id);
 		if (field.key === UID_SETTING) {
 			this.#uidWarning = element(
 				"div",
@@ -757,13 +1006,15 @@ export class Inspector {
 	}
 
 	/**
-	 * Add a Choose menu to a text input, which lists the simulated services that
-	 * match the setting's related service filter, like SolarNode's settings page.
+	 * Add a Choose menu to a text input, which lists names such as the
+	 * simulated services that match the setting's related service filter, like
+	 * SolarNode's settings page.
 	 */
 	#chooser(
 		field: SettingField,
 		filter: FilterConfig,
 		input: HTMLInputElement | HTMLTextAreaElement,
+		choices: Choices,
 	): HTMLElement {
 		const group = element("div", "input-group input-group-sm");
 		const button = element(
@@ -774,19 +1025,17 @@ export class Inspector {
 		button.type = "button";
 		button.setAttribute("data-bs-toggle", "dropdown");
 		button.setAttribute("aria-expanded", "false");
-		button.title = "Choose from the simulated services";
+		button.title = choices.title;
 		const menu = element("ul", "dropdown-menu dropdown-menu-end");
 		button.addEventListener("show.bs.dropdown", () => {
-			const names = this.#actions.relatedServices(
-				field.relatedServiceFilter!,
-			);
+			const names = choices.names();
 			menu.replaceChildren(
 				...(names.length ? names : [null]).map((name) => {
 					const item = element("li");
 					const choice = element(
 						"button",
 						"dropdown-item",
-						name ?? "No matching services",
+						name ?? choices.none,
 					);
 					choice.type = "button";
 					if (name === null) {

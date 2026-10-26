@@ -65,11 +65,11 @@ The main TypeScript modules are:
 | `routeOverlay.ts` | Draws datum routes on the canvas: lanes, the lines back through the queue, and number badges. |
 | `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
-| `inputs.ts`    | The run inputs (datum, histories, starting state, and metadata), saved in the browser, which make up a `/api/simulate` request. |
+| `inputs.ts`    | The run inputs (datum, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
 | `inputPanel.ts` | The input tabs and the Entry Point select. |
 | `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
 | `debug.ts`     | Debug mode: the cursor positions, the node state rebuilt at each filter step, and the state tabs. |
-| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button. |
+| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, and instruction lists. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
 | `session.ts`   | Simulation files: the workspace and run inputs saved as JSON, to share a simulation or open it in another browser. |

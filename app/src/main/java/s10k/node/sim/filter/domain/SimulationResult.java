@@ -26,6 +26,9 @@ import java.util.List;
  *
  * @param datum
  *        the trace of every processed datum, in processing order
+ * @param instructionRuns
+ *        the stored instructions the Instruction Execution Job ran, in the
+ *        order it ran them
  * @param messages
  *        warnings and other messages about the simulation
  * @param finalState
@@ -33,9 +36,9 @@ import java.util.List;
  * @param stats
  *        simulation statistics
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
-public record SimulationResult(List<DatumTrace> datum, List<SimulationMessage> messages,
-		SimulationState finalState, SimulationStats stats) {
+public record SimulationResult(List<DatumTrace> datum, List<InstructionRun> instructionRuns,
+		List<SimulationMessage> messages, SimulationState finalState, SimulationStats stats) {
 
 }

@@ -4,25 +4,42 @@
  */
 
 import type {
+	ControlConductorConfig,
+	ControlPublishMode,
+	NodeControlConfig,
+	NodeControlPropertyType,
 	NodeLocation,
 	SimulationEnvironment,
 	SimulationHistory,
 	SimulationOptions,
 	UserMetadataConfig,
 } from "./model.ts";
+import { jsonLanguage } from "@codemirror/lang-json";
+import { formatJson } from "./jsonFormat.ts";
 import { quoted } from "./view.ts";
 
 /** The Service Name of SolarNode's node metadata service. */
 export const NODE_METADATA_SERVICE_UID = "Node Metadata Service";
 
+/** The service ID of the Spring Expression Language, SolarNode's only one. */
+export const SPEL_SERVICE_ID =
+	"net.solarnetwork.common.expr.spel.SpelExpressionService";
+
+/**
+ * The Expression Language choices, like a node's settings form; the first is
+ * no language.
+ */
+export const EXPRESSION_LANGUAGES: readonly { id: string; label: string }[] = [
+	{ id: "", label: "" },
+	{ id: SPEL_SERVICE_ID, label: "Spring Expression Language" },
+];
+
+/** The default Instruction Execution Job seconds, like a node's. */
+export const DEFAULT_INSTRUCTION_JOB_SECONDS = 10;
+
 /** The input tabs. */
 export type InputTab =
-	| "datum"
-	| "history"
-	| "environment"
-	| "node-metadata"
-	| "user-metadata"
-	| "datum-metadata";
+	"datum" | "history" | "environment" | "metadata" | "controls";
 
 /** A simulated User Metadata Service, as entered. */
 export interface UserMetadataInput {
@@ -32,6 +49,70 @@ export interface UserMetadataInput {
 	uid: string;
 	/** The metadata JSON. */
 	metadata: string;
+}
+
+/** The metadata of a datum stream, as entered. */
+export interface DatumMetadataInput {
+	/** A unique id, for the UI. */
+	id: string;
+	/** The source ID. */
+	sourceId: string;
+	/** The metadata JSON. */
+	metadata: string;
+}
+
+/** A simulated control, as entered. */
+export interface ControlInput {
+	/** A unique id, for the UI. */
+	id: string;
+	/** The control ID. */
+	controlId: string;
+	/** The control type. */
+	type: NodeControlPropertyType;
+	/** The starting value, or `""` for none. */
+	value: string;
+	/** When the control publishes a datum. */
+	publish: ControlPublishMode;
+	/** `true` to persist the datum the control publishes. */
+	persist: boolean;
+	/**
+	 * The datum property name of the value the control publishes, or `""` for
+	 * `val` (with a number also as `v`).
+	 */
+	propertyName: string;
+	/** The datum property type of the value, or `""` for `Status`. */
+	propertyType: "" | "Instantaneous" | "Accumulating";
+}
+
+/** A task of a simulated Control Conductor, as entered. */
+export interface ConductorTaskInput {
+	/** A unique id, for the UI. */
+	id: string;
+	/** The ID of the control to set. */
+	controlId: string;
+	/**
+	 * The time offset from the orchestration date: milliseconds or an ISO 8601
+	 * duration, possibly negative, possibly with placeholders.
+	 */
+	offset: string;
+	/** The value to set, or an expression. */
+	value: string;
+	/** The Expression Language of the value, or `""` for none. */
+	language: string;
+}
+
+/** A simulated Control Conductor, as entered. */
+export interface ConductorInput {
+	/** A unique id, for the UI. */
+	id: string;
+	/** The Service Name. */
+	uid: string;
+	/** The Predicate Expression, or `""` for none. */
+	predicate: string;
+	/** The Expression Language of the predicate, or `""` for none. */
+	predicateLanguage: string;
+	/** The tasks. */
+	tasks: ConductorTaskInput[];
 }
 
 /** The inputs, as entered, which are saved in the browser. */
@@ -48,10 +129,12 @@ export interface InputsState {
 	localState: string;
 	/** The seconds to keep running after the last datum. */
 	runAfter: string;
+	/** The Instruction Execution Job seconds, or `""` for the default. */
+	instructionJobSeconds: string;
 	/** Placeholders, as `name = value` lines. */
 	placeholders: string;
-	/** Datum metadata JSON: an object of source IDs to metadata. */
-	datumMetadata: string;
+	/** The datum stream metadata, one per source ID. */
+	datumMetadata: DatumMetadataInput[];
 	/** The node location latitude, in decimal degrees. */
 	nodeLatitude: string;
 	/** The node location longitude, in decimal degrees. */
@@ -62,6 +145,10 @@ export interface InputsState {
 	allowedCommands: string;
 	nodeMetadata: string;
 	userMetadata: UserMetadataInput[];
+	/** The simulated controls. */
+	controls: ControlInput[];
+	/** The simulated Control Conductors. */
+	conductors: ConductorInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
 	entryPoint: string;
 }
@@ -69,7 +156,12 @@ export interface InputsState {
 /** The text fields of the inputs. */
 export type InputField = Exclude<
 	keyof InputsState,
-	"version" | "unfilteredSameAsHistory" | "userMetadata"
+	| "version"
+	| "unfilteredSameAsHistory"
+	| "userMetadata"
+	| "datumMetadata"
+	| "controls"
+	| "conductors"
 >;
 
 /** The parts of a simulation request that come from the inputs. */
@@ -88,7 +180,8 @@ export class InputError extends Error {
 	 *
 	 * @param message the problem
 	 * @param tab the tab with the input
-	 * @param field the input field, or the id of a User Metadata Service
+	 * @param field the input field, or the id of a User Metadata Service or
+	 *     control
 	 */
 	constructor(
 		message: string,
@@ -113,14 +206,17 @@ function emptyState(): InputsState {
 		opModes: "",
 		localState: "",
 		runAfter: "",
+		instructionJobSeconds: "",
 		placeholders: "",
-		datumMetadata: "",
+		datumMetadata: [],
 		nodeLatitude: "",
 		nodeLongitude: "",
 		nodeElevation: "",
 		allowedCommands: "",
 		nodeMetadata: "",
 		userMetadata: [],
+		controls: [],
+		conductors: [],
 		entryPoint: "",
 	};
 }
@@ -204,6 +300,26 @@ export function parseRunAfter(text: string): number {
 }
 
 /**
+ * Parse the Instruction Execution Job seconds.
+ *
+ * @param text the seconds
+ * @returns the seconds, or `null` if the text is blank
+ * @throws Error if the text is not a whole number from 1 to 59
+ */
+export function parseInstructionJobSeconds(text: string): number | null {
+	if (!text.trim()) {
+		return null;
+	}
+	const seconds = Number(text);
+	if (!Number.isInteger(seconds) || seconds < 1 || seconds > 59) {
+		throw new Error(
+			"Enter a whole number of seconds from 1 to 59, like 10 for every 10 seconds.",
+		);
+	}
+	return seconds;
+}
+
+/**
  * Parse placeholders: `name = value` lines, like a SolarNode placeholders
  * properties file, with `#` or `!` comment lines.
  *
@@ -230,27 +346,79 @@ export function parsePlaceholders(text: string): Record<string, string> {
 }
 
 /**
- * Parse datum metadata JSON: an object of source IDs to metadata objects.
+ * Get the input field of a datum metadata's source ID, for an `InputError`.
+ *
+ * @param id the datum metadata's id
+ * @returns the field
+ */
+export function datumMetadataSourceField(id: string): string {
+	return `${id}.sourceId`;
+}
+
+/**
+ * Get the problem with a datum metadata's source ID.
+ *
+ * @param items all the datum metadata
+ * @param item the datum metadata to check
+ * @returns the problem, or `null` if the source ID is valid
+ */
+export function datumMetadataSourceProblem(
+	items: readonly DatumMetadataInput[],
+	item: DatumMetadataInput,
+): string | null {
+	const sourceId = item.sourceId.trim();
+	if (!sourceId) {
+		return "Enter the source ID of the datum stream, like /meter/1.";
+	}
+	const first = items.find((m) => m.sourceId.trim() === sourceId);
+	return first && first.id !== item.id
+		? `Other metadata has the source ID ${sourceId}.`
+		: null;
+}
+
+/**
+ * Split datum metadata JSON, an object of source IDs to metadata, as it was
+ * entered before each source ID had its own input. Each metadata keeps its
+ * exact text, formatted.
  *
  * @param text the JSON
- * @returns the metadata, or `null` if the text is blank
- * @throws Error if the JSON is not valid
+ * @returns the source IDs and metadata JSON, or the whole text with no
+ *     source ID if it is not a JSON object
  */
-export function parseDatumMetadata(
+export function splitDatumMetadata(
 	text: string,
-): Record<string, unknown> | null {
-	const value = parseMetadata(text, "Datum metadata") as Record<
-		string,
-		unknown
-	> | null;
-	for (const [sourceId, meta] of Object.entries(value ?? {})) {
-		if (!isObject(meta)) {
-			throw new Error(
-				`The datum metadata of ${sourceId} must be a JSON object, like {"pm": {…}}.`,
-			);
+): { sourceId: string; metadata: string }[] {
+	if (!text.trim()) {
+		return [];
+	}
+	const tree = jsonLanguage.parser.parse(text);
+	let errors = false;
+	tree.iterate({
+		enter: (n) => {
+			errors ||= n.type.isError;
+		},
+	});
+	const top = tree.topNode.firstChild;
+	const result: { sourceId: string; metadata: string }[] = [];
+	let ok = !errors && top?.name === "Object";
+	for (let p = top?.firstChild; ok && p; p = p.nextSibling) {
+		if (p.name !== "Property") {
+			continue;
+		}
+		const name = p.getChild("PropertyName");
+		const value = p.lastChild;
+		try {
+			const sourceId = JSON.parse(text.slice(name!.from, name!.to));
+			const raw = text.slice(value!.from, value!.to);
+			result.push({
+				sourceId: String(sourceId),
+				metadata: formatJson(raw),
+			});
+		} catch {
+			ok = false;
 		}
 	}
-	return value;
+	return ok ? result : [{ sourceId: "", metadata: text }];
 }
 
 /**
@@ -294,6 +462,168 @@ export function parseAllowedCommands(text: string): string[] {
 		.split(/\r?\n/)
 		.map((c) => c.trim())
 		.filter((c) => c.length > 0);
+}
+
+/**
+ * Get the problem with a control's starting value, the way the simulator
+ * reads it for the control's type.
+ *
+ * Boolean values are never a problem: like SolarNode, values other than
+ * `true`, `yes`, `y`, `t`, or `1` are `false`.
+ *
+ * @param type the control type
+ * @param value the value
+ * @returns the problem, or `null` if the value is valid or empty
+ */
+export function controlValueProblem(
+	type: NodeControlPropertyType,
+	value: string,
+): string | null {
+	const v = value.trim();
+	if (!v) {
+		return null;
+	}
+	switch (type) {
+		case "Integer": {
+			const n = /^[+-]?\d+$/.test(v) ? Number(v) : NaN;
+			return Number.isSafeInteger(n) && n >= -(2 ** 31) && n < 2 ** 31
+				? null
+				: "An Integer control's value must be a whole number, like 42.";
+		}
+		case "Float":
+		case "Percent":
+			return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(v)
+				? null
+				: `A ${type} control's value must be a number, like 1.5.`;
+		default:
+			return null;
+	}
+}
+
+/**
+ * Get the input field of a control's value, for an `InputError`.
+ *
+ * @param id the control's id
+ * @returns the field
+ */
+export function controlValueField(id: string): string {
+	return `${id}.value`;
+}
+
+/**
+ * Get the problem with a control's ID.
+ *
+ * @param controls all the controls
+ * @param control the control to check
+ * @returns the problem, or `null` if the ID is valid
+ */
+export function controlIdProblem(
+	controls: readonly ControlInput[],
+	control: ControlInput,
+): string | null {
+	const controlId = control.controlId.trim();
+	if (!controlId) {
+		return "Enter the control ID, like /power/limit.";
+	}
+	const first = controls.find((c) => c.controlId.trim() === controlId);
+	return first && first.id !== control.id
+		? `Another control has the ID ${controlId}.`
+		: null;
+}
+
+/**
+ * Get the input field of a Control Conductor task's setting, for an
+ * `InputError`.
+ *
+ * @param taskId the task's id
+ * @param setting the setting
+ * @returns the field
+ */
+export function conductorTaskField(
+	taskId: string,
+	setting: "controlId" | "offset" | "value",
+): string {
+	return `${taskId}.${setting}`;
+}
+
+/**
+ * Get the problem with a Control Conductor's Service Name. Like SolarNode,
+ * Service Names are compared ignoring case.
+ *
+ * @param conductors all the conductors
+ * @param conductor the conductor to check
+ * @returns the problem, or `null` if the Service Name is valid
+ */
+export function conductorUidProblem(
+	conductors: readonly ConductorInput[],
+	conductor: ConductorInput,
+): string | null {
+	const uid = conductor.uid.trim().toLowerCase();
+	if (!uid) {
+		return "Enter the Service Name, which OrchestrateControls instructions name in their service parameter.";
+	}
+	const first = conductors.find((c) => c.uid.trim().toLowerCase() === uid);
+	return first && first.id !== conductor.id
+		? "Another Control Conductor has this Service Name."
+		: null;
+}
+
+/**
+ * Test if a task offset is valid, the way a Control Conductor reads it: a
+ * whole number of milliseconds, like Java's `Long.parseLong()`, or an ISO 8601
+ * duration, like Java's `Duration.parse()`. Either can be negative.
+ *
+ * @param offset the offset, without placeholders
+ * @returns `true` if the offset is valid
+ */
+export function isTaskOffset(offset: string): boolean {
+	if (/^[+-]?\d+$/.test(offset)) {
+		const n = BigInt(offset);
+		return n >= -(2n ** 63n) && n < 2n ** 63n;
+	}
+	const m =
+		/^[+-]?P(?:([+-]?\d+)D)?(T(?:([+-]?\d+)H)?(?:([+-]?\d+)M)?(?:([+-]?\d+)(?:[.,]\d{0,9})?S)?)?$/i.exec(
+			offset,
+		);
+	return (
+		!!m &&
+		(m[1] !== undefined ||
+			m[3] !== undefined ||
+			m[4] !== undefined ||
+			m[5] !== undefined) &&
+		(m[2] === undefined ||
+			m[3] !== undefined ||
+			m[4] !== undefined ||
+			m[5] !== undefined)
+	);
+}
+
+/**
+ * Get the problems with a Control Conductor task.
+ *
+ * @param task the task
+ * @returns the problems, by task setting
+ */
+export function conductorTaskProblems(
+	task: ConductorTaskInput,
+): Partial<Record<"controlId" | "offset" | "value", string>> {
+	const result: Partial<Record<"controlId" | "offset" | "value", string>> =
+		{};
+	if (!task.controlId.trim()) {
+		result.controlId = "Enter the ID of the control to set.";
+	}
+	const offset = task.offset.trim();
+	if (!offset) {
+		result.offset =
+			"Enter the offset from the orchestration date, like 0, -PT5M, or {duration}.";
+	} else if (!offset.includes("{") && !isTaskOffset(offset)) {
+		result.offset =
+			"Enter a number of milliseconds or an ISO 8601 duration, like -60000 or -PT1M.";
+	}
+	if (!task.value.trim()) {
+		result.value = "Enter the value to set the control to.";
+	}
+	return result;
 }
 
 /**
@@ -367,6 +697,30 @@ export class RunInputs extends EventTarget {
 		if (!Array.isArray(state.userMetadata)) {
 			state.userMetadata = [];
 		}
+		if (!Array.isArray(state.controls)) {
+			state.controls = [];
+		}
+		for (const c of state.controls) {
+			// saved before controls had a datum property
+			c.propertyName ??= "";
+			c.propertyType ??= "";
+		}
+		if (!Array.isArray(state.conductors)) {
+			state.conductors = [];
+		}
+		for (const c of state.conductors) {
+			if (!Array.isArray(c.tasks)) {
+				c.tasks = [];
+			}
+		}
+		if (typeof state.datumMetadata === "string") {
+			// saved before each source ID had its own input
+			state.datumMetadata = splitDatumMetadata(state.datumMetadata).map(
+				(m, i) => ({ id: `dmeta-saved-${i + 1}`, ...m }),
+			);
+		} else if (!Array.isArray(state.datumMetadata)) {
+			state.datumMetadata = [];
+		}
 		return state;
 	}
 
@@ -397,6 +751,20 @@ export class RunInputs extends EventTarget {
 		}
 		const text = this.#state.allowedCommands.trimEnd();
 		this.set("allowedCommands", text ? `${text}\n${cmd}` : cmd);
+	}
+
+	/** The IDs of the controls. */
+	get controlIds(): string[] {
+		return this.#state.controls
+			.map((c) => c.controlId.trim())
+			.filter((id) => id.length > 0);
+	}
+
+	/** The Service Names of the Control Conductors. */
+	get conductorUids(): string[] {
+		return this.#state.conductors
+			.map((c) => c.uid.trim())
+			.filter((uid) => uid.length > 0);
 	}
 
 	/** The Service Names of the User Metadata Services. */
@@ -497,6 +865,377 @@ export class RunInputs extends EventTarget {
 	}
 
 	/**
+	 * Add datum metadata.
+	 *
+	 * @returns the new datum metadata
+	 */
+	addDatumMetadata(): DatumMetadataInput {
+		const item: DatumMetadataInput = {
+			id: `dmeta-${Date.now().toString(36)}-${++this.#ids}`,
+			sourceId: "",
+			metadata: "",
+		};
+		this.#update((s) => {
+			s.datumMetadata.push(item);
+		});
+		return item;
+	}
+
+	/**
+	 * Change datum metadata.
+	 *
+	 * @param id the datum metadata's id
+	 * @param changes the changes
+	 */
+	updateDatumMetadata(
+		id: string,
+		changes: Partial<Omit<DatumMetadataInput, "id">>,
+	): void {
+		this.#update((s) => {
+			const item = s.datumMetadata.find((m) => m.id === id);
+			if (item) {
+				Object.assign(item, changes);
+			}
+		});
+	}
+
+	/**
+	 * Remove datum metadata.
+	 *
+	 * @param id the datum metadata's id
+	 */
+	removeDatumMetadata(id: string): void {
+		this.#update((s) => {
+			s.datumMetadata = s.datumMetadata.filter((m) => m.id !== id);
+		});
+	}
+
+	/**
+	 * Add a control.
+	 *
+	 * @param controlId the control ID, or `undefined` for a new one
+	 * @returns the new control
+	 */
+	addControl(controlId?: string): ControlInput {
+		let id = controlId?.trim();
+		if (!id) {
+			const ids = new Set(this.controlIds);
+			let n = this.#state.controls.length + 1;
+			while (ids.has(`/control/${n}`)) {
+				n++;
+			}
+			id = `/control/${n}`;
+		}
+		const item: ControlInput = {
+			id: `ctl-${Date.now().toString(36)}-${++this.#ids}`,
+			controlId: id,
+			type: "Boolean",
+			value: "",
+			publish: "Update",
+			persist: false,
+			propertyName: "",
+			propertyType: "",
+		};
+		this.#update((s) => {
+			s.controls.push(item);
+		});
+		return item;
+	}
+
+	/**
+	 * Change a control.
+	 *
+	 * @param id the control's id
+	 * @param changes the changes
+	 */
+	updateControl(
+		id: string,
+		changes: Partial<Omit<ControlInput, "id">>,
+	): void {
+		this.#update((s) => {
+			const item = s.controls.find((c) => c.id === id);
+			if (item) {
+				Object.assign(item, changes);
+			}
+		});
+	}
+
+	/**
+	 * Remove a control.
+	 *
+	 * @param id the control's id
+	 */
+	removeControl(id: string): void {
+		this.#update((s) => {
+			s.controls = s.controls.filter((c) => c.id !== id);
+		});
+	}
+
+	/**
+	 * Add a Control Conductor, with one task.
+	 *
+	 * @param uid the Service Name, or `undefined` for a new one
+	 * @returns the new conductor
+	 */
+	addConductor(uid?: string): ConductorInput {
+		let name = uid?.trim();
+		if (!name) {
+			const uids = new Set(
+				this.conductorUids.map((u) => u.toLowerCase()),
+			);
+			let n = this.#state.conductors.length + 1;
+			while (uids.has(`conductor ${n}`)) {
+				n++;
+			}
+			name = `Conductor ${n}`;
+		}
+		const item: ConductorInput = {
+			id: `cc-${Date.now().toString(36)}-${++this.#ids}`,
+			uid: name,
+			predicate: "",
+			predicateLanguage: SPEL_SERVICE_ID,
+			tasks: [this.#newTask()],
+		};
+		this.#update((s) => {
+			s.conductors.push(item);
+		});
+		return item;
+	}
+
+	#newTask(): ConductorTaskInput {
+		return {
+			id: `cc-task-${Date.now().toString(36)}-${++this.#ids}`,
+			controlId: this.controlIds[0] ?? "",
+			offset: "0",
+			value: "",
+			language: "",
+		};
+	}
+
+	/**
+	 * Change a Control Conductor.
+	 *
+	 * @param id the conductor's id
+	 * @param changes the changes
+	 */
+	updateConductor(
+		id: string,
+		changes: Partial<Omit<ConductorInput, "id" | "tasks">>,
+	): void {
+		this.#update((s) => {
+			const item = s.conductors.find((c) => c.id === id);
+			if (item) {
+				Object.assign(item, changes);
+			}
+		});
+	}
+
+	/**
+	 * Remove a Control Conductor.
+	 *
+	 * @param id the conductor's id
+	 */
+	removeConductor(id: string): void {
+		this.#update((s) => {
+			s.conductors = s.conductors.filter((c) => c.id !== id);
+		});
+	}
+
+	/**
+	 * Add a task to a Control Conductor.
+	 *
+	 * @param id the conductor's id
+	 * @returns the new task, or `undefined` if there is no such conductor
+	 */
+	addConductorTask(id: string): ConductorTaskInput | undefined {
+		if (!this.#state.conductors.some((c) => c.id === id)) {
+			return undefined;
+		}
+		const task = this.#newTask();
+		this.#update((s) => {
+			s.conductors.find((c) => c.id === id)?.tasks.push(task);
+		});
+		return task;
+	}
+
+	/**
+	 * Change a Control Conductor task.
+	 *
+	 * @param id the conductor's id
+	 * @param taskId the task's id
+	 * @param changes the changes
+	 */
+	updateConductorTask(
+		id: string,
+		taskId: string,
+		changes: Partial<Omit<ConductorTaskInput, "id">>,
+	): void {
+		this.#update((s) => {
+			const task = s.conductors
+				.find((c) => c.id === id)
+				?.tasks.find((t) => t.id === taskId);
+			if (task) {
+				Object.assign(task, changes);
+			}
+		});
+	}
+
+	/**
+	 * Remove a Control Conductor task.
+	 *
+	 * @param id the conductor's id
+	 * @param taskId the task's id
+	 */
+	removeConductorTask(id: string, taskId: string): void {
+		this.#update((s) => {
+			const item = s.conductors.find((c) => c.id === id);
+			if (item) {
+				item.tasks = item.tasks.filter((t) => t.id !== taskId);
+			}
+		});
+	}
+
+	/**
+	 * Use the controls and Control Conductors of an imported settings CSV file.
+	 *
+	 * Replacing the simulation's settings replaces the controls when the file
+	 * has controls, and the conductors when it has conductors. Adding the
+	 * settings replaces the controls with the same control ID, and the
+	 * conductors with the same Service Name (ignoring case), and adds the
+	 * others.
+	 *
+	 * @param controls the file's controls
+	 * @param conductors the file's conductors
+	 * @param replace `true` to replace, `false` to add
+	 * @returns notes about the changes, or an empty list if there are none
+	 */
+	importEnvironment(
+		controls: NodeControlConfig[] | null | undefined,
+		conductors: ControlConductorConfig[] | null | undefined,
+		replace: boolean,
+	): string[] {
+		const newControls = (controls ?? []).map((c): ControlInput => ({
+			id: `ctl-${Date.now().toString(36)}-${++this.#ids}`,
+			controlId: c.controlId ?? "",
+			type: c.type ?? "Boolean",
+			value: c.value ?? "",
+			publish: c.publish ?? "Update",
+			persist: c.persist ?? false,
+			propertyName: c.propertyName ?? "",
+			propertyType:
+				c.propertyType === "Instantaneous" ||
+				c.propertyType === "Accumulating"
+					? c.propertyType
+					: "",
+		}));
+		const newConductors = (conductors ?? []).map((c) =>
+			this.#conductorInput(c.settings ?? {}),
+		);
+		if (!newControls.length && !newConductors.length) {
+			return [];
+		}
+		const notes: string[] = [];
+		this.#update((s) => {
+			if (newControls.length) {
+				const count = newControls.length;
+				if (replace) {
+					s.controls = newControls;
+					notes.push(
+						`The Controls tab now has the file's ${count} control${count === 1 ? "" : "s"}.`,
+					);
+				} else {
+					let replaced = 0;
+					for (const c of newControls) {
+						const i = s.controls.findIndex(
+							(e) => e.controlId === c.controlId,
+						);
+						if (i < 0) {
+							s.controls.push(c);
+						} else {
+							s.controls[i] = c;
+							replaced++;
+						}
+					}
+					notes.push(
+						`Added the file's ${count} control${count === 1 ? "" : "s"} to the Controls tab` +
+							(replaced
+								? `, replacing ${replaced} with the same control ID.`
+								: "."),
+					);
+				}
+			}
+			if (newConductors.length) {
+				const count = newConductors.length;
+				if (replace) {
+					s.conductors = newConductors;
+					notes.push(
+						`The Controls tab now has the file's ${count} Control Conductor${count === 1 ? "" : "s"}.`,
+					);
+				} else {
+					let replaced = 0;
+					for (const c of newConductors) {
+						const uid = c.uid.trim().toLowerCase();
+						const i = s.conductors.findIndex(
+							(e) => e.uid.trim().toLowerCase() === uid,
+						);
+						if (i < 0) {
+							s.conductors.push(c);
+						} else {
+							s.conductors[i] = c;
+							replaced++;
+						}
+					}
+					notes.push(
+						`Added the file's ${count} Control Conductor${count === 1 ? "" : "s"} to the Controls tab` +
+							(replaced
+								? `, replacing ${replaced} with the same Service Name.`
+								: "."),
+					);
+				}
+			}
+		});
+		return notes;
+	}
+
+	/**
+	 * Make a Control Conductor input from its SolarNode settings, the reverse
+	 * of `toRequest()`.
+	 *
+	 * @param settings the settings
+	 * @returns the input
+	 */
+	#conductorInput(settings: Record<string, string>): ConductorInput {
+		let count = Number.parseInt(settings["taskConfigsCount"] ?? "", 10);
+		if (!Number.isFinite(count) || count < 0) {
+			count = 0;
+			for (const key of Object.keys(settings)) {
+				const m = /^taskConfigs\[(\d+)\]\./.exec(key);
+				if (m) {
+					count = Math.max(count, Number(m[1]) + 1);
+				}
+			}
+		}
+		const tasks: ConductorTaskInput[] = [];
+		for (let i = 0; i < count; i++) {
+			const prefix = `taskConfigs[${i}].`;
+			tasks.push({
+				id: `cc-task-${Date.now().toString(36)}-${++this.#ids}`,
+				controlId: settings[`${prefix}controlId`] ?? "",
+				offset: settings[`${prefix}executionOffset`] ?? "",
+				value: settings[`${prefix}value`] ?? "",
+				language: settings[`${prefix}expressionServiceId`] ?? "",
+			});
+		}
+		return {
+			id: `cc-${Date.now().toString(36)}-${++this.#ids}`,
+			uid: settings["uid"] ?? "",
+			predicate: settings["predicate.expression"] ?? "",
+			predicateLanguage: settings["predicate.expressionServiceId"] ?? "",
+			tasks,
+		};
+	}
+
+	/**
 	 * Get the parts of a simulation request that come from the inputs.
 	 *
 	 * @returns the request parts
@@ -536,13 +1275,13 @@ export class RunInputs extends EventTarget {
 						"Unfiltered History datum",
 					),
 				);
-		const nodeMetadata = parse("node-metadata", "nodeMetadata", () =>
+		const nodeMetadata = parse("metadata", "nodeMetadata", () =>
 			parseMetadata(s.nodeMetadata, "Node metadata"),
 		);
 		const userMetadata: UserMetadataConfig[] = s.userMetadata.map(
 			(m, i) => ({
 				uid: m.uid.trim() || null,
-				metadata: parse("user-metadata", m.id, () =>
+				metadata: parse("metadata", m.id, () =>
 					parseMetadata(
 						m.metadata,
 						`The metadata of ${m.uid.trim() ? quoted(m.uid.trim()) : `User Metadata Service ${i + 1}`}`,
@@ -556,9 +1295,24 @@ export class RunInputs extends EventTarget {
 		const placeholders = parse("environment", "placeholders", () =>
 			parsePlaceholders(s.placeholders),
 		);
-		const datumMetadata = parse("datum-metadata", "datumMetadata", () =>
-			parseDatumMetadata(s.datumMetadata),
-		);
+		const datumMetadata: Record<string, unknown> = {};
+		for (const m of s.datumMetadata) {
+			const problem = datumMetadataSourceProblem(s.datumMetadata, m);
+			if (problem) {
+				throw new InputError(
+					problem,
+					"metadata",
+					datumMetadataSourceField(m.id),
+				);
+			}
+			const sourceId = m.sourceId.trim();
+			const meta = parse("metadata", m.id, () =>
+				parseMetadata(m.metadata, `The metadata of ${sourceId}`),
+			);
+			if (meta !== null) {
+				datumMetadata[sourceId] = meta;
+			}
+		}
 		const nodeLocation: NodeLocation = {
 			latitude: parse("environment", "nodeLatitude", () =>
 				parseLocationNumber(s.nodeLatitude, "Latitude", -90, 90),
@@ -570,6 +1324,74 @@ export class RunInputs extends EventTarget {
 				parseLocationNumber(s.nodeElevation, "Elevation"),
 			),
 		};
+		const controls: NodeControlConfig[] = s.controls.map((c) => {
+			const idProblem = controlIdProblem(s.controls, c);
+			if (idProblem) {
+				throw new InputError(idProblem, "controls", c.id);
+			}
+			const valueProblem = controlValueProblem(c.type, c.value);
+			if (valueProblem) {
+				throw new InputError(
+					valueProblem,
+					"controls",
+					controlValueField(c.id),
+				);
+			}
+			return {
+				controlId: c.controlId.trim(),
+				type: c.type,
+				value: (c.type === "String" ? c.value : c.value.trim()) || null,
+				publish: c.publish,
+				persist: c.publish !== "Never" && c.persist ? true : null,
+				propertyName: c.propertyName.trim() || null,
+				propertyType: c.propertyType || null,
+			};
+		});
+		const conductors: ControlConductorConfig[] = s.conductors.map((c) => {
+			const uidProblem = conductorUidProblem(s.conductors, c);
+			if (uidProblem) {
+				throw new InputError(uidProblem, "controls", c.id);
+			}
+			const settings: Record<string, string> = { uid: c.uid.trim() };
+			if (c.predicate.trim()) {
+				settings["predicate.expression"] = c.predicate;
+				if (c.predicateLanguage) {
+					settings["predicate.expressionServiceId"] =
+						c.predicateLanguage;
+				}
+			}
+			settings.taskConfigsCount = String(c.tasks.length);
+			c.tasks.forEach((t, i) => {
+				const problems = conductorTaskProblems(t);
+				for (const setting of [
+					"controlId",
+					"offset",
+					"value",
+				] as const) {
+					const problem = problems[setting];
+					if (problem) {
+						throw new InputError(
+							problem,
+							"controls",
+							conductorTaskField(t.id, setting),
+						);
+					}
+				}
+				const prefix = `taskConfigs[${i}].`;
+				settings[`${prefix}controlId`] = t.controlId.trim();
+				settings[`${prefix}executionOffset`] = t.offset.trim();
+				settings[`${prefix}value`] = t.value;
+				if (t.language) {
+					settings[`${prefix}expressionServiceId`] = t.language;
+				}
+			});
+			return { settings };
+		});
+		const instructionJobSeconds = parse(
+			"environment",
+			"instructionJobSeconds",
+			() => parseInstructionJobSeconds(s.instructionJobSeconds),
+		);
 		const allowedCommands = this.allowedCommands;
 		return {
 			datum,
@@ -578,6 +1400,7 @@ export class RunInputs extends EventTarget {
 				allowedCommands: allowedCommands.length
 					? allowedCommands
 					: null,
+				instructionJobSeconds,
 			},
 			history:
 				filtered.length || unfiltered?.length
@@ -591,12 +1414,16 @@ export class RunInputs extends EventTarget {
 				placeholders: Object.keys(placeholders).length
 					? placeholders
 					: null,
-				datumMetadata,
+				datumMetadata: Object.keys(datumMetadata).length
+					? datumMetadata
+					: null,
 				nodeLocation: Object.values(nodeLocation).some(
 					(v) => v !== null,
 				)
 					? nodeLocation
 					: null,
+				controls: controls.length ? controls : null,
+				conductors: conductors.length ? conductors : null,
 			},
 			entryPoint: s.entryPoint || null,
 		};

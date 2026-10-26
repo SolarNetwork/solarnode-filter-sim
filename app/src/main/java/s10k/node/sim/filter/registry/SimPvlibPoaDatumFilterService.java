@@ -19,6 +19,7 @@
 
 package s10k.node.sim.filter.registry;
 
+import java.time.InstantSource;
 import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,6 +53,8 @@ public class SimPvlibPoaDatumFilterService extends PvlibPoaDatumFilterService {
 	/**
 	 * Constructor.
 	 *
+	 * @param clock
+	 *        the clock
 	 * @param objectMapper
 	 *        the object mapper to parse command results with
 	 * @param datumMetadataService
@@ -61,11 +64,11 @@ public class SimPvlibPoaDatumFilterService extends PvlibPoaDatumFilterService {
 	 * @param commandExecutor
 	 *        the command executor
 	 */
-	public SimPvlibPoaDatumFilterService(ObjectMapper objectMapper,
+	public SimPvlibPoaDatumFilterService(InstantSource clock, ObjectMapper objectMapper,
 			OptionalService<DatumMetadataService> datumMetadataService,
 			OptionalFilterableService<MetadataService> characteristicsMetadataService,
 			CommandExecutor commandExecutor) {
-		super(objectMapper, datumMetadataService, characteristicsMetadataService);
+		super(clock, objectMapper, datumMetadataService, characteristicsMetadataService);
 		this.commandExecutor = commandExecutor;
 	}
 

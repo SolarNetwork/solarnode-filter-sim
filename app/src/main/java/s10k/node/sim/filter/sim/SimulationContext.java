@@ -35,6 +35,7 @@ import s10k.node.sim.filter.registry.FilterContext;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.dao.DefaultTransientSettingDao;
 import net.solarnetwork.node.dao.TransientSettingDao;
+import net.solarnetwork.node.control.conductor.ControlConductor;
 import net.solarnetwork.node.reactor.InstructionExecutionService;
 import net.solarnetwork.node.reactor.ReactorService;
 import net.solarnetwork.node.runtime.DefaultDatumService;
@@ -65,12 +66,13 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  *
  * <p>
  * The context also has a simple service registry, in place of the OSGi one. It
- * holds the metadata services, starting with the Node Metadata Service, and the
- * filters. {@link SimServiceTracker} finds services in it.
+ * holds the Node Metadata Service, the simulated controls, the Control
+ * Conductors, the User Metadata Services, and the filters, in that order.
+ * {@link SimServiceTracker} finds services in it.
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class SimulationContext implements FilterContext {
 
@@ -106,6 +108,7 @@ public final class SimulationContext implements FilterContext {
 	private final DefaultOperationalModesService opModesService;
 	private final SimDatumMetadataService datumMetadataService;
 	private final DefaultDatumService datumService;
+	private final SimNodeControlService controlService;
 	private final SimInstructionService instructionService;
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
@@ -172,7 +175,8 @@ public final class SimulationContext implements FilterContext {
 		this.datumService = new DefaultDatumService(pathMatcher, NODE_OBJECT_MAPPER,
 				new StaticOptionalService<>(datumMetadataService));
 
-		this.instructionService = new SimInstructionService();
+		this.controlService = new SimNodeControlService(clock);
+		this.instructionService = new SimInstructionService(clock, controlService);
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
 		// the node's own placeholder service, without its cache, so placeholders
@@ -187,6 +191,7 @@ public final class SimulationContext implements FilterContext {
 		this.nodeMetadataService = new SimMetadataService(SimMetadataService.NODE_METADATA_SERVICE_UID,
 				nodeMetadata);
 		registerService(nodeMetadataService);
+		registerService(controlService);
 		this.expressionServices = new StaticOptionalServiceCollection<>(List.of(expressionService));
 		this.tariffScheduleProviders = new SimServiceTracker<>(TariffScheduleProvider.class, services,
 				true);
@@ -204,6 +209,39 @@ public final class SimulationContext implements FilterContext {
 	 */
 	public void registerService(Object service) {
 		services.add(service);
+	}
+
+	/**
+	 * Create a Control Conductor with the simulated clock and the services its
+	 * blueprint gives it.
+	 *
+	 * <p>
+	 * The conductor still needs its settings, and to be added with
+	 * {@link #addConductor(ControlConductor)}.
+	 * </p>
+	 *
+	 * @return the conductor
+	 */
+	public ControlConductor createConductor() {
+		final ControlConductor result = new ControlConductor(clock, reactorService(),
+				instructionExecutionService());
+		result.setExpressionServices(expressionServices);
+		result.setLocalStateDao(new StaticOptionalService<>(localStateDao));
+		result.setPlaceholderService(new StaticOptionalService<>(placeholderService));
+		result.setDatumService(new StaticOptionalService<>(datumService));
+		result.setOpModesService(new StaticOptionalService<>(opModesService));
+		return result;
+	}
+
+	/**
+	 * Add a Control Conductor, as a service and an instruction handler.
+	 *
+	 * @param conductor
+	 *        the conductor
+	 */
+	public void addConductor(ControlConductor conductor) {
+		registerService(conductor);
+		instructionService.addConductor(conductor);
 	}
 
 	/**
@@ -395,6 +433,15 @@ public final class SimulationContext implements FilterContext {
 	 */
 	public DefaultDatumService datumService() {
 		return datumService;
+	}
+
+	/**
+	 * Get the simulated controls.
+	 *
+	 * @return the controls
+	 */
+	public SimNodeControlService controlService() {
+		return controlService;
 	}
 
 	/**

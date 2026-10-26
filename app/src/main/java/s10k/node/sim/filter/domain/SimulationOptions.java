@@ -54,13 +54,19 @@ import org.jspecify.annotations.Nullable;
  *        the external commands filters may run, as the exact command paths, in
  *        addition to those the simulator is configured to allow, or
  *        {@code null} for none
+ * @param instructionJobSeconds
+ *        the schedule of the simulated Instruction Execution Job, which runs
+ *        stored instructions once they are due: every second of the minute that
+ *        is a multiple of this number, like the node's {@code 0/10 * * * * ?}
+ *        cron schedule for {@code 10}, or {@code null} for
+ *        {@link #DEFAULT_INSTRUCTION_JOB_SECONDS}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer maxGenerationDepth,
 		@Nullable Long timeoutMs, @Nullable Detail detail, @Nullable Instant startDate,
 		@Nullable Duration datumInterval, @Nullable Duration runAfter,
-		@Nullable List<String> allowedCommands) {
+		@Nullable List<String> allowedCommands, @Nullable Integer instructionJobSeconds) {
 
 	/** The default {@code maxDatum} value. */
 	public static final int DEFAULT_MAX_DATUM = 1000;
@@ -77,9 +83,44 @@ public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer ma
 	 */
 	public static final Duration DEFAULT_DATUM_INTERVAL = Duration.ofSeconds(1);
 
+	/**
+	 * The default {@code instructionJobSeconds} value, like the node's
+	 * {@code job.instructionExecution.cron} default of {@code 0/10 * * * * ?}.
+	 */
+	public static final int DEFAULT_INSTRUCTION_JOB_SECONDS = 10;
+
 	/** The default options. */
 	public static final SimulationOptions DEFAULTS = new SimulationOptions(null, null, null, null, null,
-			null, null, null);
+			null, null, null, null);
+
+	/**
+	 * Constructor, with the default Instruction Execution Job schedule.
+	 *
+	 * @param maxDatum
+	 *        the maximum number of datum to process
+	 * @param maxGenerationDepth
+	 *        the maximum generation depth
+	 * @param timeoutMs
+	 *        the processing timeout, in milliseconds
+	 * @param detail
+	 *        the level of detail
+	 * @param startDate
+	 *        the timestamp to give the first input datum when it has none
+	 * @param datumInterval
+	 *        the time between input datum that have no timestamp
+	 * @param runAfter
+	 *        how long the simulated clock keeps running after the last input
+	 *        datum
+	 * @param allowedCommands
+	 *        the external commands filters may run
+	 */
+	public SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer maxGenerationDepth,
+			@Nullable Long timeoutMs, @Nullable Detail detail, @Nullable Instant startDate,
+			@Nullable Duration datumInterval, @Nullable Duration runAfter,
+			@Nullable List<String> allowedCommands) {
+		this(maxDatum, maxGenerationDepth, timeoutMs, detail, startDate, datumInterval, runAfter,
+				allowedCommands, null);
+	}
 
 	/**
 	 * The level of detail to include in a simulation result.
@@ -152,6 +193,16 @@ public record SimulationOptions(@Nullable Integer maxDatum, @Nullable Integer ma
 	 */
 	public Duration runAfterValue() {
 		return (runAfter != null && !runAfter.isNegative() ? runAfter : Duration.ZERO);
+	}
+
+	/**
+	 * Get the Instruction Execution Job schedule.
+	 *
+	 * @return the number of seconds, at least {@code 1}
+	 */
+	public int instructionJobSecondsValue() {
+		return (instructionJobSeconds != null && instructionJobSeconds > 0 ? instructionJobSeconds
+				: DEFAULT_INSTRUCTION_JOB_SECONDS);
 	}
 
 }

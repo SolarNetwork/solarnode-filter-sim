@@ -9,6 +9,7 @@
 
 import {
 	CHAIN_FACTORY_UID,
+	type ControlInfo,
 	type DatumInfo,
 	type DatumTrace,
 	type FilterStep,
@@ -18,6 +19,7 @@ import {
 	type SimulationResult,
 } from "./model.ts";
 import {
+	controlsTable,
 	element,
 	formatTimestamp,
 	formatValue,
@@ -25,6 +27,7 @@ import {
 	SAMPLE_TYPES,
 	samplesLine,
 	sameValue,
+	waitingInstructionsTable,
 } from "./view.ts";
 
 /** A debug cursor position: a filter step of a datum. */
@@ -85,6 +88,14 @@ export interface DebugState {
 	instructions: IssuedInstruction[];
 	/** The metrics saved while processing this datum, so far. */
 	metrics: SavedMetric[];
+	/** The simulated controls. */
+	controls: ControlInfo[];
+	/** The IDs of the controls the step set. */
+	controlsChanged: Set<string>;
+	/** The instructions waiting for the Instruction Execution Job. */
+	waiting: InstructionInfo[];
+	/** The numbers of the waiting instructions the step stored. */
+	waitingChanged: Set<number>;
 	/** The number of datum output by the Datum Queue before this one. */
 	outputBefore: number;
 }
@@ -224,10 +235,17 @@ export function debugState(
 		generated: [],
 		instructions: [],
 		metrics: [],
+		controls: (start.controls ?? []).map((c) => ({ ...c })),
+		controlsChanged: new Set(),
+		waiting: [],
+		waitingChanged: new Set(),
 		outputBefore: result.datum
 			.slice(0, pos.traceIndex)
 			.filter((t) => t.output).length,
 	};
+	const waiting = new Map(
+		(start.instructions ?? []).map((i) => [i.number, i]),
+	);
 	steps.slice(0, pos.stepIndex + 1).forEach((s, i) => {
 		const last = i === pos.stepIndex;
 		if (s.parameters) {
@@ -266,11 +284,34 @@ export function debugState(
 		}
 		for (const instruction of s.instructions ?? []) {
 			state.instructions.push({ filterId: s.filterId, instruction });
+			// a step records each instruction once, with its latest state
+			if (instruction.state === "Received") {
+				waiting.set(instruction.number, instruction);
+				if (last) {
+					state.waitingChanged.add(instruction.number);
+				}
+			} else {
+				waiting.delete(instruction.number);
+			}
 		}
 		for (const metric of s.metrics ?? []) {
 			state.metrics.push({ filterId: s.filterId, metric });
 		}
+		for (const update of s.controls ?? []) {
+			const control = state.controls.find(
+				(c) => c.controlId === update.controlId,
+			);
+			if (control) {
+				control.value = update.value;
+				control.updates++;
+				control.modified = trace.input.timestamp;
+			}
+			if (last) {
+				state.controlsChanged.add(update.controlId);
+			}
+		}
 	});
+	state.waiting = [...waiting.values()];
 	if (step && !state.entering) {
 		state.after =
 			step.status === "Dropped"
@@ -291,6 +332,8 @@ const TABS = [
 	["parameters", "Parameters"],
 	["localState", "Local State"],
 	["opModes", "Op Modes"],
+	["controls", "Controls"],
+	["instructions", "Instructions"],
 	["history", "Datum History"],
 	["queue", "Queue"],
 	["output", "Output & Side Effects"],
@@ -392,6 +435,36 @@ export class DebugView {
 				];
 			case "opModes":
 				return [this.#opModes(s)];
+			case "controls":
+				return s.controls.length
+					? [controlsTable(s.controls, s.controlsChanged)]
+					: [
+							element(
+								"p",
+								"text-body-secondary mb-1",
+								"No controls. Add them on the Controls input tab.",
+							),
+						];
+			case "instructions":
+				return s.waiting.length
+					? [
+							element(
+								"p",
+								"mb-1",
+								"The instructions waiting for the Instruction Execution Job, like Control Conductor tasks. Those this filter stored are marked.",
+							),
+							waitingInstructionsTable(
+								s.waiting,
+								s.waitingChanged,
+							),
+						]
+					: [
+							element(
+								"p",
+								"text-body-secondary mb-1",
+								"No instructions are waiting for the Instruction Execution Job. Control Conductor tasks, and Instructor instructions with a future executionDate, wait for it.",
+							),
+						];
 			case "history":
 				return [
 					this.#history("History", s.history),
@@ -548,7 +621,7 @@ export class DebugView {
 				keyValueTable(
 					Object.entries(instruction.parameters ?? {}),
 					[
-						`${instruction.topic} from ${quoted(label(filterId))}${instruction.state ? ` (${instruction.state})` : ""}`,
+						`${instruction.topic} from ${quoted(label(filterId))} (${instruction.state ?? "not handled"})`,
 						"",
 					],
 					"No parameters.",

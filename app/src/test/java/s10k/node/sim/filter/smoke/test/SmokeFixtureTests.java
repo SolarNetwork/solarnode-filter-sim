@@ -52,11 +52,11 @@ import tools.jackson.databind.node.ObjectNode;
  * Each fixture {@code <name>.json} in the {@code smoke} resources is a
  * simulation request, and {@code <name>.expected.json} is a summary of its
  * result: the message codes, statistics, each datum's source ID, step statuses,
- * output samples, and external commands, and the final metrics, with every
- * value as a string. A fixture's {@code @FIXTURES@} text is replaced by the
- * fixtures directory, for commands kept there. The {@code nativeSmokeTest}
- * Gradle task posts the same fixtures to the native executable and compares the
- * same summary, which shows missing runtime hints.
+ * output samples, and external commands, and the final metrics and controls,
+ * with every value as a string. A fixture's {@code @FIXTURES@} text is replaced
+ * by the fixtures directory, for commands kept there. The
+ * {@code nativeSmokeTest} Gradle task posts the same fixtures to the native
+ * executable and compares the same summary, which shows missing runtime hints.
  * </p>
  *
  * <p>
@@ -166,6 +166,32 @@ public class SmokeFixtureTests {
 		if ( !metrics.isEmpty() ) {
 			summary.set("metrics", metrics);
 		}
+		ArrayNode controls = JsonNodeFactory.instance.arrayNode();
+		for ( JsonNode c : result.path("finalState").path("controls") ) {
+			ObjectNode control = controls.addObject();
+			control.set("controlId", c.path("controlId"));
+			if ( c.hasNonNull("value") ) {
+				control.set("value", c.path("value"));
+			}
+			control.set("updates", c.path("updates"));
+		}
+		if ( !controls.isEmpty() ) {
+			summary.set("controls", controls);
+		}
+		ArrayNode runs = JsonNodeFactory.instance.arrayNode();
+		for ( JsonNode r : result.path("instructionRuns") ) {
+			ObjectNode run = runs.addObject();
+			run.set("date", r.path("date"));
+			run.set("topic", r.path("instruction").path("topic"));
+			run.set("state", r.path("instruction").path("state"));
+			run.set("conductor", r.path("instruction").path("conductor"));
+			run.set("task", r.path("instruction").path("task"));
+			run.set("generated", r.path("generated"));
+			run.properties().removeIf(e -> e.getValue().isMissingNode() || e.getValue().isNull());
+		}
+		if ( !runs.isEmpty() ) {
+			summary.set("instructionRuns", runs);
+		}
 		return normalized(summary);
 	}
 
@@ -239,6 +265,28 @@ public class SmokeFixtureTests {
 		then(expected.path("messages").valueStream().map(JsonNode::asString))
 			.as("No filter logged a problem or failed")
 			.doesNotContain("FilterLog", "FilterError")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void controlConductor() throws IOException {
+		// GIVEN
+		final String name = "control-conductor";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("No messages")
+			.isEmpty()
+			;
+		then(expected.path("instructionRuns").size())
+			.as("The job ran the three tasks")
+			.isEqualTo(3)
 			;
 		// @formatter:on
 	}

@@ -97,6 +97,14 @@ import s10k.node.sim.filter.sim.SimulationException;
  * </p>
  *
  * <p>
+ * The Mock, Modbus, and BACnet controls, Control Datum Sources, and Control
+ * Conductors become simulated controls and Control Conductors for the
+ * simulation's environment ({@link ControlSettings}), except in external
+ * settings, which ignore them. They are imported even without their
+ * {@code .FACTORY} rows, with a warning.
+ * </p>
+ *
+ * <p>
  * A chain's {@code transformUids} become its {@code filterIds}. A Service Name
  * that is not in the file becomes an unknown filter, so the chain keeps it. The
  * Datum Queue's {@code transformServiceUid} gives the Main chain.
@@ -117,7 +125,7 @@ import s10k.node.sim.filter.sim.SimulationException;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class SettingsCsvImporter {
 
@@ -166,6 +174,17 @@ final class SettingsCsvImporter {
 
 	/** The filter instances the file being applied has rows for. */
 	private final Set<Component> fileComponents = new LinkedHashSet<>(8);
+
+	/** The control component instances, for the simulation's environment. */
+	private final Map<Component, ControlInstance> controlInstances = new LinkedHashMap<>(4);
+
+	/** A control component instance. */
+	private static final class ControlInstance {
+
+		private final Map<String, String> settings = new LinkedHashMap<>(8);
+		private boolean factoryRow;
+
+	}
 
 	/**
 	 * A component of a settings CSV file.
@@ -664,6 +683,12 @@ final class SettingsCsvImporter {
 		if ( key.endsWith(FACTORY_SUFFIX) ) {
 			final Component c = new Component(key.substring(0, key.length() - FACTORY_SUFFIX.length()),
 					row.type());
+			if ( !row.type().isEmpty() && isControlType(c.key()) ) {
+				if ( row.value() != null ) {
+					controlInstances.computeIfAbsent(c, _ -> new ControlInstance()).factoryRow = true;
+				}
+				return discardedComment;
+			}
 			if ( row.type().isEmpty() || !isFilterType(c.key()) ) {
 				return ignore(c);
 			}
@@ -677,8 +702,12 @@ final class SettingsCsvImporter {
 			instance.factoryRow = true;
 			return instance.comment;
 		}
-		final Component c = component(key);
+		final Component c = controlComponent(component(key));
 		final String instanceKey = c.instanceKey();
+		if ( instanceKey != null && isControlType(c.key()) ) {
+			applyControl(c, row);
+			return discardedComment;
+		}
 		if ( instanceKey == null || !isFilterType(c.key()) ) {
 			if ( DATUM_QUEUE_KEY.equals(key) ) {
 				if ( DATUM_QUEUE_FILTER.equals(row.type()) ) {
@@ -759,6 +788,61 @@ final class SettingsCsvImporter {
 
 	private boolean isFilterType(String factoryUid) {
 		return registry.isFilterType(factoryUid);
+	}
+
+	/**
+	 * Test if a component is a control component, for the simulation's
+	 * environment.
+	 *
+	 * <p>
+	 * Only a file imported on its own or added to a configuration has them, not
+	 * external settings.
+	 * </p>
+	 *
+	 * @param factoryUid
+	 *        the factory UID
+	 * @return {@code true} if it is a control component
+	 */
+	private boolean isControlType(String factoryUid) {
+		return (!addOnly && ControlSettings.FACTORY_UIDS.contains(factoryUid));
+	}
+
+	/**
+	 * Make a key of a control component without a {@code .FACTORY} row an
+	 * instance of it.
+	 *
+	 * @param c
+	 *        the component
+	 * @return the control component instance, or else {@code c}
+	 */
+	private Component controlComponent(Component c) {
+		if ( c.instanceKey() != null || addOnly ) {
+			return c;
+		}
+		final String factoryUid = ControlSettings.factoryUid(c.key());
+		return (factoryUid != null
+				? new Component(factoryUid, c.key().substring(factoryUid.length() + 1))
+				: c);
+	}
+
+	/**
+	 * Apply a setting row of a control component instance.
+	 *
+	 * @param c
+	 *        the instance
+	 * @param row
+	 *        the row
+	 */
+	private void applyControl(Component c, SettingRow row) {
+		final ControlInstance instance = controlInstances.computeIfAbsent(c, _ -> new ControlInstance());
+		if ( row.type().isEmpty() || SETUP_TYPE.equals(row.type()) ) {
+			return;
+		}
+		if ( row.value() == null ) {
+			instance.settings.remove(row.type());
+		} else {
+			instance.settings.put(row.type(), row.value());
+		}
 	}
 
 	private List<String> ignore(Component c) {
@@ -870,13 +954,13 @@ final class SettingsCsvImporter {
 		} else if ( DATUM_QUEUE_KEY.equals(key) ) {
 			return datumQueueComment;
 		} else {
-			c = component(key);
+			c = controlComponent(component(key));
 		}
 		final Instance instance = instances.get(c);
 		if ( instance != null ) {
 			return instance.comment;
 		}
-		return (ignored.containsKey(c) ? discardedComment : null);
+		return (ignored.containsKey(c) || controlInstances.containsKey(c) ? discardedComment : null);
 	}
 
 	private SettingsImport result() {
@@ -990,11 +1074,23 @@ final class SettingsCsvImporter {
 						null));
 			}
 		}
+		final List<ControlSettings.Instance> controlComponents = new ArrayList<>(
+				controlInstances.size());
+		for ( Map.Entry<Component, ControlInstance> e : controlInstances.entrySet() ) {
+			final String instanceKey = e.getKey().instanceKey();
+			controlComponents.add(new ControlSettings.Instance(e.getKey().key(),
+					instanceKey != null ? instanceKey : "", e.getValue().settings,
+					e.getValue().factoryRow));
+		}
+		final ControlSettings.Result controls = ControlSettings.of(controlComponents);
+		messages.addAll(controls.messages());
+
 		final String dqComment = comment(datumQueueComment);
 		return new SettingsImport(
 				new SimConfig(filters, mainChainId,
 						dqComment != null ? dqComment : baseDatumQueueComment),
-				messages, ignoredComponents);
+				messages, ignoredComponents, controls.controls().isEmpty() ? null : controls.controls(),
+				controls.conductors().isEmpty() ? null : controls.conductors());
 	}
 
 	private void instanceMessages(Instance instance) {

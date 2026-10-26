@@ -267,13 +267,13 @@ public final class StandardFilterTypes {
 		result.add(def(VIRTUAL_METER, "Virtual Meter Filter", VirtualMeterDatumFilterService.class,
 				messageSource("net.solarnetwork.node.datum.filter.virt.VirtualMeterDatumFilterService",
 						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new VirtualMeterDatumFilterService(ctx.datumMetadataService()), null, null,
-				Set.of(), null));
+				ctx -> new VirtualMeterDatumFilterService(ctx.clock(), ctx.datumMetadataService()), null,
+				null, Set.of(), null));
 
 		result.add(def(EXPRESSION, "Expression Filter", ExpressionDatumFilterService.class,
 				messageSource("net.solarnetwork.node.datum.filter.expr.ExpressionDatumFilterService",
 						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
-				_ -> new ExpressionDatumFilterService(), null, null, Set.of(), null));
+				ctx -> new ExpressionDatumFilterService(ctx.clock()), null, null, Set.of(), null));
 
 		result.add(def(OP_MODE, "Operational Mode Filter", OperationalModeDatumFilterService.class,
 				messageSource(
@@ -297,7 +297,7 @@ public final class StandardFilterTypes {
 		result.add(def(PARAMETER, "Parameter Expression Filter", ParameterDatumFilterService.class,
 				messageSource("net.solarnetwork.node.datum.filter.param.ParameterDatumFilterService",
 						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
-				_ -> new ParameterDatumFilterService(), null, null, Set.of(), null));
+				ctx -> new ParameterDatumFilterService(ctx.clock()), null, null, Set.of(), null));
 
 		result.add(def(UNCHANGED, "Unchanged Filter", UnchangedDatumFilterService.class,
 				messageSource(STD + "UnchangedDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE),
@@ -314,8 +314,10 @@ public final class StandardFilterTypes {
 						messageSource("net.solarnetwork.node.datum.filter.control.ControlConfig"),
 						"net.solarnetwork.node.datum.filter.control.ControlUpdaterDatumFilterService",
 						BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new ControlUpdaterDatumFilterService(ctx.instructionExecutionService()), null,
-				null, EnumSet.of(FilterCapability.Instructions), null));
+				ctx -> new ControlUpdaterDatumFilterService(ctx.clock(),
+						ctx.instructionExecutionService()),
+				null, null, EnumSet.of(FilterCapability.Instructions), null)
+						.withCheck(new ControlCheck()));
 
 		result.add(def(TIMEOUT, "Timeout Filter", TimeoutDatumFilterService.class,
 				messageSource(STD + "TimeoutDatumFilterService", BASE_FILTER, BASIC_IDENTIFIABLE),
@@ -341,7 +343,8 @@ public final class StandardFilterTypes {
 						BASE_FILTER, BASIC_IDENTIFIABLE),
 				ctx -> new InstructorDatumFilterService(ctx.clock(), ctx.reactorService(),
 						ctx.instructionExecutionService()),
-				null, null, EnumSet.of(FilterCapability.Instructions), null));
+				null, null, EnumSet.of(FilterCapability.Instructions), null)
+						.withCheck(new ConductorCheck()));
 
 		// the 4.1.1 blueprint, which also injects the opModesService
 		result.add(def(TARIFF, "Time-based Tariff Filter", TariffDatumFilterService.class,
@@ -356,7 +359,7 @@ public final class StandardFilterTypes {
 		result.add(def(PVLIB_POA, "POA Calculator Filter", SimPvlibPoaDatumFilterService.class,
 				messageSource("net.solarnetwork.node.datum.pvlib.PvlibPoaDatumFilterService",
 						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new SimPvlibPoaDatumFilterService(ctx.nodeObjectMapper(),
+				ctx -> new SimPvlibPoaDatumFilterService(ctx.clock(), ctx.nodeObjectMapper(),
 						ctx.datumMetadataService(), ctx.serviceTracker(MetadataService.class, false),
 						ctx.commandExecutor()),
 				null, null, EnumSet.of(FilterCapability.Commands),
@@ -369,7 +372,7 @@ public final class StandardFilterTypes {
 								"net.solarnetwork.domain.datum.NumberDatumSamplePropertyConfig"),
 						"net.solarnetwork.node.metrics.harvester.MetricHarvesterDatumFilterService",
 						EXPRESSION_CONFIG, BASE_FILTER, BASIC_IDENTIFIABLE),
-				ctx -> new MetricHarvesterDatumFilterService(ctx.metricDao()), null, null,
+				ctx -> new MetricHarvesterDatumFilterService(ctx.clock(), ctx.metricDao()), null, null,
 				EnumSet.of(FilterCapability.Metrics), null));
 
 		return result;

@@ -96,8 +96,13 @@ import net.solarnetwork.domain.tariff.Tariff;
 import net.solarnetwork.domain.tariff.TariffSchedule;
 import net.solarnetwork.domain.tariff.TemporalRangeSetsTariff;
 import net.solarnetwork.domain.tariff.TemporalTariff;
+import net.solarnetwork.node.control.conductor.ControlConductor;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterExpressionRoot;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterExpressionRootImpl;
+import net.solarnetwork.node.reactor.BasicInstruction;
+import net.solarnetwork.node.reactor.BasicInstructionStatus;
+import net.solarnetwork.node.reactor.Instruction;
+import net.solarnetwork.node.reactor.InstructionStatus;
 import net.solarnetwork.node.domain.ExpressionRoot;
 import net.solarnetwork.node.domain.LocalStateOperations;
 import net.solarnetwork.node.domain.TariffScheduleProvidersOperations;
@@ -107,16 +112,16 @@ import net.solarnetwork.node.domain.datum.SimpleDatum;
  * Native image runtime hints for the SolarNode filters.
  *
  * <ul>
- * <li>Filters and their nested configuration classes are configured through a
- * Spring {@code BeanWrapper}, which uses reflection on their bean
- * properties.</li>
+ * <li>Filters, Control Conductors, and their nested configuration classes are
+ * configured through a Spring {@code BeanWrapper}, which uses reflection on
+ * their bean properties.</li>
  * <li>Filter message sources load {@code .properties} resources.</li>
  * <li>Expressions call methods on their root objects, and on common JDK types,
  * through reflection.</li>
  * </ul>
  *
  * @author matt
- * @version 1.0
+ * @version 1.2
  */
 public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 
@@ -126,7 +131,11 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 	 * expressions can get: a schedule's {@code rules()} are its parsed tariffs,
 	 * and {@code resolveTariff()} returns a {@code SimpleTemporalTariff}.
 	 * Expressions call methods on the concrete collection types too, like the
-	 * maps, lists, and tag sets in metadata.
+	 * maps, lists, and tag sets in metadata. The Instructor's response
+	 * expressions read the {@code instruction} and {@code instructionResult}
+	 * variables, a SolarNode {@code BasicInstruction} and
+	 * {@code BasicInstructionStatus}, including the default methods of their
+	 * interfaces, like {@code isCompleted()}.
 	 */
 	public static final List<Class<?>> EXPRESSION_TYPES = List.of(ExpressionRoot.class,
 			DatumSamplesExpressionRoot.class, DatumExpressionRoot.class, Datum.class, GeneralDatum.class,
@@ -145,7 +154,12 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 			LinkedHashSet.class, TreeMap.class, TreeSet.class, Object.class, Boolean.class,
 			Character.class, Enum.class, ChronoUnit.class, TemporalUnit.class, Period.class,
 			ZoneId.class, ZoneOffset.class, DayOfWeek.class, Month.class, Year.class, YearMonth.class,
-			UUID.class);
+			UUID.class, Instruction.class, BasicInstruction.class, InstructionStatus.class,
+			BasicInstructionStatus.class, net.solarnetwork.domain.Instruction.class,
+			net.solarnetwork.domain.BasicInstruction.class,
+			net.solarnetwork.domain.InstructionStatus.class,
+			net.solarnetwork.domain.BasicInstructionStatus.class,
+			net.solarnetwork.domain.InstructionStatus.InstructionState.class);
 
 	/**
 	 * The API request and response types.
@@ -203,6 +217,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		for ( FilterTypeDefinition def : StandardFilterTypes.definitions() ) {
 			registerBeanType(hints, def.filterClass(), registered);
 		}
+		// Control Conductors are configured with settings too
+		registerBeanType(hints, ControlConductor.class, registered);
 
 		for ( Class<?> type : EXPRESSION_TYPES ) {
 			hints.reflection().registerType(type, MemberCategory.INVOKE_PUBLIC_METHODS);

@@ -36,6 +36,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import s10k.node.sim.filter.csv.SettingsCsvService;
+import s10k.node.sim.filter.domain.ControlConductorConfig;
+import s10k.node.sim.filter.domain.ControlPublishMode;
 import s10k.node.sim.filter.domain.ExternalFilterOrigin;
 import s10k.node.sim.filter.domain.ExternalSettings;
 import s10k.node.sim.filter.domain.ExternalSettingsFile;
@@ -43,6 +45,7 @@ import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.ExternalSettingsSummary;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.IgnoredComponent;
+import s10k.node.sim.filter.domain.NodeControlConfig;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsExportRequest.Style;
@@ -69,7 +72,7 @@ import net.solarnetwork.common.expr.spel.SpelExpressionService;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class SettingsCsvServiceTests {
 
@@ -1152,6 +1155,136 @@ public class SettingsCsvServiceTests {
 		then(result.csv())
 			.as("Nothing to export but the header")
 			.isEqualTo(HEADER)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importControls() {
+		// WHEN
+		SettingsImport result = service.importCsv(resource("control-settings.csv"));
+
+		// THEN
+		// @formatter:off
+		then(result.controls())
+			.as("Mock controls publish on change, Modbus, BACnet, and GPIO Output ones on update, as the Control Datum Sources allow")
+			.containsExactly(
+					new NodeControlConfig("/mock/1", "Integer", "5", ControlPublishMode.Change, true),
+					new NodeControlConfig("/mock/2", "Boolean", "false", ControlPublishMode.Change, true),
+					new NodeControlConfig("/modbus/relay", "Boolean", null, ControlPublishMode.Update, true),
+					new NodeControlConfig("/modbus/limit", "Percent", null, ControlPublishMode.Update, true, "limit", null),
+					new NodeControlConfig("therm/setpoint/1", "Float", null, ControlPublishMode.Never, false),
+					new NodeControlConfig("therm/away", "Boolean", null, ControlPublishMode.Never, false),
+					new NodeControlConfig("/gpio/relay/1", "Boolean", "false", ControlPublishMode.Update, true, "relay", "Instantaneous"))
+			;
+		then(result.conductors())
+			.as("The Control Conductor's settings")
+			.containsExactly(new ControlConductorConfig(Map.of(
+					"uid", "HVAC DR",
+					"taskConfigsCount", "1",
+					"taskConfigs[0].controlId", "/modbus/limit",
+					"taskConfigs[0].executionOffset", "0",
+					"taskConfigs[0].value", "50")))
+			;
+		then(result.config().filtersOrEmpty())
+			.as("Only the filter is a filter, with the comment before it")
+			.extracting(FilterConfig::id, FilterConfig::comment)
+			.containsExactly(tuple("net.solarnetwork.node.datum.samplefilter.limiter.1", "# The throttle,,,,,"))
+			;
+		then(result.ignored())
+			.as("The control components are not ignored")
+			.isEmpty()
+			;
+		then(result.messages())
+			.as("The BACnet control has no FACTORY row, and messages describe the controls")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(
+					tuple(SimulationMessage.CODE_MISSING_FACTORY,
+							"The file has no net.solarnetwork.node.control.bacnet.FACTORY row for the BACnet Control \"Therm\", so SolarNode would not create it. The simulator imported it anyway."),
+					tuple(SimulationMessage.CODE_CONTROL_SETTINGS,
+							"The GPIO Control \"Relays\" has the Input controls /gpio/switch/1, /gpio/switch/2, which are left out, because they change only with their hardware input, and SolarNode declines to set them."),
+					tuple(SimulationMessage.CODE_CONTROL_SETTINGS,
+							"No Control Datum Source publishes the change events of therm/setpoint/1, therm/away, so they never publish datum."))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importControlsWithoutDatumSource() {
+		// GIVEN
+		String csv = csv("net.solarnetwork.node.control.mock.FACTORY,1,1",
+				"net.solarnetwork.node.control.mock.1,controlId,/mock/1",
+				"net.solarnetwork.node.control.mock.1,controlTypeValue,Float",
+				"net.solarnetwork.node.control.modbus.FACTORY,1,1",
+				"net.solarnetwork.node.control.modbus.1,propConfigs[0].controlId,/modbus/1",
+				"net.solarnetwork.node.control.modbus.1,propConfigs[0].controlPropertyTypeKey,x",
+				"net.solarnetwork.node.control.modbus.1,propConfigs[1].controlPropertyTypeKey,i");
+
+		// WHEN
+		SettingsImport result = service.importCsv(csv);
+
+		// THEN
+		// @formatter:off
+		then(result.controls())
+			.as("Controls publish like a default Control Datum Source; unknown types are Boolean")
+			.containsExactly(
+					new NodeControlConfig("/mock/1", "Float", "false", ControlPublishMode.Change, false),
+					new NodeControlConfig("/modbus/1", "Boolean", null, ControlPublishMode.Update, false))
+			;
+		then(result.conductors())
+			.as("No conductors")
+			.isNull()
+			;
+		then(result.messages())
+			.as("The control without a Control ID is left out")
+			.extracting(SimulationMessage::code)
+			.containsExactly(SimulationMessage.CODE_INVALID_CONTROL, SimulationMessage.CODE_CONTROL_SETTINGS)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void exportLeavesOutControls() {
+		// GIVEN
+		SettingsImport imported = service.importCsv(resource("control-settings.csv"));
+
+		// WHEN
+		SettingsExport result = export(imported.config(), Style.Plain);
+
+		// THEN
+		// @formatter:off
+		then(result.csv())
+			.as("Only the filter is exported")
+			.contains("net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle")
+			.doesNotContain("control")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void externalIgnoresControls() {
+		// GIVEN
+		ExternalSettingsFile file = new ExternalSettingsFile("controls.csv",
+				resource("control-settings.csv"));
+
+		// WHEN
+		ExternalSettings result = service.external(new ExternalSettingsRequest(List.of(file)));
+
+		// THEN
+		// @formatter:off
+		then(result.files())
+			.as("One file")
+			.hasSize(1)
+			.first()
+			.extracting(ExternalSettingsSummary::ignored, list(IgnoredComponent.class))
+			.extracting(IgnoredComponent::key)
+			.as("The control components are ignored")
+			.contains(
+					"net.solarnetwork.node.control.mock",
+					"net.solarnetwork.node.control.modbus",
+					"net.solarnetwork.node.control.gpiod",
+					"net.solarnetwork.node.datum.control",
+					"net.solarnetwork.node.control.conductor")
 			;
 		// @formatter:on
 	}

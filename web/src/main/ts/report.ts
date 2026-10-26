@@ -75,7 +75,7 @@ const REPORT_SCRIPT = `(() => {
 				? ".sim-messages [data-level=\\"" + v + "\\"]"
 				: group === "status"
 					? ".sim-step[data-status=\\"" + v + "\\"]"
-					: ".sim-datum[data-outcome=\\"" + v + "\\"]";
+					: "[data-outcome=\\"" + v + "\\"]";
 			scope.querySelectorAll(rows).forEach((r) => r.classList.toggle("is-filtered", !shown));
 		} else if (t.matches(".sim-copy")) {
 			const text = t.closest(".sim-message").querySelector(".flex-grow-1");

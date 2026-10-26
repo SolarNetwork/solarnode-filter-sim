@@ -162,6 +162,39 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	public static final String CODE_INVALID_CONFIG = "InvalidConfig";
 
 	/**
+	 * A simulated control without a Control ID, or with a type or starting
+	 * value that is not valid.
+	 */
+	public static final String CODE_INVALID_CONTROL = "InvalidControl";
+
+	/** More than one simulated control with the same Control ID. */
+	public static final String CODE_DUPLICATE_CONTROL_ID = "DuplicateControlId";
+
+	/**
+	 * A simulated Control Conductor whose configuration means it cannot handle
+	 * or complete its instructions.
+	 */
+	public static final String CODE_INVALID_CONDUCTOR = "InvalidConductor";
+
+	/**
+	 * A stored instruction that threw an error when the Instruction Execution
+	 * Job ran it.
+	 */
+	public static final String CODE_INSTRUCTION_ERROR = "InstructionError";
+
+	/**
+	 * Stored instructions the Instruction Execution Job had not run when the
+	 * simulation ended.
+	 */
+	public static final String CODE_PENDING_INSTRUCTIONS = "PendingInstructions";
+
+	/**
+	 * Controls or Control Conductors imported from a settings CSV file into the
+	 * simulation's environment.
+	 */
+	public static final String CODE_CONTROL_SETTINGS = "ControlSettings";
+
+	/**
 	 * Message levels.
 	 */
 	public enum Level {

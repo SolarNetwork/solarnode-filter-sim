@@ -34,7 +34,25 @@ and click the **Export to file** button to download the node's settings as a CSV
 
 The exported file will include all of SolarNode's settings. The SolarNode Filter Simulator will
 ignore non-filter settings so you do not have to worry about any other settings are included in the
-export.
+export, **except** for some controls and Control Conductors, which the Simulator adds to the
+**Controls** tab:
+
+- Each [Modbus][modbus-control] or [BACnet][bacnet-control] Control becomes a control of its type,
+  without a starting value, which publishes a datum every time it is set. A Modbus control keeps
+  its datum property name.
+- Each Output control of a [GPIO][gpio-control] Control becomes a Boolean control starting at
+  `false`, which publishes a datum every time it is set, with its datum property name and type. Input controls are not supported.
+- Each Mock Control becomes a control with its type and initial value, which publishes a datum when
+  its value changes.
+- Any [Control Datum Sources][control-ds] are used to decide whether each control publishes at all,
+  and whether its datum are persisted. A file without Control Datum Sources publishes every
+  control's datum, without persisting them, like a Control Datum Source with its default settings.
+- Each [Control Conductor][control-conductor] keeps its settings.
+
+When you add a file to a simulation, its controls replace those with the same control ID, and its
+conductors those with the same Service Name. When you replace the simulation with a file that has
+controls or conductors, they replace all of them. ++ctrl+z++ does not undo changes to the
+**Controls** tab. Exports include only the filter settings.
 
 Now in the Simulator, click on the **Import settings** button in the [Control pane][control-pane]
 and select the file you exported from SolarNode.
@@ -54,9 +72,14 @@ key.
 You can use ++ctrl+z++ or ++cmd+z++ to undo your changes as you go.
 
 
+[bacnet-control]: https://solarnetwork.github.io/solarnode-handbook/users/controls/bacnet/
 [canvas]: ./getting-your-bearings.md#canvas
+[control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
+[control-ds]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/control/
 [control-pane]: ./getting-your-bearings.md#control-pane
 [downsample]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/downsample/
 [filter-palette]: ./getting-your-bearings.md#filter-palette
+[gpio-control]: https://solarnetwork.github.io/solarnode-handbook/users/controls/gpio/
 [inspector]: ./getting-your-bearings.md#inspector
+[modbus-control]: https://solarnetwork.github.io/solarnode-handbook/users/controls/modbus/
 [sn-settings-backup]: https://solarnetwork.github.io/solarnode-handbook/users/setup-app/settings/backups/#settings-backup-restore

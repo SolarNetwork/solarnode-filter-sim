@@ -50,12 +50,45 @@ import tools.jackson.databind.JsonNode;
  * @param nodeLocation
  *        the node's location, which the Location Service provides, or
  *        {@code null} for none
+ * @param controls
+ *        the simulated controls, or {@code null} for none
+ * @param conductors
+ *        the simulated Control Conductors, or {@code null} for none
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public record SimulationEnvironment(@Nullable List<String> opModes, @Nullable String localStateCsv,
 		@Nullable JsonNode nodeMetadata, @Nullable List<UserMetadataConfig> userMetadata,
 		@Nullable Map<String, String> placeholders, @Nullable Map<String, JsonNode> datumMetadata,
-		@Nullable NodeLocation nodeLocation) {
+		@Nullable NodeLocation nodeLocation, @Nullable List<NodeControlConfig> controls,
+		@Nullable List<ControlConductorConfig> conductors) {
+
+	/**
+	 * Constructor, without Control Conductors.
+	 *
+	 * @param opModes
+	 *        the starting operational modes
+	 * @param localStateCsv
+	 *        the starting Local State CSV
+	 * @param nodeMetadata
+	 *        the node's metadata
+	 * @param userMetadata
+	 *        the User Metadata Services
+	 * @param placeholders
+	 *        placeholder values
+	 * @param datumMetadata
+	 *        datum stream metadata
+	 * @param nodeLocation
+	 *        the node's location
+	 * @param controls
+	 *        the simulated controls
+	 */
+	public SimulationEnvironment(@Nullable List<String> opModes, @Nullable String localStateCsv,
+			@Nullable JsonNode nodeMetadata, @Nullable List<UserMetadataConfig> userMetadata,
+			@Nullable Map<String, String> placeholders, @Nullable Map<String, JsonNode> datumMetadata,
+			@Nullable NodeLocation nodeLocation, @Nullable List<NodeControlConfig> controls) {
+		this(opModes, localStateCsv, nodeMetadata, userMetadata, placeholders, datumMetadata,
+				nodeLocation, controls, null);
+	}
 
 }

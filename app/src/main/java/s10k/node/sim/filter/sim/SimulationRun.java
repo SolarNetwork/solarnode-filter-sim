@@ -44,28 +44,37 @@ import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
+import net.solarnetwork.domain.datum.DatumSamplesType;
+import net.solarnetwork.domain.NodeControlPropertyType;
 import net.solarnetwork.domain.SimpleLocation;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamplesOperations;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
+import net.solarnetwork.node.control.conductor.ControlConductor;
+import net.solarnetwork.node.control.conductor.ControlTaskConfig;
 import net.solarnetwork.node.domain.LocalState;
 import net.solarnetwork.node.domain.datum.NodeDatum;
 import net.solarnetwork.node.metrics.domain.Metric;
+import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.runtime.DatumHistory;
 import net.solarnetwork.node.runtime.DefaultLocalStateService;
 import net.solarnetwork.node.runtime.DefaultOperationalModesService;
 import net.solarnetwork.node.service.DatumHistorian;
 import net.solarnetwork.node.service.DatumQueueProcessObserver.Stage;
 import net.solarnetwork.node.service.support.DatumFilterChainService;
+import net.solarnetwork.node.service.support.ExpressionConfig;
 import net.solarnetwork.node.service.support.SettingsPlaceholderService;
 import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.service.ExpressionService;
 import net.solarnetwork.service.StaticOptionalService;
+import s10k.node.sim.filter.domain.ControlConductorConfig;
 import s10k.node.sim.filter.domain.DatumInfo;
 import s10k.node.sim.filter.domain.DatumOrigin;
 import s10k.node.sim.filter.domain.FilterConfig;
+import s10k.node.sim.filter.domain.InstructionInfo;
 import s10k.node.sim.filter.domain.LocalStateInfo;
 import s10k.node.sim.filter.domain.MetricInfo;
+import s10k.node.sim.filter.domain.NodeControlConfig;
 import s10k.node.sim.filter.domain.NodeLocation;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationEnvironment;
@@ -82,6 +91,7 @@ import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.settings.SettingsApplier;
 import s10k.node.sim.filter.sim.FilterTracer.DatumRecord;
+import s10k.node.sim.filter.sim.FilterTracer.RunRecord;
 import s10k.node.sim.filter.sim.FilterTracer.StepRecord;
 import tools.jackson.databind.JsonNode;
 
@@ -127,14 +137,17 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private static final class LogRecord {
 
 		private final @Nullable String filterId;
+		/** What logged the message when it was not a filter. */
+		private final @Nullable String source;
 		private final @Nullable Integer datumSeq;
 		private final boolean error;
 		private final String message;
 		private int count = 1;
 
-		private LogRecord(@Nullable String filterId, @Nullable Integer datumSeq, boolean error,
-				String message) {
+		private LogRecord(@Nullable String filterId, @Nullable String source, @Nullable Integer datumSeq,
+				boolean error, String message) {
 			this.filterId = filterId;
+			this.source = source;
 			this.datumSeq = datumSeq;
 			this.error = error;
 			this.message = message;
@@ -148,6 +161,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	}
 
 	private final FilterTypeRegistry registry;
+	private final ExpressionService expressionService;
 	private final SimulationRequest request;
 	private final SimulationOptions options;
 	private final List<NodeDatum> input;
@@ -169,6 +183,10 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private SimTaskScheduler.@Nullable Task firing;
 	private final List<QueuedDatum> taskGenerated = new ArrayList<>(2);
 	private int taskRuns;
+	/** The Instruction Execution Job schedule, and the instructions it ran. */
+	private final int jobSeconds;
+	private final List<RunRecord> runs = new ArrayList<>(4);
+	private @Nullable Instant lastJobTick;
 	private int nextSeq = 1;
 	private int generatedCount;
 	private int outputCount;
@@ -202,8 +220,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		if ( options.allowedCommands() != null ) {
 			commands.addAll(options.allowedCommands());
 		}
+		this.expressionService = expressionService;
+		this.jobSeconds = options.instructionJobSecondsValue();
 		this.context = new SimulationContext(firstDate != null ? firstDate : defaultStartDate(),
 				expressionService, this, nodeMetadata(), commands);
+		loadControls();
+		loadConductors();
 		registerUserMetadataServices();
 		loadNodeLocation();
 		loadPlaceholders();
@@ -215,8 +237,22 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		});
 		context.localStateDao().setChangeListener(tracer::localStateChanged);
 		context.instructionService().setListener(tracer::instructionIssued);
+		context.instructionService().setIssuer(() -> {
+			final StepRecord step = tracer.currentStep();
+			if ( step != null ) {
+				final QueuedDatum datum = this.current;
+				return new SimInstructionService.Issuer(datum != null ? datum.seq() : null, step.id,
+						step.filterId);
+			}
+			// a conductor task stored while the job runs its parent instruction
+			final RunRecord run = tracer.currentRun();
+			return (run != null ? run.issuer : null);
+		});
 		context.metricDao().setListener(m -> tracer.metricSaved(metricInfo(m)));
 		context.commandExecutor().setListener(tracer::commandRun);
+		context.controlService().setListener(tracer::controlUpdated);
+		context.controlService()
+				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
 	}
 
 	/**
@@ -249,20 +285,28 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final Instant runUntil = runUntil();
 		final SimTaskScheduler scheduler = context.taskScheduler();
 		while ( true ) {
-			// run scheduled tasks due before the next datum, or by the end time
+			// run scheduled tasks and the Instruction Execution Job due before the next datum,
+			// or by the end time; a task first when both are due at the same time
 			final NodeDatum next = nextDatum();
 			final Instant nextTime = (next != null ? timestamp(next) : runUntil);
 			final SimTaskScheduler.Task task = scheduler.peek();
-			if ( task != null && nextTime != null
-					&& (next != null ? task.due().isBefore(nextTime) : !task.due().isAfter(nextTime)) ) {
+			final Instant jobTick = nextJobTick();
+			final boolean job = (jobTick != null && (task == null || jobTick.isBefore(task.due())));
+			final Instant due = (job ? jobTick : task != null ? task.due() : null);
+			if ( due != null && nextTime != null
+					&& (next != null ? due.isBefore(nextTime) : !due.isAfter(nextTime)) ) {
 				if ( taskRuns >= MAX_TASK_RUNS ) {
 					warn(SimulationMessage.CODE_TASK_LIMIT,
-							"Stopped after running %d scheduled tasks, the maximum allowed."
+							"Stopped after running %d scheduled tasks and stored instructions, the maximum allowed."
 									.formatted(MAX_TASK_RUNS),
 							null, null);
 					break;
 				}
-				runTask(scheduler, task);
+				if ( job ) {
+					runInstructions(due);
+				} else if ( task != null ) {
+					runTask(scheduler, task);
+				}
 				continue;
 			}
 			if ( next == null ) {
@@ -290,6 +334,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		}
 
 		addPendingTaskMessages(scheduler, filters);
+		addPendingInstructionMessages();
 		shutdown(filters);
 		addDepthLimitMessages();
 		addLogMessages(filters);
@@ -297,8 +342,118 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final SimulationState finalState = snapshot(true, null);
 		final long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 		return new SimulationResult(records.stream().map(DatumRecord::toTrace).toList(),
-				List.copyOf(messages), finalState, new SimulationStats(records.size(), generatedCount,
-						outputCount, discardedCount, durationMs));
+				runs.stream().map(RunRecord::toRun).toList(), List.copyOf(messages), finalState,
+				new SimulationStats(records.size(), generatedCount, outputCount, discardedCount,
+						durationMs));
+	}
+
+	/**
+	 * Get the next time the Instruction Execution Job runs a stored
+	 * instruction.
+	 *
+	 * @return the time, or {@code null} if no instruction is waiting
+	 */
+	private @Nullable Instant nextJobTick() {
+		final Instant due = context.instructionService().nextDue();
+		if ( due == null ) {
+			return null;
+		}
+		Instant tick = SimInstructionService.jobTick(due, jobSeconds);
+		final Instant last = this.lastJobTick;
+		if ( last != null && !tick.isAfter(last) ) {
+			// stored while the job ran, so found by its next run
+			tick = SimInstructionService.jobTick(last.plusSeconds(1), jobSeconds);
+		}
+		return tick;
+	}
+
+	/**
+	 * Run the stored instructions due by a time of the Instruction Execution
+	 * Job, like the job does. Datum they publish are processed next, before
+	 * datum due after them.
+	 */
+	private void runInstructions(Instant tick) {
+		context.simulatedClock().setInstant(tick);
+		lastJobTick = tick;
+		final SimInstructionService service = context.instructionService();
+		final Integer afterSeq = (records.isEmpty() ? null : records.getLast().seq);
+		for ( SimInstructionService.StoredInstruction s : service.dueBy(tick) ) {
+			taskRuns++;
+			final RunRecord run = new RunRecord(tick, afterSeq, service.info(s), s.issuer());
+			runs.add(run);
+			tracer.beginRun(run);
+			try {
+				service.run(s);
+			} catch ( RuntimeException e ) {
+				run.error = (e.getMessage() != null ? e.getMessage() : e.toString());
+				warn(SimulationMessage.CODE_INSTRUCTION_ERROR,
+						"Error running the stored instruction %s: %s"
+								.formatted(instructionLabel(run.instruction), run.error),
+						run.issuer != null ? run.issuer.filterId() : null, null);
+			} finally {
+				tracer.endRun();
+			}
+		}
+		for ( int i = taskGenerated.size() - 1; i >= 0; i-- ) {
+			queue.addFirst(taskGenerated.get(i));
+		}
+		taskGenerated.clear();
+	}
+
+	private static String instructionLabel(InstructionInfo instruction) {
+		final String conductor = instruction.conductor();
+		if ( conductor != null && instruction.task() != null ) {
+			return "#%d %s (task %d of the Control Conductor %s)".formatted(instruction.number(),
+					instruction.topic(), instruction.task(), SimulationMessage.quoted(conductor));
+		}
+		return "#%d %s".formatted(instruction.number(), instruction.topic());
+	}
+
+	/**
+	 * Get a label for what runs an instruction, for its log messages.
+	 *
+	 * @param instruction
+	 *        the instruction the job is running
+	 * @return the label
+	 */
+	private static String runLabel(InstructionInfo instruction) {
+		String conductor = instruction.conductor();
+		if ( conductor == null
+				&& ControlConductor.TOPIC_ORCHESTRATE_CONTROLS.equals(instruction.topic()) ) {
+			conductor = instruction.parameters().get(InstructionHandler.PARAM_SERVICE);
+		}
+		if ( conductor != null ) {
+			return "The Control Conductor " + SimulationMessage.quoted(conductor);
+		}
+		return "The stored instruction " + instructionLabel(instruction);
+	}
+
+	private void addPendingInstructionMessages() {
+		final Map<String, List<InstructionInfo>> groups = new LinkedHashMap<>(4);
+		for ( InstructionInfo info : context.instructionService().waiting() ) {
+			groups.computeIfAbsent(info.conductor() != null ? info.conductor() : "",
+					_ -> new ArrayList<>(2)).add(info);
+		}
+		for ( Map.Entry<String, List<InstructionInfo>> e : groups.entrySet() ) {
+			final List<InstructionInfo> list = e.getValue();
+			final InstructionInfo first = list.getFirst();
+			final String text;
+			if ( !e.getKey().isEmpty() ) {
+				text = (list.size() == 1
+						? "The Control Conductor %1$s has a task due at %3$s, after the simulation ended."
+						: "The Control Conductor %1$s has %2$d tasks due after the simulation ended, the first at %3$s.")
+								.formatted(SimulationMessage.quoted(e.getKey()), list.size(),
+										first.executeAt());
+			} else {
+				text = (list.size() == 1
+						? "The stored instruction %3$s is due at %2$s, after the simulation ended."
+						: "%1$d stored instructions are due after the simulation ended, the first at %2$s.")
+								.formatted(list.size(), first.executeAt(), instructionLabel(first));
+			}
+			messages.add(SimulationMessage.info(SimulationMessage.CODE_PENDING_INSTRUCTIONS, text
+					+ " Keep running after the last datum to let the Instruction Execution Job run them.",
+					null));
+		}
 	}
 
 	/**
@@ -367,20 +522,28 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		taskGenerated.clear();
 	}
 
-	/** Record a message a filter logged, attributed to the filter running. */
+	/**
+	 * Record a message a filter logged, attributed to the filter running, or to
+	 * the Control Conductor whose stored instruction the job is running.
+	 */
 	private void logged(boolean error, String message) {
 		final StepRecord step = tracer.currentStep();
 		final SimTaskScheduler.Task task = firing;
-		final String filterId = (step != null ? step.filterId : task != null ? task.owner() : creating);
+		final RunRecord run = tracer.currentRun();
+		final String source = (step == null && task == null && run != null ? runLabel(run.instruction)
+				: null);
+		final String filterId = (step != null ? step.filterId
+				: task != null ? task.owner() : source != null ? null : creating);
 		final QueuedDatum datum = this.current;
 		final String text = LogMessages.shorten(message);
 		// repeats of a problem are counted together, with the first one's text
-		final String key = filterId + "\n" + LogMessages.problem(text);
+		final String key = (source != null ? source : filterId) + "\n" + LogMessages.problem(text);
 		final LogRecord existing = logs.get(key);
 		if ( existing != null ) {
 			existing.count++;
 		} else {
-			logs.put(key, new LogRecord(filterId, datum != null ? datum.seq() : null, error, text));
+			logs.put(key,
+					new LogRecord(filterId, source, datum != null ? datum.seq() : null, error, text));
 		}
 	}
 
@@ -388,7 +551,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		for ( LogRecord log : logs.values() ) {
 			final TracingDatumFilterService filter = (log.filterId != null ? filters.get(log.filterId)
 					: null);
-			final String text = "%s logged: %s%s".formatted(filter != null ? label(filter) : "A filter",
+			final String text = "%s logged: %s%s".formatted(
+					filter != null ? label(filter) : log.source != null ? log.source : "A filter",
 					log.message, log.count > 1 ? " (%d times)".formatted(log.count) : "");
 			messages.add(log.error
 					? SimulationMessage.error(SimulationMessage.CODE_FILTER_LOG, text, log.filterId)
@@ -692,6 +856,200 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		return SimulationMessage.quoted(uid != null && !uid.isBlank() ? uid : filter.filterId());
 	}
 
+	/* === Controls === */
+
+	private void loadControls() {
+		final SimulationEnvironment env = request.environment();
+		final List<NodeControlConfig> configs = (env != null ? env.controls() : null);
+		if ( configs == null ) {
+			return;
+		}
+		final SimNodeControlService controls = context.controlService();
+		for ( int i = 0; i < configs.size(); i++ ) {
+			final NodeControlConfig config = configs.get(i);
+			if ( config == null ) {
+				continue;
+			}
+			final String controlId = (config.controlId() != null ? config.controlId().trim() : "");
+			if ( controlId.isEmpty() ) {
+				warn(SimulationMessage.CODE_INVALID_CONTROL,
+						"Control %d has no Control ID, so it is left out.".formatted(i + 1), null, null);
+				continue;
+			}
+			if ( controls.hasControl(controlId) ) {
+				warn(SimulationMessage.CODE_DUPLICATE_CONTROL_ID,
+						"More than one control has the Control ID %s, so only the first one is used."
+								.formatted(controlId),
+						null, null);
+				continue;
+			}
+			final NodeControlPropertyType type = controlType(controlId, config.type());
+			if ( !controls.addControl(controlId, type, config.value(), config.publishValue(),
+					config.persistValue(), config.propertyName(),
+					propertyType(controlId, config.propertyType())) ) {
+				warn(SimulationMessage.CODE_INVALID_CONTROL,
+						"The control %s starting value %s is not a valid %s value, so the control starts with no value."
+								.formatted(controlId, SimulationMessage.quoted(config.value()),
+										type.name()),
+						null, null);
+			}
+		}
+	}
+
+	private NodeControlPropertyType controlType(String controlId, @Nullable String type) {
+		if ( type == null || type.isBlank() ) {
+			return NodeControlPropertyType.Boolean;
+		}
+		try {
+			return NodeControlPropertyType.fromValue(type.trim());
+		} catch ( IllegalArgumentException e ) {
+			warn(SimulationMessage.CODE_INVALID_CONTROL,
+					"The control %s has the Control Type %s, which is not one of Boolean, Float, Integer, Percent, or String, so it is a Boolean control, like a Mock control by default."
+							.formatted(controlId, SimulationMessage.quoted(type)),
+					null, null);
+			return NodeControlPropertyType.Boolean;
+		}
+	}
+
+	private @Nullable DatumSamplesType propertyType(String controlId, @Nullable String type) {
+		if ( type == null || type.isBlank() ) {
+			return null;
+		}
+		try {
+			final DatumSamplesType result = DatumSamplesType.fromValue(type.trim());
+			if ( result == DatumSamplesType.Instantaneous || result == DatumSamplesType.Accumulating
+					|| result == DatumSamplesType.Status ) {
+				return result;
+			}
+		} catch ( IllegalArgumentException e ) {
+			// warn below
+		}
+		warn(SimulationMessage.CODE_INVALID_CONTROL,
+				"The control %s has the Property Type %s, which is not one of Instantaneous, Accumulating, or Status, so its value is a Status property."
+						.formatted(controlId, SimulationMessage.quoted(type)),
+				null, null);
+		return null;
+	}
+
+	/* === Control Conductors === */
+
+	private void loadConductors() {
+		final SimulationEnvironment env = request.environment();
+		final List<ControlConductorConfig> configs = (env != null ? env.conductors() : null);
+		if ( configs == null ) {
+			return;
+		}
+		final Set<String> uids = new HashSet<>(configs.size());
+		for ( int i = 0; i < configs.size(); i++ ) {
+			final ControlConductorConfig config = configs.get(i);
+			if ( config == null ) {
+				continue;
+			}
+			final Map<String, String> settings = new LinkedHashMap<>(config.settingsOrEmpty().size());
+			for ( Map.Entry<String, String> e : config.settingsOrEmpty().entrySet() ) {
+				if ( e.getKey() != null && e.getValue() != null ) {
+					settings.put(e.getKey(), e.getValue());
+				}
+			}
+			final ControlConductor conductor = context.createConductor();
+			final String uid = settings.get(UID_SETTING);
+			final String label = (uid != null && !uid.isBlank() ? SimulationMessage.quoted(uid)
+					: String.valueOf(i + 1));
+			for ( SettingsApplier.Problem p : SettingsApplier.apply(conductor, settings) ) {
+				if ( p.unknown() ) {
+					warn(SimulationMessage.CODE_UNKNOWN_SETTING,
+							"The Control Conductor %s has no setting %s.".formatted(label, p.key()),
+							null, null);
+				} else {
+					warn(SimulationMessage.CODE_INVALID_SETTING,
+							"The Control Conductor %s setting %s could not be applied: %s"
+									.formatted(label, p.key(), p.message()),
+							null, null);
+				}
+			}
+			if ( uid == null || uid.isBlank() ) {
+				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+						"Control Conductor %s has no Service Name, so it handles no instructions."
+								.formatted(label),
+						null, null);
+			} else if ( !uids.add(uid.toLowerCase(Locale.ROOT)) ) {
+				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+						"More than one Control Conductor has the Service Name %s, so only the first one handles its instructions."
+								.formatted(label),
+						null, null);
+			}
+			checkConductor(conductor, label);
+			context.addConductor(conductor);
+		}
+	}
+
+	/**
+	 * Report the problems of a Control Conductor's configuration, which
+	 * SolarNode only reports when it declines an instruction.
+	 */
+	private void checkConductor(ControlConductor conductor, String label) {
+		final ExpressionConfig predicate = conductor.getPredicate();
+		if ( predicate != null ) {
+			checkExpression(predicate.getExpression(), predicate.getExpressionServiceId(),
+					"The Control Conductor %s Predicate Expression".formatted(label));
+		}
+		final ControlTaskConfig[] tasks = conductor.getTaskConfigs();
+		if ( tasks == null || tasks.length < 1 ) {
+			warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+					"The Control Conductor %s has no tasks, so it declines every OrchestrateControls instruction."
+							.formatted(label),
+					null, null);
+			return;
+		}
+		for ( int i = 0; i < tasks.length; i++ ) {
+			final ControlTaskConfig task = tasks[i];
+			final String taskLabel = "Task %d of the Control Conductor %s".formatted(i + 1, label);
+			if ( task == null || !task.isValid() ) {
+				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+						"%s has no Control or no Value, so the conductor declines every OrchestrateControls instruction."
+								.formatted(taskLabel),
+						null, null);
+				continue;
+			}
+			final String offset = task.getExecutionOffset();
+			if ( offset == null || offset.isBlank() ) {
+				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+						"%s has no Offset, so the conductor declines every OrchestrateControls instruction."
+								.formatted(taskLabel),
+						null, null);
+			} else if ( !offset.contains("{")
+					&& task.executionTime(Instant.EPOCH, null, Map.of()) == null ) {
+				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+						"%s has the Offset %s, which is neither a number of milliseconds nor an ISO 8601 duration like PT1H, so the conductor declines every OrchestrateControls instruction."
+								.formatted(taskLabel, SimulationMessage.quoted(offset)),
+						null, null);
+			}
+			final String controlId = task.getControlId();
+			if ( controlId != null && !controlId.contains("{")
+					&& !context.controlService().hasControl(controlId.trim()) ) {
+				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
+						"%s sets the control %s, which is not one of the simulation's Controls, so the task is declined, as on a node without that control."
+								.formatted(taskLabel, controlId.trim()),
+						null, null);
+			}
+			checkExpression(task.getValue(), task.getExpressionServiceId(),
+					"%s Value".formatted(taskLabel));
+		}
+	}
+
+	private void checkExpression(@Nullable String expression, @Nullable String serviceId, String label) {
+		if ( expression == null || expression.isBlank() || serviceId == null || serviceId.isBlank()
+				|| !serviceId.equalsIgnoreCase(expressionService.getUid()) ) {
+			return;
+		}
+		try {
+			expressionService.parseExpression(expression);
+		} catch ( RuntimeException e ) {
+			warn(SimulationMessage.CODE_INVALID_CONDUCTOR, "%s is not a valid expression: %s".formatted(
+					label, e.getMessage() != null ? e.getMessage() : e.toString()), null, null);
+		}
+	}
+
 	/* === Metadata === */
 
 	private GeneralDatumMetadata nodeMetadata() {
@@ -955,6 +1313,21 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 
 	@Override
 	public boolean offer(NodeDatum datum, boolean persist) {
+		return offer(datum, persist, null);
+	}
+
+	/**
+	 * Accept a datum a filter or control offers to the Datum Queue.
+	 *
+	 * @param datum
+	 *        the datum
+	 * @param persist
+	 *        {@code true} to persist the datum after filtering
+	 * @param controlId
+	 *        the ID of the control that published the datum, or {@code null}
+	 * @return {@code true} if the datum was accepted
+	 */
+	private boolean offer(NodeDatum datum, boolean persist, @Nullable String controlId) {
 		final QueuedDatum parent = this.current;
 		final StepRecord step = tracer.currentStep();
 		final int depth = (parent != null ? parent.depth() + 1 : 0);
@@ -963,18 +1336,32 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			depthLimitReached(datum, parent, filterId);
 			return false;
 		}
+		final RunRecord run = tracer.currentRun();
+		if ( run != null && step == null ) {
+			// a stored instruction the job ran: processed after the job, before later datum
+			final SimInstructionService.Issuer issuer = run.issuer;
+			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0, DatumOrigin
+					.instruction(run.instruction.number(), issuer != null ? issuer.filterId() : null)
+					.withControlId(controlId));
+			datumBySeq.put(qd.seq(), qd);
+			taskGenerated.add(qd);
+			run.generated.add(qd.seq());
+			generatedCount++;
+			return true;
+		}
 		final SimTaskScheduler.Task task = firing;
 		if ( task != null && step == null ) {
 			// a scheduled task: processed after the task, before later datum
 			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0,
-					DatumOrigin.scheduled(task.owner()));
+					DatumOrigin.scheduled(task.owner()).withControlId(controlId));
 			datumBySeq.put(qd.seq(), qd);
 			taskGenerated.add(qd);
 			generatedCount++;
 			return true;
 		}
-		final QueuedDatum qd = enqueue(datum, persist, depth, DatumOrigin.generated(
-				parent != null ? parent.seq() : null, step != null ? step.id : null, filterId));
+		final QueuedDatum qd = enqueue(datum, persist, depth, DatumOrigin
+				.generated(parent != null ? parent.seq() : null, step != null ? step.id : null, filterId)
+				.withControlId(controlId));
 		generatedCount++;
 		if ( step != null ) {
 			step.generated.add(qd.seq());
@@ -1029,7 +1416,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		for ( Metric m : savedMetrics ) {
 			metrics.add(metricInfo(m));
 		}
-		return new SimulationState(modes, localState, metrics, includeCsv ? localStateCsv() : null,
+		return new SimulationState(modes, localState, metrics, context.controlService().controlInfos(),
+				context.instructionService().waiting(), includeCsv ? localStateCsv() : null,
 				history(context.datumService()), history(context.datumService().unfiltered()), queued);
 	}
 

@@ -166,16 +166,16 @@
 							<li class="nav-item" role="presentation">
 								<button
 									class="nav-link"
-									id="tab-node-metadata-button"
-									data-input-tab="node-metadata"
+									id="tab-metadata-button"
+									data-input-tab="metadata"
 									data-bs-toggle="pill"
-									data-bs-target="#tab-node-metadata"
+									data-bs-target="#tab-metadata"
 									type="button"
 									role="tab"
-									aria-controls="tab-node-metadata"
+									aria-controls="tab-metadata"
 									aria-selected="false"
 								>
-									Node Metadata
+									Metadata
 									<span
 										class="sim-tab-error"
 										title="This tab has a problem"
@@ -186,36 +186,16 @@
 							<li class="nav-item" role="presentation">
 								<button
 									class="nav-link"
-									id="tab-user-metadata-button"
-									data-input-tab="user-metadata"
+									id="tab-controls-button"
+									data-input-tab="controls"
 									data-bs-toggle="pill"
-									data-bs-target="#tab-user-metadata"
+									data-bs-target="#tab-controls"
 									type="button"
 									role="tab"
-									aria-controls="tab-user-metadata"
+									aria-controls="tab-controls"
 									aria-selected="false"
 								>
-									User Metadata
-									<span
-										class="sim-tab-error"
-										title="This tab has a problem"
-										hidden
-									></span>
-								</button>
-							</li>
-							<li class="nav-item" role="presentation">
-								<button
-									class="nav-link"
-									id="tab-datum-metadata-button"
-									data-input-tab="datum-metadata"
-									data-bs-toggle="pill"
-									data-bs-target="#tab-datum-metadata"
-									type="button"
-									role="tab"
-									aria-controls="tab-datum-metadata"
-									aria-selected="false"
-								>
-									Datum Metadata
+									Controls
 									<span
 										class="sim-tab-error"
 										title="This tab has a problem"
@@ -491,6 +471,36 @@
 									like the Timeout filter's, can run.
 								</div>
 								<label
+									for="input-instruction-job-seconds"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Instruction Job Seconds</label
+								>
+								<div class="input-group input-group-sm">
+									<input
+										id="input-instruction-job-seconds"
+										class="form-control"
+										type="number"
+										min="1"
+										max="59"
+										step="1"
+										placeholder="10"
+									/>
+									<span class="input-group-text"
+										>seconds</span
+									>
+								</div>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="instructionJobSeconds"
+								></div>
+								<div class="form-text">
+									How often the node's Instruction Execution
+									Job runs the instructions waiting for it,
+									like Control Conductor tasks, aligned to the
+									minute: 10 runs them at seconds 0, 10, 20,
+									and so on of each minute, like a node.
+								</div>
+								<label
 									for="input-allowed-commands"
 									class="form-label small fw-semibold mb-1 mt-3"
 									>Allowed Commands</label
@@ -512,7 +522,7 @@
 									type="button"
 									class="btn btn-sm btn-outline-secondary mt-2"
 									id="use-final-state"
-									title="Copy the final operational modes and Local State of the last run here"
+									title="Copy the final operational modes, Local State, and control values of the last run here"
 									disabled
 								>
 									<i
@@ -524,11 +534,16 @@
 							</div>
 							<div
 								class="tab-pane fade"
-								id="tab-node-metadata"
+								id="tab-metadata"
 								role="tabpanel"
-								aria-labelledby="tab-node-metadata-button"
+								aria-labelledby="tab-metadata-button"
 								tabindex="0"
 							>
+								<label
+									for="input-node-metadata"
+									class="form-label small fw-semibold mb-1"
+									>Node Metadata</label
+								>
 								<textarea
 									id="input-node-metadata"
 									class="form-control form-control-sm font-monospace sim-json-input"
@@ -550,14 +565,33 @@
 									it with functions like
 									<code>metadataAtPath('/pm/…')</code>.
 								</div>
-							</div>
-							<div
-								class="tab-pane fade"
-								id="tab-user-metadata"
-								role="tabpanel"
-								aria-labelledby="tab-user-metadata-button"
-								tabindex="0"
-							>
+								<h3
+									class="form-label small fw-semibold mt-3 mb-1"
+								>
+									Datum Metadata
+								</h3>
+								<p class="form-text mt-0">
+									The metadata of datum streams, by source ID.
+									Expressions read it with functions like
+									<code>meta(sourceId)</code>.
+								</p>
+								<div id="datum-metadata-list"></div>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary"
+									id="add-datum-metadata"
+								>
+									<i
+										class="bi bi-plus-lg"
+										aria-hidden="true"
+									></i>
+									Add datum metadata
+								</button>
+								<h3
+									class="form-label small fw-semibold mt-3 mb-1"
+								>
+									User Metadata Services
+								</h3>
 								<p class="form-text mt-0">
 									User Metadata Services provide metadata from
 									the SolarNetwork user account. Filters find
@@ -579,31 +613,70 @@
 							</div>
 							<div
 								class="tab-pane fade"
-								id="tab-datum-metadata"
+								id="tab-controls"
 								role="tabpanel"
-								aria-labelledby="tab-datum-metadata-button"
+								aria-labelledby="tab-controls-button"
 								tabindex="0"
 							>
-								<textarea
-									id="input-datum-metadata"
-									class="form-control form-control-sm font-monospace sim-json-input"
-									rows="10"
-									spellcheck="false"
-									aria-label="Datum metadata JSON"
-									placeholder='{"/meter/1": {"pm": {"panel": {"efficiency": 0.2}}}}'
-								></textarea>
-								<div
-									class="invalid-feedback"
-									data-feedback-for="datumMetadata"
-								></div>
-								<div class="form-text">
-									Datum stream metadata: a JSON object of
-									source IDs to their metadata, each with
-									<code>m</code>, <code>pm</code>, and
-									<code>t</code> properties. Expressions read
-									it with functions like
-									<code>meta(sourceId)</code>.
-								</div>
+								<p class="form-text mt-0">
+									Controls are the node's simulated controls,
+									which filters like the Control Updater set.
+									A control can publish a datum of its value,
+									which the Datum Queue then processes.
+								</p>
+								<div id="control-list"></div>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary"
+									id="add-control"
+								>
+									<i
+										class="bi bi-plus-lg"
+										aria-hidden="true"
+									></i>
+									Add a control
+								</button>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary"
+									id="use-final-controls"
+									title="Copy the final control values of the last run here"
+									disabled
+								>
+									<i
+										class="bi bi-arrow-repeat"
+										aria-hidden="true"
+									></i>
+									Use the final values
+								</button>
+								<h3
+									class="form-label small fw-semibold mt-3 mb-1"
+								>
+									Control Conductors
+								</h3>
+								<p class="form-text mt-0">
+									A Control Conductor runs its tasks when an
+									<code>OrchestrateControls</code>
+									instruction, such as an Instructor filter's,
+									names it in its <code>service</code>
+									parameter: each task sets a control at a
+									time offset from the instruction's
+									<code>date</code> parameter, or else from
+									when the instruction runs.
+								</p>
+								<div id="conductor-list"></div>
+								<datalist id="control-id-choices"></datalist>
+								<button
+									type="button"
+									class="btn btn-sm btn-outline-secondary"
+									id="add-conductor"
+								>
+									<i
+										class="bi bi-plus-lg"
+										aria-hidden="true"
+									></i>
+									Add a Control Conductor
+								</button>
 							</div>
 						</div>
 					</div>
@@ -1073,7 +1146,11 @@
 							</dd>
 						</dl>
 						<p class="small text-body-secondary mb-0">
-							You can undo either one with Ctrl+Z.
+							The file's controls and Control Conductors go to the
+							Controls tab: Add adds them, replacing those with
+							the same control ID or Service Name, and Replace
+							replaces them. You can undo either one with Ctrl+Z,
+							except for the Controls tab.
 						</p>
 					</div>
 					<div class="modal-footer">
