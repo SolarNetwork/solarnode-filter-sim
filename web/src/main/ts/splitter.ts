@@ -82,3 +82,120 @@ export function initSplitter(
 		}
 	});
 }
+
+/** The smallest width of a side panel, in pixels. */
+const MIN_PANEL_WIDTH = 200;
+
+/** The smallest width the centre keeps when a side panel widens, in pixels. */
+const MIN_CENTER_WIDTH = 320;
+
+const KEY_STEP_PX = 16;
+
+/**
+ * Make a splitter between a side panel and the centre resize the panel.
+ *
+ * The splitter sets a custom property of its container, such as
+ * `--sim-left-size`, to the panel's width in pixels, and saves it in the
+ * browser. A double click returns the panel to its default width (the custom
+ * property's fallback in the style sheet).
+ *
+ * @param splitter the splitter element
+ * @param container the element whose columns hold the panels
+ * @param panel the side panel
+ * @param side the side the panel is on
+ * @param property the custom property of the panel's width
+ * @param storageKey the browser storage key for the width
+ */
+export function initColumnSplitter(
+	splitter: HTMLElement,
+	container: HTMLElement,
+	panel: HTMLElement,
+	side: "left" | "right",
+	property: string,
+	storageKey: string,
+): void {
+	const maxWidth = () =>
+		Math.max(
+			MIN_PANEL_WIDTH,
+			panel.getBoundingClientRect().width +
+				container
+					.querySelector<HTMLElement>(".sim-center")!
+					.getBoundingClientRect().width -
+				MIN_CENTER_WIDTH,
+		);
+	const apply = (width: number, save: boolean) => {
+		const w = Math.round(
+			Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth(), width)),
+		);
+		container.style.setProperty(property, `${w}px`);
+		splitter.setAttribute("aria-valuenow", String(w));
+		if (save) {
+			try {
+				localStorage.setItem(storageKey, String(w));
+			} catch {
+				// not saved
+			}
+		}
+		return w;
+	};
+
+	try {
+		const saved = Number(localStorage.getItem(storageKey));
+		if (saved > 0) {
+			// not limited here, as the panel might be hidden
+			container.style.setProperty(property, `${saved}px`);
+		}
+	} catch {
+		// use the default
+	}
+	splitter.setAttribute("aria-valuemin", String(MIN_PANEL_WIDTH));
+
+	let width = 0;
+	splitter.addEventListener("pointerdown", (e) => {
+		if (e.button !== 0) {
+			return;
+		}
+		e.preventDefault();
+		splitter.setPointerCapture(e.pointerId);
+		splitter.classList.add("is-dragging");
+		const startX = e.clientX;
+		const startWidth = panel.getBoundingClientRect().width;
+		width = startWidth;
+		const move = (m: PointerEvent) => {
+			const dx = m.clientX - startX;
+			width = apply(startWidth + (side === "left" ? dx : -dx), false);
+		};
+		const end = () => {
+			splitter.removeEventListener("pointermove", move);
+			splitter.removeEventListener("pointerup", end);
+			splitter.removeEventListener("pointercancel", end);
+			splitter.classList.remove("is-dragging");
+			apply(width, true);
+		};
+		splitter.addEventListener("pointermove", move);
+		splitter.addEventListener("pointerup", end);
+		splitter.addEventListener("pointercancel", end);
+	});
+
+	splitter.addEventListener("dblclick", () => {
+		container.style.removeProperty(property);
+		splitter.removeAttribute("aria-valuenow");
+		try {
+			localStorage.removeItem(storageKey);
+		} catch {
+			// not removed
+		}
+	});
+
+	splitter.addEventListener("keydown", (e) => {
+		if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+			e.preventDefault();
+			const wider = (e.key === "ArrowRight") === (side === "left");
+			apply(
+				panel.getBoundingClientRect().width +
+					(wider ? KEY_STEP_PX : -KEY_STEP_PX),
+				true,
+			);
+		}
+	});
+}

@@ -17,10 +17,13 @@ body {
 .sim-layout {
 	flex: 1;
 	display: grid;
-	grid-template-columns: var(--sim-left-width, 22rem) 1fr var(
-			--sim-right-width,
-			24rem
-		);
+	// the side panels' splitters (splitter.ts) set their sizes, which a
+	// hidden panel overrides
+	--sim-left-width: var(--sim-left-size, 22rem);
+	--sim-right-width: var(--sim-right-size, 24rem);
+	grid-template-columns:
+		var(--sim-left-width) auto minmax(0, 1fr) auto
+		var(--sim-right-width);
 	min-height: 0;
 
 	// each part keeps its column, so a hidden panel leaves its column empty
@@ -28,20 +31,36 @@ body {
 		grid-column: 1;
 	}
 
-	> .sim-center {
+	> .sim-splitter-left {
 		grid-column: 2;
 	}
 
-	> .sim-right {
+	> .sim-center {
 		grid-column: 3;
+	}
+
+	> .sim-splitter-right {
+		grid-column: 4;
+	}
+
+	> .sim-right {
+		grid-column: 5;
 	}
 
 	&.is-left-hidden {
 		--sim-left-width: 0;
+
+		> .sim-splitter-left {
+			display: none;
+		}
 	}
 
 	&.is-right-hidden {
 		--sim-right-width: 0;
+
+		> .sim-splitter-right {
+			display: none;
+		}
 	}
 }
 
@@ -187,6 +206,15 @@ body {
 		outline: 2px solid var(--bs-primary);
 		outline-offset: -2px;
 	}
+}
+
+// a splitter between a side panel and the centre
+.sim-splitter-column {
+	width: 0.75rem;
+	height: auto;
+	cursor: col-resize;
+	border-block: none;
+	border-inline: 1px solid var(--bs-border-color);
 }
 
 // the filter palette

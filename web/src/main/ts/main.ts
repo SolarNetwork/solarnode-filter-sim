@@ -17,6 +17,7 @@ import {
 	askImportMode,
 	askNewSimulation,
 	askOpenSimulation,
+	askSaveName,
 	showError,
 	showMessages,
 	showToast,
@@ -56,11 +57,20 @@ import {
 	simulationJson,
 } from "./session.ts";
 import { buildReport, REPORT_FILE_NAME } from "./report.ts";
-import { initSplitter } from "./splitter.ts";
+import { initColumnSplitter, initSplitter } from "./splitter.ts";
 import { Workspace } from "./workspace.ts";
 
 /** The browser storage key of the hidden side panels. */
 const PANELS_STORAGE_KEY = "sn-filter-sim.hiddenPanels";
+
+/**
+ * The browser storage key of the simulation's file name: the one it was
+ * opened from or saved as last.
+ */
+const SIMULATION_NAME_STORAGE_KEY = "sn-filter-sim.simulationName";
+
+/** The page title, without a simulation's file name. */
+const APP_TITLE = document.title;
 
 /** The name of exported settings CSV files. */
 const EXPORT_FILE_NAME = "solarnode-filter-settings.csv";
@@ -137,6 +147,11 @@ class App {
 	 * keeps the bundles of those the simulator does not have.
 	 */
 	#openedCustomFilters: CustomFilterRef[] = [];
+	/**
+	 * The simulation's file name, from Open or the last Save, or `null` for a
+	 * simulation never opened or saved.
+	 */
+	#simulationName: string | null = null;
 	#running = false;
 	#rerunTimer?: number;
 
@@ -152,6 +167,13 @@ class App {
 		info: Promise<AppInfo | null>,
 	) {
 		this.#info = info;
+		try {
+			this.#setSimulationName(
+				localStorage.getItem(SIMULATION_NAME_STORAGE_KEY),
+			);
+		} catch {
+			// no name
+		}
 		const ws = Workspace.load(types, unavailable);
 		const inputs = RunInputs.load();
 		this.#ws = ws;
@@ -191,6 +213,22 @@ class App {
 			$("#left-panel"),
 			"sn-filter-sim.leftSplit",
 			0.55,
+		);
+		initColumnSplitter(
+			$("#left-column-splitter"),
+			$("#layout"),
+			$("#left-panel"),
+			"left",
+			"--sim-left-size",
+			"sn-filter-sim.leftWidth",
+		);
+		initColumnSplitter(
+			$("#right-column-splitter"),
+			$("#layout"),
+			$("#inspector"),
+			"right",
+			"--sim-right-size",
+			"sn-filter-sim.rightWidth",
 		);
 
 		this.#canvas.addEventListener("select", (e) =>
@@ -252,18 +290,57 @@ class App {
 	}
 
 	/**
+	 * Set the simulation's file name, which the browser remembers, and show it
+	 * in the page title.
+	 *
+	 * @param name the file name, or `null` for none
+	 */
+	#setSimulationName(name: string | null): void {
+		this.#simulationName = name || null;
+		document.title = this.#simulationName
+			? `${this.#simulationName} - ${APP_TITLE}`
+			: APP_TITLE;
+		try {
+			if (this.#simulationName) {
+				localStorage.setItem(
+					SIMULATION_NAME_STORAGE_KEY,
+					this.#simulationName,
+				);
+			} else {
+				localStorage.removeItem(SIMULATION_NAME_STORAGE_KEY);
+			}
+		} catch {
+			// not saved
+		}
+	}
+
+	/**
 	 * Save the whole simulation as a file, which can be opened in another
 	 * browser.
+	 *
+	 * This asks for the file name, starting with the simulation's name, and
+	 * the simulation keeps the name.
+	 *
+	 * @returns `true` if the simulation was saved, or `false` if the file name
+	 *     dialog was cancelled
 	 */
-	async saveSimulation(): Promise<void> {
+	async saveSimulation(): Promise<boolean> {
+		const name = await askSaveName(
+			this.#simulationName ?? SIMULATION_FILE_NAME,
+		);
+		if (!name) {
+			return false;
+		}
 		const json = simulationJson(
 			this.#ws,
 			this.#inputs,
 			await this.#info,
 			this.#openedCustomFilters,
 		);
-		download(json, SIMULATION_FILE_NAME, "application/json");
-		showToast(`The simulation was saved as ${SIMULATION_FILE_NAME}.`);
+		download(json, name, "application/json");
+		this.#setSimulationName(name);
+		showToast(`The simulation was saved as ${name}.`);
+		return true;
 	}
 
 	/**
@@ -286,14 +363,15 @@ class App {
 			if (!answer) {
 				return;
 			}
-			if (answer === "saveFirst") {
-				await this.saveSimulation();
+			if (answer === "saveFirst" && !(await this.saveSimulation())) {
+				return;
 			}
 		}
 		this.#closeResults();
 		// the workspace first, so the Entry Point input finds its filter
 		this.#ws.replaceState(simulation.workspace, "Open simulation");
 		this.#openedCustomFilters = simulation.customFilters;
+		this.#setSimulationName(file.name);
 		this.#inputs.replace(simulation.inputs);
 		this.#inputPanel.reload();
 		this.#canvas.select(null);
@@ -320,13 +398,14 @@ class App {
 			if (!answer) {
 				return;
 			}
-			if (answer === "saveFirst") {
-				await this.saveSimulation();
+			if (answer === "saveFirst" && !(await this.saveSimulation())) {
+				return;
 			}
 		}
 		this.#closeResults();
 		this.#ws.reset("New simulation");
 		this.#openedCustomFilters = [];
+		this.#setSimulationName(null);
 		this.#inputs.clear();
 		this.#inputPanel.reload();
 		this.#canvas.select(null);

@@ -298,6 +298,74 @@ export function askNewSimulation(): Promise<ConfirmResult> {
 }
 
 /**
+ * Make a file name safe to save a simulation as: without path separators, and
+ * with a `.json` extension.
+ *
+ * @param name the name entered
+ * @returns the file name, or `null` if the name is blank or has path
+ *     separators
+ */
+export function simulationFileName(name: string): string | null {
+	const n = name.trim();
+	if (!n || /[/\\]/.test(n) || n === ".json") {
+		return null;
+	}
+	return n.toLowerCase().endsWith(".json") ? n : `${n}.json`;
+}
+
+/**
+ * Ask for the file name to save the simulation as.
+ *
+ * @param defaultName the name to start with
+ * @returns the file name, with a `.json` extension, or `null` to cancel
+ */
+export function askSaveName(defaultName: string): Promise<string | null> {
+	const el = document.querySelector<HTMLElement>("#save-dialog")!;
+	const dialog = Modal.getOrCreateInstance(el);
+	const form = el.querySelector<HTMLFormElement>("#save-form")!;
+	const input = el.querySelector<HTMLInputElement>("#save-name")!;
+	input.value = defaultName;
+	input.classList.remove("is-invalid");
+	return new Promise((resolve) => {
+		let result: string | null = null;
+		const submit = (e: SubmitEvent) => {
+			e.preventDefault();
+			const name = simulationFileName(input.value);
+			input.classList.toggle("is-invalid", !name);
+			if (name) {
+				result = name;
+				dialog.hide();
+			}
+		};
+		const edit = () => input.classList.remove("is-invalid");
+		form.addEventListener("submit", submit);
+		input.addEventListener("input", edit);
+		el.addEventListener(
+			"shown.bs.modal",
+			() => {
+				input.focus();
+				// select the name without its extension, to rename it
+				const dot = input.value.toLowerCase().endsWith(".json")
+					? input.value.length - 5
+					: input.value.length;
+				input.setSelectionRange(0, dot);
+			},
+			{ once: true },
+		);
+		el.addEventListener(
+			"hidden.bs.modal",
+			() => {
+				form.removeEventListener("submit", submit);
+				input.removeEventListener("input", edit);
+				resolve(result);
+			},
+			{ once: true },
+		);
+		dialog.show();
+	});
+}
+
+/**
  * Show a short message that disappears by itself.
  *
  * @param text the message
