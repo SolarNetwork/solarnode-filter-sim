@@ -1,9 +1,9 @@
 # Running a simulation
 
-Once you have a simualtion set up, run it by clicking the **Run** button in the [Control pane][control-pane]:
+Once you have a simualtion set up, run it by clicking the **Run** button in the [Action pane][action-pane]:
 
 <figure markdown>
-![The simulation run button](./images/control-pane-run-button@2x.png){width=352}
+![The simulation run button](./images/action-pane-run-button@2x.png){width=352}
 <figcaption markdown>Execute a simulation by clicking the **Run** button.</figcaption>
 </figure>
 
@@ -60,9 +60,9 @@ at 2025-10-01 00:09:00Z", and its route on the Canvas starts at the filter that 
 instruction. Instructions still waiting when the simulation ends are listed in the final state. In
 debug mode, the **Instructions** tab shows the instructions waiting as of each filter step.
 
+[action-pane]: ./getting-your-bearings.md#action-pane
 [canvas]: ./getting-your-bearings.md#canvas
 [control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
-[control-pane]: ./getting-your-bearings.md#control-pane
 [datum-queue]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/#datum-queue
 [downsample]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/downsample/
 [split]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/split/

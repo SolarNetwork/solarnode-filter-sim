@@ -2,12 +2,12 @@
 
 When you first visit the application, you are presented with four main panes:
 
-![User interface structure diagram](./images/ui-structure@2x.png){width=1920}
+![User interface structure diagram](./images/ui-structure@2x.png){width=1440}
 
 * [Toolbar](#toolbar) (top bar) - the application version and some action buttons.
 * [Setup](#setup-pane) (top left) - where you configure the overall parameters of the simulation,
   such as the datum to run through the filters, node metadata, and placeholders.
-* [Control](#control-pane) (middle left) - where you can start the simulation as well as import or
+* [Action](#action-pane) (middle left) - where you can start the simulation as well as import or
   export the filter settings as CSV files.
 * [Filter Palette](#filter-palette) (bottom left) - a list of the available filters that you can
   drag onto the canvas.
@@ -27,7 +27,7 @@ action buttons on the right side.
 ### Pane toggle buttons
 
 <figure markdown>
-![Application toolbar pane toggle buttons](./images/toolbar-toggle-buttons-annotated@2x.png){width=527}
+![Application toolbar pane toggle buttons](./images/toolbar-toggle-buttons-annotated@2x.png){width=523}
 </figure>
 
 The first two buttons in the toolbar allow you to toggle the left and right applicaiton pane
@@ -79,10 +79,10 @@ ID), and any User Metadata Services.
 The **Controls** tab holds the node's simulated controls, which filters like the Control Updater
 set. See [Controls and Instructions](./controls-and-instructions.md) for more details.
 
-## Control pane
+## Action pane
 
 <figure markdown>
-![Control pane](./images/control-pane@2x.png){width=351}
+![Action pane](./images/action-pane@2x.png){width=351}
 </figure>
 
 The Control pane is where you can:
