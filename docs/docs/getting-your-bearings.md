@@ -58,7 +58,7 @@ the entire simulation:
 ## Setup pane
 
 <figure markdown>
-![Setup pane tabs](./images/setup-tabs@2x.png){width=2106}
+![Setup pane tabs](./images/setup-tabs@2x.png){width=1772}
 <figcaption markdown>The various tab views within the Setup pane.</figcaption>
 </figure>
 
@@ -85,7 +85,7 @@ set. See [Controls and Instructions](./controls-and-instructions.md) for more de
 ![Action pane](./images/action-pane@2x.png){width=351}
 </figure>
 
-The Control pane is where you can:
+The Action pane is where you can:
 
 * import filter settings from a SolarNode
 * export the simulation's filter settings, so you can apply them to a SolarNode
