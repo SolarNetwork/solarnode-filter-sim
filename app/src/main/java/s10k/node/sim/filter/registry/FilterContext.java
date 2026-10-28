@@ -21,6 +21,7 @@ package s10k.node.sim.filter.registry;
 
 import java.time.Clock;
 import java.util.List;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.TaskScheduler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import net.solarnetwork.node.dao.TransientSettingDao;
@@ -90,6 +91,14 @@ public interface FilterContext {
 	 * @return the scheduler
 	 */
 	TaskScheduler taskScheduler();
+
+	/**
+	 * Get the task executor, like the SolarNode {@code Executor} service with
+	 * the {@code function=node} property.
+	 *
+	 * @return the executor
+	 */
+	TaskExecutor executor();
 
 	/**
 	 * Get the transient setting DAO.

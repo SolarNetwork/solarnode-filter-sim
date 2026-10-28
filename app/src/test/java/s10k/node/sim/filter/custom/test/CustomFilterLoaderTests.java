@@ -377,6 +377,8 @@ public class CustomFilterLoaderTests {
 			.containsEntry("contextLoader", true)
 			.as("Blueprint service property set")
 			.containsEntry("transientSettingDao", true)
+			.as("Executor service runs tasks at once, on the simulation thread")
+			.containsEntry("executedInline", true)
 			;
 		// @formatter:on
 	}

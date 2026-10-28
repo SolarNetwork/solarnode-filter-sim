@@ -78,6 +78,8 @@ public final class ServiceBindings {
 					FilterContext::reactorService);
 			case "org.springframework.scheduling.TaskScheduler" -> instance(key,
 					FilterContext::taskScheduler);
+			case "java.util.concurrent.Executor", "org.springframework.core.task.TaskExecutor" -> instance(
+					key, FilterContext::executor);
 			case "net.solarnetwork.node.dao.TransientSettingDao" -> instance(key,
 					FilterContext::transientSettingDao);
 			case "net.solarnetwork.node.metrics.dao.MetricDao" -> instance(key,

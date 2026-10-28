@@ -30,6 +30,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
+import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.util.AntPathMatcher;
 import s10k.node.sim.filter.registry.FilterContext;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
@@ -113,6 +115,7 @@ public final class SimulationContext implements FilterContext {
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
 	private final SimTaskScheduler taskScheduler;
+	private final TaskExecutor executor = new SyncTaskExecutor();
 	private final SettingsPlaceholderService placeholderService;
 	private final SimMetricDao metricDao;
 	private final SimLocationService locationService;
@@ -336,6 +339,19 @@ public final class SimulationContext implements FilterContext {
 	@Override
 	public SimTaskScheduler taskScheduler() {
 		return taskScheduler;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>
+	 * It runs each task at once, on the calling thread, so the task belongs to
+	 * the step that runs it, like the rest of a simulation run.
+	 * </p>
+	 */
+	@Override
+	public TaskExecutor executor() {
+		return executor;
 	}
 
 	/**

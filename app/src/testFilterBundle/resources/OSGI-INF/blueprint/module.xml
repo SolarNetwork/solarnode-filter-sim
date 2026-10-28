@@ -19,6 +19,8 @@
 
 	<reference id="transientSettingDao" interface="net.solarnetwork.node.dao.TransientSettingDao"/>
 
+	<reference id="executor" interface="java.util.concurrent.Executor" filter="(function=node)"/>
+
 	<reference id="identityService" interface="net.solarnetwork.node.service.IdentityService"/>
 
 	<bean id="datumQueue" class="net.solarnetwork.common.osgi.service.DynamicServiceTracker">
@@ -77,6 +79,7 @@
 			<property name="messageSource" ref="scaleMessageSource"/>
 			<property name="opModesService" ref="opModesService"/>
 			<property name="transientSettingDao" ref="transientSettingDao"/>
+			<property name="executor" ref="executor"/>
 			<property name="factor" value="2"/>
 		</bean>
 	</osgix:managed-service-factory>
