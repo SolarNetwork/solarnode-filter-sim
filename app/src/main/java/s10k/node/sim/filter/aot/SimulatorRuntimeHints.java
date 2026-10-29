@@ -61,6 +61,7 @@ import org.springframework.aot.hint.TypeReference;
 import org.springframework.beans.BeanUtils;
 import s10k.node.sim.filter.domain.CaptureInfo;
 import s10k.node.sim.filter.domain.CustomFiltersReload;
+import s10k.node.sim.filter.domain.DatumSourceTypeInfo;
 import s10k.node.sim.filter.domain.ExternalSettings;
 import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
@@ -256,9 +257,11 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		for ( Class<?> type : API_TYPES ) {
 			registerElementArrayTypes(hints, type, false, walked);
 		}
-		// GET /api/filter-types and /api/filter-types/unavailable return lists,
-		// and a 400 problem detail can have a list of messages
+		// GET /api/filter-types, /api/filter-types/unavailable, and
+		// /api/datum-source-types return lists, and a 400 problem detail can
+		// have a list of messages
 		registerElementArrayTypes(hints, FilterTypeInfo.class, true, walked);
+		registerElementArrayTypes(hints, DatumSourceTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, UnavailableFilterTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, SimulationMessage.class, true, walked);
 	}

@@ -51,6 +51,18 @@ export interface FilterTypeInfo {
 	bundle?: FilterBundleInfo;
 }
 
+/** A supported datum source type. */
+export interface DatumSourceTypeInfo {
+	factoryUid: string;
+	name: string;
+	/** The description, as HTML. */
+	description?: string;
+	/** The poll schedule of a new datum source. */
+	defaultSchedule: string;
+	/** `Controls`, `Instructions`, and `TariffSchedule`. */
+	capabilities?: string[];
+}
+
 /** The result of reloading the custom filters. */
 export interface CustomFiltersReload {
 	filterTypes: FilterTypeInfo[];
@@ -292,8 +304,13 @@ export interface SettingsForm {
 	factoryUid: string;
 	fields: SettingField[];
 	problems: SettingProblem[];
-	/** How the simulation of the filter differs from SolarNode. */
+	/** How the simulation of the filter or datum source differs from SolarNode. */
 	limitation?: string;
+	/**
+	 * For a datum source that provides controls, the control IDs it provides
+	 * with these settings, with placeholders resolved.
+	 */
+	controlIds?: string[];
 }
 
 /* === Simulation === */

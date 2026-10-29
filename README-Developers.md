@@ -65,6 +65,7 @@ The main TypeScript modules are:
 | `routeOverlay.ts` | Draws datum routes on the canvas: lanes, the lines back through the queue, and number badges. |
 | `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
+| `settingsForm.ts` | The settings form fields of a filter or datum source, rendered from `/api/settings-form`, which edit a settings map: help, notes, resets, dynamic lists, and Choose menus. |
 | `inputs.ts`    | The run inputs (datum, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
 | `inputPanel.ts` | The input tabs and the Entry Point select. |
 | `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
@@ -92,7 +93,8 @@ records in the `s10k.node.sim.filter.domain` package.
 | `GET /api/filter-types` | The supported filter types, sorted by name. A custom filter type has its `bundle` (`name` and `version`). |
 | `POST /api/filter-types/reload` | Load the custom filters again: a `CustomFiltersReload` out, with the filter types, the unavailable ones, and the `messages` of the startup message. A `400` response if there is no custom filters path. |
 | `GET /api/filter-types/unavailable` | The filter types the simulator knows of but cannot run, such as custom filter types that need a service it does not provide, sorted by name, each with its `reason`. |
-| `POST /api/settings-form` | Get a filter's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. |
+| `GET /api/datum-source-types` | The supported datum source types, sorted by name, each with its default poll schedule and `capabilities` (`Controls`, `Instructions`, `TariffSchedule`). |
+| `POST /api/settings-form` | Get a filter's or datum source's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. A datum source's settings are its poll job's (`schedule` and `jobService.datumDataSource.*`), and a datum source with controls has its `controlIds`. |
 | `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out. |
 | `POST /api/settings/merge` | Add a settings CSV file to a configuration, the way a node imports a file: a `SettingsMergeRequest` (`config` and `csv`) in, a `SettingsImport` with the combined configuration out. |
 | `POST /api/settings/external` | Combine External Settings files the way a node applies its auto settings files: an `ExternalSettingsRequest` (`files` of `name` and `csv`) in, `ExternalSettings` out. |

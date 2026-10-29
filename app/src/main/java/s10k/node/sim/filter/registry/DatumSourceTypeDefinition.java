@@ -19,13 +19,20 @@
 
 package s10k.node.sim.filter.registry;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
+import s10k.node.sim.filter.domain.DatumSourceCapability;
+import s10k.node.sim.filter.domain.DatumSourceTypeInfo;
 import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.NodeControlProvider;
+import net.solarnetwork.node.service.TariffScheduleProvider;
 
 /**
  * The definition of a supported SolarNode datum source type, ported from its
@@ -81,6 +88,29 @@ public record DatumSourceTypeDefinition(String factoryUid, String displayName,
 	 */
 	public boolean isInstructionHandler() {
 		return services.contains(InstructionHandler.class);
+	}
+
+	/**
+	 * Get information about the datum source type.
+	 *
+	 * @param locale
+	 *        the locale to use for the name and description
+	 * @return the information
+	 */
+	public DatumSourceTypeInfo info(Locale locale) {
+		final String title = messageSource.getMessage("title", null, null, locale);
+		final Set<DatumSourceCapability> capabilities = EnumSet.noneOf(DatumSourceCapability.class);
+		if ( services.contains(NodeControlProvider.class) ) {
+			capabilities.add(DatumSourceCapability.Controls);
+		}
+		if ( isInstructionHandler() ) {
+			capabilities.add(DatumSourceCapability.Instructions);
+		}
+		if ( services.contains(TariffScheduleProvider.class) ) {
+			capabilities.add(DatumSourceCapability.TariffSchedule);
+		}
+		return new DatumSourceTypeInfo(factoryUid, title != null ? title : displayName,
+				messageSource.getMessage("desc", null, null, locale), defaultSchedule, capabilities);
 	}
 
 	/**

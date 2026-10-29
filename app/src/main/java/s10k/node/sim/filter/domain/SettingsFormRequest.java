@@ -23,14 +23,16 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A request for the settings form of a filter.
+ * A request for the settings form of a filter or datum source.
  *
  * @param factoryUid
- *        the SolarNode component factory UID of the filter type
+ *        the SolarNode component factory UID of the filter or datum source type
  * @param settings
- *        the filter settings, as SolarNode setting keys and values
+ *        the settings, as SolarNode setting keys and values; a datum source's
+ *        are its job's, such as {@code schedule} and
+ *        {@code jobService.datumDataSource.sourceId}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public record SettingsFormRequest(String factoryUid, @Nullable Map<String, String> settings) {
 

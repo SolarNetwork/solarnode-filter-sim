@@ -6,6 +6,7 @@ import type {
 	ExternalSettings,
 	ExternalSettingsFile,
 	CustomFiltersReload,
+	DatumSourceTypeInfo,
 	FilterTypeInfo,
 	UnavailableFilterType,
 	ProblemDetail,
@@ -70,6 +71,11 @@ export function getInfo(): Promise<AppInfo> {
 /** Get the supported filter types, sorted by name. */
 export function getFilterTypes(): Promise<FilterTypeInfo[]> {
 	return request<FilterTypeInfo[]>("api/filter-types");
+}
+
+/** Get the supported datum source types, sorted by name. */
+export function getDatumSourceTypes(): Promise<DatumSourceTypeInfo[]> {
+	return request<DatumSourceTypeInfo[]>("api/datum-source-types");
 }
 
 /**
@@ -150,10 +156,11 @@ export function exportSettings(
 }
 
 /**
- * Get the settings form of a filter.
+ * Get the settings form of a filter or datum source.
  *
- * @param factoryUid the filter type
- * @param settings the filter settings
+ * @param factoryUid the filter or datum source type
+ * @param settings the settings; a datum source's are its job's, like
+ *     `schedule` and `jobService.datumDataSource.sourceId`
  */
 export function getSettingsForm(
 	factoryUid: string,

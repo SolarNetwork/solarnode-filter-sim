@@ -125,18 +125,20 @@ public class SimulatorConfig {
 	}
 
 	/**
-	 * The filter settings form service.
+	 * The filter and datum source settings form service.
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypeRegistry
+	 *        the datum source type registry
 	 * @param expressionService
 	 *        the expression service
 	 * @return the service
 	 */
 	@Bean
 	public SettingsFormService settingsFormService(FilterTypeRegistry registry,
-			SpelExpressionService expressionService) {
-		return new SettingsFormService(registry, expressionService);
+			DatumSourceTypeRegistry datumSourceTypeRegistry, SpelExpressionService expressionService) {
+		return new SettingsFormService(registry, datumSourceTypeRegistry, expressionService);
 	}
 
 	/**

@@ -20,10 +20,13 @@
 package s10k.node.sim.filter.registry;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import s10k.node.sim.filter.domain.DatumSourceTypeInfo;
 
 /**
  * The registry of supported datum source types.
@@ -73,6 +76,19 @@ public class DatumSourceTypeRegistry {
 	 */
 	public @Nullable DatumSourceTypeDefinition definition(@Nullable String factoryUid) {
 		return (factoryUid != null ? definitions.get(factoryUid) : null);
+	}
+
+	/**
+	 * Get information about the datum source types.
+	 *
+	 * @param locale
+	 *        the locale to use for the names and descriptions
+	 * @return the information, sorted by name
+	 */
+	public List<DatumSourceTypeInfo> datumSourceTypes(Locale locale) {
+		return definitions.values().stream().map(d -> d.info(locale))
+				.sorted(Comparator.comparing(DatumSourceTypeInfo::name, String.CASE_INSENSITIVE_ORDER))
+				.toList();
 	}
 
 	/**

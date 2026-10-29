@@ -39,6 +39,7 @@ import s10k.node.sim.filter.domain.SettingsFormRequest;
 import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.sim.SimulationException;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
@@ -47,7 +48,7 @@ import net.solarnetwork.common.expr.spel.SpelExpressionService;
  * Test cases for the {@link SettingsFormService} class.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class SettingsFormServiceTests {
 
@@ -352,6 +353,77 @@ public class SettingsFormServiceTests {
 			.asString()
 			.isNotBlank()
 			.isNotEqualTo("propertyConfigs[0].metricName")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void datumSource() {
+		// WHEN
+		SettingsForm form = form(StandardDatumSourceTypes.MOCK_BATTERY, "schedule", "30000",
+				"jobService.datumDataSource.sourceId", "battery/1",
+				"jobService.datumDataSource.targetPowerRateControlId", "battery/rate",
+				"jobService.datumDataSource.socControlId", "battery/{socControl:soc}", "foo", "bar");
+
+		// THEN
+		// @formatter:off
+		then(form.fields())
+			.as("The job's schedule first, then the datum source's settings with the job's prefixes")
+			.first()
+			.returns(Type.Cron, from(SettingField::type))
+			.returns("schedule", from(SettingField::key))
+			.returns("Schedule", from(SettingField::label))
+			.returns("30000", from(SettingField::value))
+			.returns(StandardDatumSourceTypes.DEFAULT_SCHEDULE, from(SettingField::defaultValue))
+			;
+		then(keys(form.fields()))
+			.as("Runtime status title left out")
+			.doesNotContain("jobService.datumDataSource.status")
+			.contains("jobService.datumDataSource.sourceId")
+			;
+		then(field(form.fields(), "jobService.datumDataSource.sourceId"))
+			.as("Label from the datum source's message source, through the job's")
+			.returns("Source ID", from(SettingField::label))
+			.returns("battery/1", from(SettingField::value))
+			;
+		then(form.problems())
+			.as("Unknown setting reported for the datum source")
+			.extracting(SettingProblem::key, SettingProblem::message)
+			.containsExactly(tuple("foo", "The datum source has no setting foo."))
+			;
+		then(form.controlIds())
+			.as("Control IDs of the datum source, with placeholders resolved")
+			.containsExactly("battery/rate", "battery/soc")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void datumSourceStatusTitles() {
+		// WHEN
+		SettingsForm fixed = form(StandardDatumSourceTypes.FIXED,
+				"jobService.datumDataSource.touMetadataPath", "/pm/tou");
+		SettingsForm tou = form(StandardDatumSourceTypes.TOU);
+
+		// THEN
+		// @formatter:off
+		then(keys(fixed.fields()))
+			.as("Fixed Data status titles left out")
+			.doesNotContain("jobService.datumDataSource.datumStatus",
+					"jobService.datumDataSource.touStatus")
+			;
+		then(fixed.limitation())
+			.as("Time zone limitation for a TOU schedule")
+			.contains("time zone")
+			;
+		then(fixed.controlIds())
+			.as("No control IDs for a datum source without controls")
+			.isNull()
+			;
+		then(keys(tou.fields()))
+			.as("TOU status title left out")
+			.doesNotContain("jobService.datumDataSource.status")
+			.startsWith("schedule")
 			;
 		// @formatter:on
 	}
