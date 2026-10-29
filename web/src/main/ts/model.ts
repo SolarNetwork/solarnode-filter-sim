@@ -30,6 +30,8 @@ export interface AppInfo {
 	 * custom filters can be reloaded.
 	 */
 	customFilters?: boolean;
+	/** The simulator's time zone, which simulations run in. */
+	timeZone?: string;
 }
 
 /** The bundle a custom filter type comes from. */
@@ -811,4 +813,65 @@ export interface SimulationResult {
 	messages: SimulationMessage[];
 	finalState: SimulationState;
 	stats: SimulationStats;
+}
+
+/** A simulation run kept on the server. */
+export interface RunInfo {
+	/** The run ID. */
+	id: string;
+}
+
+/** How a datum came out of the filters, in a run's datum index. */
+export type DatumOutcomeCode =
+	"Output" | "OutputNotPersisted" | "Discarded" | "Error";
+
+/** A datum in a run's datum index, for a result without every trace. */
+export interface DatumIndexEntry {
+	seq: number;
+	sourceId?: string | null;
+	/** The datum's date, as an ISO 8601 instant. */
+	created?: string | null;
+	origin: DatumOrigin;
+	outcome: DatumOutcomeCode;
+	/** `true` if a filter step failed. */
+	error: boolean;
+}
+
+/** The run statistics of one filter, from the server. */
+export interface FilterRunStatsInfo {
+	in: number;
+	out: number;
+	dropped: number;
+	changed: number;
+	skipped: number;
+	errors: number;
+}
+
+/**
+ * The result of a run kept on the server: with every trace while it has at
+ * most 200 datum, else the first traces, an index of every datum, and each
+ * filter's statistics.
+ */
+export interface RunResult extends SimulationResult {
+	/** The run ID. */
+	id: string;
+	/** Every datum, if the result does not have every trace. */
+	index?: DatumIndexEntry[] | null;
+	/** The statistics of each filter, by filter id, with the index. */
+	filterStats?: Record<string, FilterRunStatsInfo> | null;
+}
+
+/** The progress of a run. */
+export interface RunProgress {
+	state: "Running" | "Done" | "Failed";
+	/** The datum processed so far. */
+	processed: number;
+	/** The datum expected, or 0 if not known. */
+	expected: number;
+	/** The date of the last datum processed, as an ISO 8601 instant. */
+	date?: string | null;
+	/** A failed run's error. */
+	error?: string | null;
+	/** A failed run's problems. */
+	problems?: SimulationMessage[] | null;
 }

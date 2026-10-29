@@ -145,8 +145,8 @@ public class RunControllerTests {
 			.endsWith("done")
 			.containsOnly("progress", "done")
 			;
-		then(events.getFirst().getValue().get("expected").asInt())
-			.as("Progress expects the polls")
+		then(events.getLast().getValue().get("expected").asInt())
+			.as("Progress expects the polls (the first event can come before the run starts)")
 			.isEqualTo(30_000)
 			;
 		then(events.getLast().getValue().get("state").asString())

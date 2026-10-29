@@ -10,12 +10,15 @@ import type {
 	FilterTypeInfo,
 	UnavailableFilterType,
 	ProblemDetail,
+	RunInfo,
+	RunProgress,
+	RunResult,
+	DatumTrace,
 	SettingsExport,
 	SettingsForm,
 	SettingsImport,
 	SimConfig,
 	SimulationRequest,
-	SimulationResult,
 } from "./model.ts";
 
 /** An error response from the web API. */
@@ -173,12 +176,138 @@ export function getSettingsForm(
 }
 
 /**
- * Run a simulation.
+ * Start a simulation run on the server, which runs in the background.
  *
  * @param req the simulation request
+ * @returns the run, to follow with {@link runEventsUrl}
  */
-export function simulate(req: SimulationRequest): Promise<SimulationResult> {
-	return postJson<SimulationResult>("api/simulate", req);
+export function startRun(req: SimulationRequest): Promise<RunInfo> {
+	return postJson<RunInfo>("api/runs", req);
+}
+
+/**
+ * Get the address of a run's progress event stream, for an `EventSource`.
+ *
+ * @param id the run ID
+ */
+export function runEventsUrl(id: string): string {
+	return `api/runs/${encodeURIComponent(id)}/events`;
+}
+
+/**
+ * Get a run's progress.
+ *
+ * @param id the run ID
+ */
+export function getRunProgress(id: string): Promise<RunProgress> {
+	return request<RunProgress>(`api/runs/${encodeURIComponent(id)}/progress`);
+}
+
+/**
+ * Get the result of a run that has ended.
+ *
+ * @param id the run ID
+ */
+export function getRunResult(id: string): Promise<RunResult> {
+	return request<RunResult>(`api/runs/${encodeURIComponent(id)}`);
+}
+
+/** The most traces {@link getRunTraces} loads at once. */
+export const MAX_TRACES_PER_REQUEST = 200;
+
+/**
+ * Get the traces of some of a run's datum.
+ *
+ * @param id the run ID
+ * @param seqs the datum sequence numbers, at most
+ *     {@link MAX_TRACES_PER_REQUEST}
+ * @returns the traces, in the order asked
+ */
+export function getRunTraces(
+	id: string,
+	seqs: readonly number[],
+): Promise<DatumTrace[]> {
+	return request<DatumTrace[]>(
+		`api/runs/${encodeURIComponent(id)}/datum?seq=${seqs.join(",")}`,
+	);
+}
+
+/**
+ * Get the address that downloads a run's datum, as a JSON array in the
+ * format of the Datum input.
+ *
+ * @param id the run ID
+ * @param kind `output` for the datum the filters output, or `input` for each
+ *     datum as it entered the Datum Queue
+ */
+export function runDatumUrl(id: string, kind: "output" | "input"): string {
+	return `api/runs/${encodeURIComponent(id)}/datum.json?kind=${kind}`;
+}
+
+/**
+ * Cancel a run, which keeps the result so far.
+ *
+ * @param id the run ID
+ * @param keepalive `true` to finish the request even if the page is closing
+ */
+export async function cancelRun(id: string, keepalive = false): Promise<void> {
+	await fetch(`api/runs/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+		keepalive,
+	});
+}
+
+/** How often, in milliseconds, a run's progress is asked for without events. */
+const PROGRESS_POLL_INTERVAL = 500;
+
+/**
+ * Follow a run's progress until it ends, with its event stream, or by asking
+ * for its progress if the stream fails.
+ *
+ * @param id the run ID
+ * @param onProgress called with the progress as the run goes on
+ * @returns the progress when the run ended
+ */
+export function waitForRun(
+	id: string,
+	onProgress: (progress: RunProgress) => void,
+): Promise<RunProgress> {
+	return new Promise((resolve, reject) => {
+		const events = new EventSource(runEventsUrl(id));
+		let polling = false;
+		const poll = async () => {
+			try {
+				for (;;) {
+					const progress = await getRunProgress(id);
+					if (progress.state !== "Running") {
+						resolve(progress);
+						return;
+					}
+					onProgress(progress);
+					await new Promise((r) =>
+						window.setTimeout(r, PROGRESS_POLL_INTERVAL),
+					);
+				}
+			} catch (e) {
+				reject(e);
+			}
+		};
+		const data = (e: Event) =>
+			JSON.parse((e as MessageEvent<string>).data) as RunProgress;
+		events.addEventListener("progress", (e) => onProgress(data(e)));
+		events.addEventListener("done", (e) => {
+			events.close();
+			resolve(data(e));
+		});
+		events.addEventListener("error", () => {
+			// the stream ended without a done event, such as for a run the
+			// server no longer keeps (a 404), so ask for the progress
+			if (events.readyState === EventSource.CLOSED && !polling) {
+				polling = true;
+				void poll();
+			}
+		});
+	});
 }
 
 /**

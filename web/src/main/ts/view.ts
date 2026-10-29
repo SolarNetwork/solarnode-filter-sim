@@ -14,6 +14,7 @@ import type {
 	SamplesInfo,
 	SimulationMessage,
 } from "./model.ts";
+import { formatLocal } from "./dates.ts";
 
 /**
  * Quote a name in a sentence, such as a Service Name, which can have spaces
@@ -163,9 +164,43 @@ export function formatValue(value: unknown): string {
 	return String(value);
 }
 
-/** Format a timestamp like `2025-10-01 12:00:00Z`. */
+/** The time zone the results show dates in. */
+let displayZone = "UTC";
+
+/**
+ * Set the time zone the results show dates in.
+ *
+ * @param zone the time zone
+ */
+export function setDisplayZone(zone: string): void {
+	displayZone = zone;
+}
+
+/**
+ * Get the time zone the results show dates in.
+ *
+ * @returns the time zone
+ */
+export function getDisplayZone(): string {
+	return displayZone;
+}
+
+/**
+ * Format a timestamp as a local date and time in the time zone the results
+ * show, like `2025-10-01 12:00:00`, keeping any fraction of a second.
+ *
+ * @param ts the timestamp, as an ISO 8601 instant
+ * @returns the date and time
+ */
 export function formatTimestamp(ts: string | undefined): string {
-	return ts ? ts.replace("T", " ") : "";
+	if (!ts) {
+		return "";
+	}
+	const ms = Date.parse(ts);
+	if (Number.isNaN(ms)) {
+		return ts.replace("T", " ");
+	}
+	return formatLocal(ms, displayZone, /\.(\d+)/.exec(ts)?.[1]);
 }
 
 export function formatDuration(micros: number | undefined): string {

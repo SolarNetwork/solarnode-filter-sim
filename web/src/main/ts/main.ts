@@ -1,14 +1,17 @@
 import "../scss/style.scss";
 import {
 	ApiError,
+	cancelRun,
 	exportSettings,
 	getFilterTypes,
 	getInfo,
+	getRunResult,
 	getUnavailableFilterTypes,
 	importSettings,
 	mergeSettings,
 	reloadCustomFilters,
-	simulate,
+	startRun,
+	waitForRun,
 } from "./api.ts";
 import { Canvas } from "./canvas.ts";
 import { askCapture, CapturePanel, capturedDatumJson } from "./capture.ts";
@@ -23,27 +26,33 @@ import {
 	showToast,
 	type ImportMode,
 } from "./dialogs.ts";
+import { timeZoneNames } from "./dates.ts";
 import { ExternalSettingsDialog } from "./externalSettings.ts";
 import { InputPanel } from "./inputPanel.ts";
 import {
+	getServerTimeZone,
 	InputError,
 	NODE_METADATA_SERVICE_UID,
 	parseDatumList,
 	RunInputs,
+	setServerTimeZone,
 } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
 import { MAIN_KEY, type FilterNode } from "./layout.ts";
 import {
 	UNKNOWN_FACTORY_UID,
 	type AppInfo,
+	type DatumTrace,
 	type ExportStyle,
 	type FilterTypeInfo,
+	type RunProgress,
 	type SimulationResult,
 	type UnavailableFilterType,
 } from "./model.ts";
 import { renderPalette } from "./palette.ts";
 import {
 	filterRunStats,
+	isLargeResult,
 	ResultsPanel,
 	type DatumPath,
 	type DebugMark,
@@ -128,9 +137,12 @@ function pollCounts(
 	sourceIds: readonly string[],
 ): Map<string, number> {
 	const counts = new Map(sourceIds.map((id) => [id, 0]));
-	for (const trace of result.datum) {
-		const id = trace.origin.datumSourceId;
-		if (trace.origin.type === "Polled" && id && counts.has(id)) {
+	const origins = isLargeResult(result)
+		? result.index.map((e) => e.origin)
+		: result.datum.map((t) => t.origin);
+	for (const origin of origins) {
+		const id = origin.datumSourceId;
+		if (origin.type === "Polled" && id && counts.has(id)) {
 			counts.set(id, counts.get(id)! + 1);
 		}
 	}
@@ -150,6 +162,9 @@ const METADATA_SERVICE_CLASS = "net.solarnetwork.node.service.MetadataService";
 
 /** How long after a change, in milliseconds, debug mode runs again. */
 const DEBUG_RERUN_DELAY = 600;
+
+/** How long, in milliseconds, a run goes before its progress shows. */
+const PROGRESS_DELAY = 1000;
 
 /** The service filter object class of datum filters. */
 const FILTER_SERVICE_CLASS = "net.solarnetwork.service.DatumFilterService";
@@ -175,6 +190,8 @@ class App {
 	 */
 	#simulationName: string | null = null;
 	#running = false;
+	/** The ID of the run in progress. */
+	#runId: string | null = null;
 	#rerunTimer?: number;
 
 	/**
@@ -226,8 +243,19 @@ class App {
 		this.#capture = new CapturePanel($("#capture"));
 		this.#renderPalette(types);
 		const reloadButton = $<HTMLButtonElement>("#reload-filters-button");
+		$("#time-zone-choices").append(
+			...timeZoneNames().map((name) => new Option(name)),
+		);
 		void info.then((i) => {
 			reloadButton.hidden = !i?.customFilters;
+			if (i?.timeZone) {
+				setServerTimeZone(i.timeZone);
+			}
+			const zone = getServerTimeZone();
+			document
+				.querySelectorAll(".sim-server-time-zone")
+				.forEach((el) => (el.textContent = zone));
+			$<HTMLInputElement>("#input-time-zone").placeholder = zone;
 		});
 		reloadButton.addEventListener(
 			"click",
@@ -607,14 +635,42 @@ class App {
 		const mark = auto ? this.#results.debugMark : null;
 		// as they are now, as the results name them after later edits too
 		const sourceNames = this.#inputPanel.datumSourceNames();
+		const timeZone = this.#inputs.timeZone;
 		this.#setRunning(true);
+		let progressTimer: number | undefined;
 		try {
-			const result = await simulate({
+			const { id } = await startRun({
 				config: this.#ws.toConfig(),
 				...parts,
 				options: { ...parts.options, detail: debug ? "Debug" : null },
 			});
+			this.#runId = id;
+			// the progress shows only for a run that takes a while
+			let latest: RunProgress = {
+				state: "Running",
+				processed: 0,
+				expected: 0,
+			};
+			progressTimer = window.setTimeout(() => {
+				this.#results.setProgress(latest);
+				this.#refreshBottom();
+			}, PROGRESS_DELAY);
+			const done = await waitForRun(id, (progress) => {
+				latest = progress;
+				if (this.#results.running) {
+					this.#results.setProgress(progress);
+				}
+			});
+			if (done.state === "Failed") {
+				const detail = done.error ?? "The simulation failed.";
+				throw new ApiError(detail, 400, {
+					detail,
+					problems: done.problems ?? undefined,
+				});
+			}
+			const result = await getRunResult(id);
 			setDatumSourceNames(sourceNames);
+			this.#results.setTimeZone(timeZone);
 			this.#showResult(result, debug, mark, [...sourceNames.keys()]);
 		} catch (e) {
 			if (auto) {
@@ -627,6 +683,10 @@ class App {
 				);
 			}
 		} finally {
+			window.clearTimeout(progressTimer);
+			this.#runId = null;
+			this.#results.setProgress(null);
+			this.#refreshBottom();
 			this.#setRunning(false);
 		}
 	}
@@ -706,7 +766,7 @@ class App {
 	 */
 	#refreshBottom(): void {
 		const capturing = this.#capture.active;
-		const results = this.#results.result !== null;
+		const results = this.#results.result !== null || this.#results.running;
 		$("#capture").hidden = !capturing;
 		$("#results").hidden = capturing || !results;
 		$("#center-panel").classList.toggle(
@@ -858,6 +918,27 @@ class App {
 		results.addEventListener("report", () => void this.downloadReport());
 		results.addEventListener("close", () => this.#closeResults());
 		results.addEventListener("stop", () => this.#stopDebug());
+		results.addEventListener("cancel", () => {
+			if (this.#runId) {
+				void cancelRun(this.#runId);
+			}
+		});
+		results.addEventListener("traces", (e) =>
+			this.#canvas.addTraces((e as CustomEvent<DatumTrace[]>).detail),
+		);
+		results.addEventListener("routeselection", (e) =>
+			this.#canvas.setRouteSelection(
+				(e as CustomEvent<number[] | null>).detail,
+			),
+		);
+		results.addEventListener("timezone", () =>
+			this.#canvas.refreshRoutes(),
+		);
+		window.addEventListener("pagehide", () => {
+			if (this.#runId) {
+				void cancelRun(this.#runId, true);
+			}
+		});
 		$("#run-button").addEventListener("click", () => void this.run());
 		$("#debug-button").addEventListener("click", () => void this.run(true));
 	}

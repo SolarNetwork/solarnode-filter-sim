@@ -135,7 +135,9 @@ upper-right of the pane:
 </figure>
 
 The **Toggle datum routes** button is used to show or hide lines representing "routes" each
-datum takes as it flows through the filters during a simulation run.
+datum takes as it flows through the filters during a simulation run. When a run has more than 20
+datum, only the routes of the datum you select in the Execution Flow show, and this button shows
+or hides their legend.
 
 ## Inspector
 

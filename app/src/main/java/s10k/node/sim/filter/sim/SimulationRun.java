@@ -418,9 +418,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	}
 
 	private void cancelled() {
+		final int waiting = waiting();
 		messages.add(SimulationMessage.info(SimulationMessage.CODE_CANCELLED,
-				"Cancelled after processing %d datum, so %d datum were not processed."
-						.formatted(processedCount, waiting()),
+				waiting > 0
+						? "Cancelled after processing %d datum, so %d datum were not processed."
+								.formatted(processedCount, waiting)
+						: "Cancelled after processing %d datum.".formatted(processedCount),
 				null));
 	}
 

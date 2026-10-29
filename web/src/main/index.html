@@ -383,8 +383,36 @@
 								tabindex="0"
 							>
 								<label
-									for="input-start-date"
+									for="input-time-zone"
 									class="form-label small fw-semibold mb-1"
+									>Time Zone</label
+								>
+								<input
+									id="input-time-zone"
+									class="form-control form-control-sm"
+									type="text"
+									spellcheck="false"
+									autocomplete="off"
+									list="time-zone-choices"
+								/>
+								<datalist id="time-zone-choices"></datalist>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="timeZone"
+								></div>
+								<div class="form-text">
+									The time zone the Execution Flow shows dates
+									in, and of the Start Date. Blank for the
+									simulator's time zone,
+									<span class="sim-server-time-zone">UTC</span
+									>. The simulation itself runs in the
+									simulator's time zone: cron schedules,
+									tariff schedules, and expression date
+									functions like <code>today()</code> use it.
+								</div>
+								<label
+									for="input-start-date"
+									class="form-label small fw-semibold mb-1 mt-3"
 									>Start Date</label
 								>
 								<input
@@ -401,26 +429,21 @@
 									The date of the first datum without a
 									<code>created</code> date, and the start of
 									a run without datum, which only polls the
-									datum sources. Blank for now.
+									datum sources, in the Time Zone. Blank for
+									now.
 								</div>
 								<label
 									for="input-runafter"
 									class="form-label small fw-semibold mb-1 mt-3"
 									>Keep Running After the Last Datum</label
 								>
-								<div class="input-group input-group-sm">
-									<input
-										id="input-runafter"
-										class="form-control"
-										type="number"
-										min="0"
-										step="1"
-										placeholder="0"
-									/>
-									<span class="input-group-text"
-										>seconds</span
-									>
-								</div>
+								<input
+									id="input-runafter"
+									class="form-control form-control-sm"
+									type="text"
+									spellcheck="false"
+									placeholder="0"
+								/>
 								<div
 									class="invalid-feedback"
 									data-feedback-for="runAfter"
@@ -430,7 +453,35 @@
 									after the last datum, so scheduled tasks,
 									like the Timeout filter's, can run, and the
 									datum sources are polled. Without datum,
-									this is the length of the run.
+									this is the length of the run. Seconds, like
+									<code>90</code>, or a duration, like
+									<code>15m</code>, <code>24h</code>,
+									<code>7d</code>, or <code>PT24H</code>.
+								</div>
+								<label
+									for="input-max-datum"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Maximum Datum</label
+								>
+								<input
+									id="input-max-datum"
+									class="form-control form-control-sm"
+									type="text"
+									inputmode="numeric"
+									spellcheck="false"
+									placeholder="1000"
+								/>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="maxDatum"
+								></div>
+								<div class="form-text">
+									The most datum a run processes, including
+									the datum the filters generate and the datum
+									sources' polls. Raise it for long runs, like
+									a day of polls; the simulator allows up to
+									100,000 by default. A run with more than 200
+									datum shows them as a list.
 								</div>
 								<label
 									for="input-placeholders"
@@ -997,7 +1048,7 @@
 							type="button"
 							class="btn btn-light"
 							id="routes-button"
-							title="Datum routes: show the way every datum went after a run, not only the selected datum's"
+							title="Datum routes: show the way every datum went after a run, not only the selected datum's. Over 20 datum, the selected datum's routes show, and this shows their legend."
 							aria-pressed="false"
 						>
 							<i class="bi bi-bezier2" aria-hidden="true"></i>

@@ -17,6 +17,7 @@ import type {
 	UserMetadataConfig,
 } from "./model.ts";
 import { jsonLanguage } from "@codemirror/lang-json";
+import { canonicalTimeZone, parseLocalDate } from "./dates.ts";
 import { formatJson } from "./jsonFormat.ts";
 import { quoted } from "./view.ts";
 
@@ -170,13 +171,23 @@ export interface InputsState {
 	/** Local State CSV. */
 	localState: string;
 	/**
+	 * The time zone the results show dates in, and of the Start Date, or `""`
+	 * for the simulator's time zone.
+	 */
+	timeZone: string;
+	/**
 	 * The date of the first datum without one, and the start of a run without
-	 * input datum, as a `datetime-local` value in the browser's time zone,
-	 * or `""` for now.
+	 * input datum, as a `datetime-local` value in the time zone, or `""` for
+	 * now.
 	 */
 	startDate: string;
-	/** The seconds to keep running after the last datum. */
+	/**
+	 * How long to keep running after the last datum: seconds, a duration like
+	 * `15m`, or an ISO 8601 duration.
+	 */
 	runAfter: string;
+	/** The most datum to process, or `""` for the default. */
+	maxDatum: string;
 	/** The Instruction Execution Job seconds, or `""` for the default. */
 	instructionJobSeconds: string;
 	/** Placeholders, as `name = value` lines. */
@@ -257,8 +268,10 @@ function emptyState(): InputsState {
 		unfilteredSameAsHistory: true,
 		opModes: "",
 		localState: "",
+		timeZone: "",
 		startDate: "",
 		runAfter: "",
+		maxDatum: "",
 		instructionJobSeconds: "",
 		placeholders: "",
 		datumMetadata: [],
@@ -335,41 +348,148 @@ export function parseMetadata(text: string, label: string): unknown {
 	return value;
 }
 
+/** The seconds of each duration unit. */
+const DURATION_UNITS: Record<string, number> = {
+	s: 1,
+	m: 60,
+	h: 3600,
+	d: 86_400,
+	w: 604_800,
+};
+
 /**
- * Parse the seconds to keep running after the last datum.
+ * Parse an ISO 8601 duration, like `PT24H` or `P1DT12H`, as seconds.
  *
- * @param text the seconds
+ * @param text the duration
+ * @returns the seconds, or `null` if the text is not an ISO 8601 duration
+ */
+function parseIsoDuration(text: string): number | null {
+	const m =
+		/^P(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i.exec(
+			text,
+		);
+	if (!m || text.toUpperCase().endsWith("T") || !m.slice(1).some((p) => p)) {
+		return null;
+	}
+	const [w, d, h, min, sec] = m.slice(1).map((p) => Number(p ?? 0));
+	return w * 604_800 + d * 86_400 + h * 3600 + min * 60 + sec;
+}
+
+/**
+ * Parse how long to keep running after the last datum: a number of seconds,
+ * like `90`; numbers with units, like `15m`, `24h`, `7d`, or `1h30m` (`s`,
+ * `m`, `h`, `d`, and `w`); or an ISO 8601 duration, like `PT24H`.
+ *
+ * @param text the duration
  * @returns the seconds, or 0 if the text is blank
- * @throws Error if the text is not a number of seconds
+ * @throws Error if the text is not a duration
  */
 export function parseRunAfter(text: string): number {
-	if (!text.trim()) {
+	const t = text.trim();
+	if (!t) {
 		return 0;
 	}
-	const seconds = Number(text);
-	if (!Number.isFinite(seconds) || seconds < 0) {
-		throw new Error("Enter a number of seconds, like 300 for 5 minutes.");
+	let seconds: number | null = null;
+	if (/^\d+(\.\d+)?$/.test(t)) {
+		seconds = Number(t);
+	} else if (/^(\d+(\.\d+)?\s*[smhdw]\s*)+$/i.test(t)) {
+		seconds = 0;
+		for (const m of t.matchAll(/(\d+(?:\.\d+)?)\s*([smhdw])/gi)) {
+			seconds += Number(m[1]) * DURATION_UNITS[m[2].toLowerCase()];
+		}
+	} else if (/^P/i.test(t)) {
+		seconds = parseIsoDuration(t);
+	}
+	if (seconds === null || !Number.isFinite(seconds)) {
+		throw new Error(
+			"Enter a number of seconds, like 90, or a duration, like 15m, 24h, 7d, or PT24H.",
+		);
 	}
 	return seconds;
 }
 
 /**
- * Parse the Start Date.
+ * Parse the Maximum Datum.
  *
- * @param text the date, as a `datetime-local` value in the browser's time
- *     zone
- * @returns the date as an ISO 8601 instant, or `null` if the text is blank
- * @throws Error if the text is not a date
+ * @param text the number
+ * @returns the number, or `null` if the text is blank
+ * @throws Error if the text is not a whole number of at least 1
  */
-export function parseStartDate(text: string): string | null {
+export function parseMaxDatum(text: string): number | null {
+	const t = text.trim().replaceAll(/[,_ ]/g, "");
+	if (!t) {
+		return null;
+	}
+	const n = Number(t);
+	if (!Number.isInteger(n) || n < 1) {
+		throw new Error("Enter a whole number of datum, like 10000.");
+	}
+	return n;
+}
+
+/** The time zone of the simulator, the Time Zone's default. */
+let serverTimeZone = "UTC";
+
+/**
+ * Set the time zone of the simulator, which is the Time Zone's default.
+ *
+ * @param zone the time zone
+ */
+export function setServerTimeZone(zone: string): void {
+	serverTimeZone = canonicalTimeZone(zone) ?? "UTC";
+}
+
+/**
+ * Get the time zone of the simulator, which is the Time Zone's default.
+ *
+ * @returns the time zone
+ */
+export function getServerTimeZone(): string {
+	return serverTimeZone;
+}
+
+/**
+ * Parse the Time Zone.
+ *
+ * @param text the time zone name
+ * @returns the canonical time zone name, or `null` if the text is blank
+ * @throws Error if the time zone is not known
+ */
+export function parseTimeZone(text: string): string | null {
 	if (!text.trim()) {
 		return null;
 	}
-	const date = new Date(text.trim());
-	if (Number.isNaN(date.getTime())) {
+	const zone = canonicalTimeZone(text);
+	if (!zone) {
+		throw new Error(
+			"Enter a time zone name, like Pacific/Auckland, America/New_York, or UTC.",
+		);
+	}
+	return zone;
+}
+
+/**
+ * Parse the Start Date.
+ *
+ * @param text the date, as a `datetime-local` value
+ * @param zone the time zone of the date
+ * @returns the date as an ISO 8601 instant, or `null` if the text is blank
+ * @throws Error if the text is not a date
+ */
+export function parseStartDate(text: string, zone: string): string | null {
+	let ms: number | null;
+	try {
+		ms = parseLocalDate(text, zone, false);
+	} catch {
+		ms = NaN;
+	}
+	if (ms === null) {
+		return null;
+	}
+	if (Number.isNaN(ms)) {
 		throw new Error("Enter a date and time, like 2026-01-01 00:00:00.");
 	}
-	return date.toISOString();
+	return new Date(ms).toISOString();
 }
 
 /**
@@ -874,6 +994,18 @@ export class RunInputs extends EventTarget {
 	/** `true` if every input is empty. */
 	get isEmpty(): boolean {
 		return JSON.stringify(this.#state) === JSON.stringify(emptyState());
+	}
+
+	/**
+	 * The time zone the results show dates in: the Time Zone, or else the
+	 * simulator's.
+	 */
+	get timeZone(): string {
+		try {
+			return parseTimeZone(this.#state.timeZone) ?? serverTimeZone;
+		} catch {
+			return serverTimeZone;
+		}
 	}
 
 	/** The paths of the external commands filters may run. */
@@ -1545,8 +1677,11 @@ export class RunInputs extends EventTarget {
 				"runAfter",
 			);
 		}
+		const timeZone = parse("environment", "timeZone", () =>
+			parseTimeZone(s.timeZone),
+		);
 		const startDate = parse("environment", "startDate", () =>
-			parseStartDate(s.startDate),
+			parseStartDate(s.startDate, timeZone ?? serverTimeZone),
 		);
 		const placeholders = parse("environment", "placeholders", () =>
 			parsePlaceholders(s.placeholders),
@@ -1657,6 +1792,9 @@ export class RunInputs extends EventTarget {
 			"instructionJobSeconds",
 			() => parseInstructionJobSeconds(s.instructionJobSeconds),
 		);
+		const maxDatum = parse("environment", "maxDatum", () =>
+			parseMaxDatum(s.maxDatum),
+		);
 		const allowedCommands = this.allowedCommands;
 		return {
 			datum,
@@ -1664,6 +1802,7 @@ export class RunInputs extends EventTarget {
 			options: {
 				startDate,
 				runAfter: runAfter > 0 ? `PT${runAfter}S` : null,
+				maxDatum,
 				allowedCommands: allowedCommands.length
 					? allowedCommands
 					: null,

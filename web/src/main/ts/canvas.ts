@@ -96,7 +96,10 @@ function lowerFirst(text: string): string {
 	return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
-/** The most datum routes shown at first, so a large run stays readable. */
+/**
+ * The most datum routes shown at first in debug mode, so a large run stays
+ * readable.
+ */
 const MAX_START_ROUTES = 20;
 
 /** The browser storage key of whether every datum route is shown. */
@@ -353,6 +356,11 @@ export class Canvas extends EventTarget {
 	readonly #legend: RoutesLegend | null;
 	/** The datum whose routes the legend shows, or `null` for all. */
 	#visibleSeqs: Set<number> | null = null;
+	/**
+	 * The datum whose routes show, as a large run's results selected them, or
+	 * `null` to show every route.
+	 */
+	#selection: Set<number> | null = null;
 	/** The datum whose route the pointer is over. */
 	#routeHover: number | null = null;
 	#drop: Drop | null = null;
@@ -547,14 +555,19 @@ export class Canvas extends EventTarget {
 	setRun(run: CanvasRun | null): void {
 		this.#run = run;
 		this.#path = null;
+		this.#selection = null;
 		const datum = run?.datum ?? [];
-		this.#visibleSeqs =
-			datum.length > MAX_START_ROUTES
-				? new Set(datum.slice(0, MAX_START_ROUTES).map((t) => t.seq))
-				: null;
+		this.#visibleSeqs = this.#startRoutes();
 		this.#routeHover = null;
 		this.#sourceColors.clear();
-		for (const trace of run?.datum ?? []) {
+		this.#addSourceColors(datum);
+		this.#el.classList.remove("is-stale");
+		this.render();
+	}
+
+	/** Give each new source ID of some datum a route color. */
+	#addSourceColors(traces: readonly DatumTrace[]): void {
+		for (const trace of traces) {
 			const sourceId = trace.input.sourceId ?? "";
 			if (!this.#sourceColors.has(sourceId)) {
 				this.#sourceColors.set(
@@ -563,8 +576,77 @@ export class Canvas extends EventTarget {
 				);
 			}
 		}
-		this.#el.classList.remove("is-stale");
-		this.render();
+	}
+
+	/**
+	 * Add datum traces to the run's, for their routes, such as the traces of
+	 * a result without every trace as they load.
+	 *
+	 * @param traces the traces
+	 */
+	addTraces(traces: readonly DatumTrace[]): void {
+		const run = this.#run;
+		if (!run || !traces.length) {
+			return;
+		}
+		const bySeq = new Map(run.datum.map((t) => [t.seq, t]));
+		for (const trace of traces) {
+			bySeq.set(trace.seq, trace);
+		}
+		run.datum = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+		this.#addSourceColors(traces);
+		this.#drawRoutes();
+	}
+
+	/** The routes the legend shows at first, so a large run stays readable. */
+	#startRoutes(): Set<number> | null {
+		const datum = this.#run?.datum ?? [];
+		return datum.length > MAX_START_ROUTES
+			? new Set(datum.slice(0, MAX_START_ROUTES).map((t) => t.seq))
+			: null;
+	}
+
+	/**
+	 * Show only the routes of some datum, such as the datum selected in a
+	 * large run's results, or every route.
+	 *
+	 * @param seqs the datum sequence numbers, or `null` for every datum
+	 */
+	setRouteSelection(seqs: readonly number[] | null): void {
+		const before = this.#selection;
+		if (seqs === null) {
+			if (before !== null) {
+				this.#selection = null;
+				this.#visibleSeqs = this.#startRoutes();
+				this.#drawRoutes();
+			}
+			return;
+		}
+		const selection = new Set(seqs);
+		if (before === null) {
+			this.#visibleSeqs = null;
+		} else if (this.#visibleSeqs) {
+			// the legend shows the datum newly selected
+			for (const seq of selection) {
+				if (!before.has(seq)) {
+					this.#visibleSeqs.add(seq);
+				}
+			}
+		}
+		this.#selection = selection;
+		this.#drawRoutes();
+	}
+
+	/** Draw the datum routes again, such as after their text changed. */
+	refreshRoutes(): void {
+		this.#drawRoutes();
+	}
+
+	/** The datum the legend lists: the selected datum, or every datum. */
+	#legendSeqs(): number[] {
+		const selection = this.#selection;
+		const seqs = (this.#run?.datum ?? []).map((t) => t.seq);
+		return selection ? seqs.filter((s) => selection.has(s)) : seqs;
 	}
 
 	/**
@@ -690,6 +772,11 @@ export class Canvas extends EventTarget {
 					? [{ trace: traces[index], upTo: path.upTo }]
 					: []),
 			];
+		} else if (this.#selection) {
+			const selection = this.#selection;
+			shown = traces
+				.filter((t) => selection.has(t.seq) || t.seq === path?.seq)
+				.map((trace) => ({ trace }));
 		} else if (this.#showRoutes) {
 			shown = traces.map((trace) => ({ trace }));
 		} else {
@@ -736,14 +823,22 @@ export class Canvas extends EventTarget {
 				title: this.#routeText(trace, route).title,
 				dim:
 					this.#showRoutes &&
+					!this.#selection &&
 					path?.seq !== undefined &&
 					trace.seq !== path.seq,
 			};
 		});
 		drawRoutes(this.#routeLayers, lines, this.#routeGeometry);
+		const selection = this.#selection;
 		this.#legend?.show(
 			this.#showRoutes
-				? traces.map((trace) => {
+				? (selection
+						? traces.filter(
+								(t) =>
+									selection.has(t.seq) || t.seq === path?.seq,
+							)
+						: traces
+					).map((trace) => {
 						const route = whole.get(trace.seq)!;
 						const text = this.#routeText(trace, route);
 						return {
@@ -850,7 +945,7 @@ export class Canvas extends EventTarget {
 	 * remove them if they are all shown.
 	 */
 	#toggleRoutes({ seqs, additive }: LegendToggle): void {
-		const all = (this.#run?.datum ?? []).map((t) => t.seq);
+		const all = this.#legendSeqs();
 		let visible: Set<number> | null = this.#visibleSeqs ?? new Set(all);
 		if (additive) {
 			const allShown = seqs.every((s) => visible!.has(s));
@@ -940,7 +1035,7 @@ export class Canvas extends EventTarget {
 		});
 		this.#legend?.addEventListener("showrange", (e) => {
 			const ranges = (e as CustomEvent<SeqRange[]>).detail;
-			const all = (this.#run?.datum ?? []).map((t) => t.seq);
+			const all = this.#legendSeqs();
 			const seqs = all.filter((seq) =>
 				ranges.some((r) => seq >= r.from && seq <= r.to),
 			);

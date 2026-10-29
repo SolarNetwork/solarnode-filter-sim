@@ -66,9 +66,11 @@ The main TypeScript modules are:
 | `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
 | `settingsForm.ts` | The settings form fields of a filter or datum source, rendered from `/api/settings-form`, which edit a settings map: help, notes, resets, dynamic lists, and Choose menus. |
-| `inputs.ts`    | The run inputs (datum, datum sources, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
+| `inputs.ts`    | The run inputs (datum, datum sources, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a simulation request. |
 | `inputPanel.ts` | The input tabs, including the datum source cards with their poll counts, and the Entry Point select. |
-| `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
+| `results.ts`   | The Execution Flow panel, which shows a simulation result (with a run's progress and Cancel, downloads, and, over 200 datum, the datum list with each datum's trace loaded when it is reached), the time zone note with its UTC toggle, the datum selected to show their routes over 20 datum, and the run statistics the canvas shows on its nodes. |
+| `datumList.ts` | The datum list of a result over 200 datum: its filters (source IDs, time range, outcomes, datum number) and virtualized rows, with a current row the keys move and the selected rows. |
+| `dates.ts`     | Dates in a time zone: local date-times of instants, and the instants of entered dates, across daylight saving changes. |
 | `debug.ts`     | Debug mode: the cursor positions, the node state rebuilt at each filter step, and the state tabs. |
 | `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, instruction lists, and the names of a run's datum sources. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
@@ -89,7 +91,7 @@ records in the `s10k.node.sim.filter.domain` package.
 
 | Endpoint | Description |
 |:---------|:------------|
-| `GET /api/info` | The application name and version, and `customFilters` if the app was started with a custom filters path. |
+| `GET /api/info` | The application name and version, `customFilters` if the app was started with a custom filters path, and the server's `timeZone`. |
 | `GET /api/filter-types` | The supported filter types, sorted by name. A custom filter type has its `bundle` (`name` and `version`). |
 | `POST /api/filter-types/reload` | Load the custom filters again: a `CustomFiltersReload` out, with the filter types, the unavailable ones, and the `messages` of the startup message. A `400` response if there is no custom filters path. |
 | `GET /api/filter-types/unavailable` | The filter types the simulator knows of but cannot run, such as custom filter types that need a service it does not provide, sorted by name, each with its `reason`. |
