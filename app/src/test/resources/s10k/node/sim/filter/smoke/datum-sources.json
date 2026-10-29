@@ -1,0 +1,134 @@
+{
+ "config": {
+  "mainChainId": "main",
+  "filters": [
+   {
+    "id": "main",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Main"
+    },
+    "filterIds": [
+     "ctl",
+     "exp"
+    ]
+   },
+   {
+    "id": "ctl",
+    "factoryUid": "net.solarnetwork.node.datum.filter.control.update",
+    "settings": {
+     "uid": "Battery Rate",
+     "sourceId": "^/meter/1$",
+     "controlConfigsCount": "1",
+     "controlConfigs[0].controlId": "/bat/rate",
+     "controlConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "controlConfigs[0].expression": "watts"
+    }
+   },
+   {
+    "id": "exp",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+    "settings": {
+     "uid": "Rates",
+     "sourceId": "^/meter/",
+     "expressionConfigsCount": "2",
+     "expressionConfigs[0].name": "rate",
+     "expressionConfigs[0].datumPropertyTypeKey": "s",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "tariffSchedule('TOU').resolveTariff(now(), null).rates['E'].amount",
+     "expressionConfigs[1].name": "maker",
+     "expressionConfigs[1].datumPropertyTypeKey": "s",
+     "expressionConfigs[1].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[1].expression": "meta('/meter/mock')?.metadataAtPath('/pm/deviceInfo/manufacturer')"
+    }
+   }
+  ]
+ },
+ "datum": [
+  {
+   "created": "2025-10-01 00:00:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 400
+   }
+  },
+  {
+   "created": "2025-10-01 00:01:30Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": -1500
+   }
+  }
+ ],
+ "datumSources": [
+  {
+   "id": "fixed",
+   "factoryUid": "net.solarnetwork.node.datum.fixed",
+   "settings": {
+    "schedule": "0 * * * * ?",
+    "jobService.datumDataSource.uid": "Fixed",
+    "jobService.datumDataSource.sourceId": "/fixed/1",
+    "jobService.datumDataSource.propertyConfigsCount": "2",
+    "jobService.datumDataSource.propertyConfigs[0].propertyKey": "watts",
+    "jobService.datumDataSource.propertyConfigs[0].propertyTypeKey": "i",
+    "jobService.datumDataSource.propertyConfigs[0].config": "100.5",
+    "jobService.datumDataSource.propertyConfigs[1].propertyKey": "status",
+    "jobService.datumDataSource.propertyConfigs[1].propertyTypeKey": "s",
+    "jobService.datumDataSource.propertyConfigs[1].config": "ok"
+   }
+  },
+  {
+   "id": "battery",
+   "factoryUid": "net.solarnetwork.node.datum.battery.mock",
+   "settings": {
+    "schedule": "30000",
+    "jobService.datumDataSource.uid": "Battery",
+    "jobService.datumDataSource.sourceId": "/bat/1",
+    "jobService.datumDataSource.targetPowerRateControlId": "/bat/rate",
+    "jobService.datumDataSource.socControlId": "/bat/soc",
+    "jobService.datumDataSource.energyCapacity": "10000",
+    "jobService.datumDataSource.initialSoc": "50"
+   },
+   "publish": "Change",
+   "persist": true
+  },
+  {
+   "id": "meter",
+   "factoryUid": "net.solarnetwork.node.datum.energymeter.mock",
+   "settings": {
+    "schedule": "60000",
+    "jobService.datumDataSource.uid": "Meter",
+    "jobService.datumDataSource.sourceId": "/meter/mock",
+    "jobService.datumDataSource.randomness": "true",
+    "jobService.datumDataSource.voltdev": "10",
+    "jobService.datumDataSource.currentDeviation": "2"
+   }
+  },
+  {
+   "id": "tou",
+   "factoryUid": "net.solarnetwork.node.datum.tou",
+   "settings": {
+    "schedule": "60000",
+    "jobService.datumDataSource.uid": "TOU",
+    "jobService.datumDataSource.sourceId": "/tou/1",
+    "jobService.datumDataSource.metadataPath": "/pm/tariffs/schedule",
+    "jobService.datumDataSource.propertyConfigsCount": "1",
+    "jobService.datumDataSource.propertyConfigs[0].rateName": "E",
+    "jobService.datumDataSource.propertyConfigs[0].propertyKey": "price",
+    "jobService.datumDataSource.propertyConfigs[0].propertyTypeKey": "i"
+   }
+  }
+ ],
+ "environment": {
+  "nodeMetadata": {
+   "pm": {
+    "tariffs": {
+     "schedule": "Month,Day,Weekday,Time,E\n,,,,0.25"
+    }
+   }
+  }
+ },
+ "options": {
+  "runAfter": "PT2M"
+ }
+}

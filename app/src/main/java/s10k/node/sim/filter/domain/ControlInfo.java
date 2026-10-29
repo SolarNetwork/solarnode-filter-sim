@@ -44,13 +44,16 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param mode
  *        for an {@link ControlKind#OperationalModeSwitch}, its operational
  *        mode, or {@code null} if it has none
+ * @param component
+ *        for a datum source's control, the {@code id} of the datum source
+ *        configuration; else {@code null}
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ControlInfo(String controlId, String type, @Nullable String value,
 		@Nullable String initialValue, @Nullable Instant modified, int updates,
-		@Nullable ControlKind kind, @Nullable String mode) {
+		@Nullable ControlKind kind, @Nullable String mode, @Nullable String component) {
 
 	/**
 	 * Constructor, for a Mock control.
@@ -70,7 +73,33 @@ public record ControlInfo(String controlId, String type, @Nullable String value,
 	 */
 	public ControlInfo(String controlId, String type, @Nullable String value,
 			@Nullable String initialValue, @Nullable Instant modified, int updates) {
-		this(controlId, type, value, initialValue, modified, updates, null, null);
+		this(controlId, type, value, initialValue, modified, updates, null, null, null);
+	}
+
+	/**
+	 * Constructor, for a Mock control or an Operational Mode Switch.
+	 *
+	 * @param controlId
+	 *        the control ID
+	 * @param type
+	 *        the control type name
+	 * @param value
+	 *        the current value
+	 * @param initialValue
+	 *        the value when the simulation started
+	 * @param modified
+	 *        the time the value was last set
+	 * @param updates
+	 *        the number of times the value was set
+	 * @param kind
+	 *        the kind of control
+	 * @param mode
+	 *        the switch's operational mode
+	 */
+	public ControlInfo(String controlId, String type, @Nullable String value,
+			@Nullable String initialValue, @Nullable Instant modified, int updates,
+			@Nullable ControlKind kind, @Nullable String mode) {
+		this(controlId, type, value, initialValue, modified, updates, kind, mode, null);
 	}
 
 }

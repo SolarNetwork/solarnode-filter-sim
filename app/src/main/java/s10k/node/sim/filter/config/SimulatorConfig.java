@@ -31,6 +31,7 @@ import s10k.node.sim.filter.custom.CustomFilterLoader;
 import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.form.SettingsFormService;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.sim.SimulationEngine;
@@ -92,10 +93,22 @@ public class SimulatorConfig {
 	}
 
 	/**
+	 * The datum source type registry.
+	 *
+	 * @return the registry
+	 */
+	@Bean
+	public DatumSourceTypeRegistry datumSourceTypeRegistry() {
+		return DatumSourceTypeRegistry.standard();
+	}
+
+	/**
 	 * The simulation engine.
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
 	 * @param expressionService
 	 *        the expression service
 	 * @param allowedCommands
@@ -106,9 +119,9 @@ public class SimulatorConfig {
 	 */
 	@Bean
 	public SimulationEngine simulationEngine(FilterTypeRegistry registry,
-			SpelExpressionService expressionService,
+			DatumSourceTypeRegistry datumSourceTypes, SpelExpressionService expressionService,
 			@Value("${sim.commands.allowed:}") List<String> allowedCommands) {
-		return new SimulationEngine(registry, expressionService, allowedCommands);
+		return new SimulationEngine(registry, datumSourceTypes, expressionService, allowedCommands);
 	}
 
 	/**

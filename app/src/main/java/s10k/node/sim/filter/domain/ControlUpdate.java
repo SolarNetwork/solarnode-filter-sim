@@ -26,6 +26,12 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * A successful set of a simulated control's value, which might not change the
  * value, or a change of an Operational Mode Switch's value without a set.
  *
+ * <p>
+ * A datum source's control has only the values the datum source can give
+ * without side effects: a Mock Battery's target power rate before and after,
+ * and the state of charge it was set to, without the one before.
+ * </p>
+ *
  * @param controlId
  *        the control ID
  * @param type
@@ -40,12 +46,19 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        for an Operational Mode Switch whose value changed without a set,
  *        because its operational mode was enabled, disabled, or expired some
  *        other way, the mode; else {@code null}
+ * @param component
+ *        for a datum source's control, the {@code id} of the datum source
+ *        configuration; else {@code null}
+ * @param requested
+ *        the value the instruction asked for, when the control set another
+ *        value, such as a power rate over the limit; else {@code null}
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ControlUpdate(String controlId, String type, @Nullable String previousValue, String value,
-		boolean published, @Nullable String mode) {
+		boolean published, @Nullable String mode, @Nullable String component,
+		@Nullable String requested) {
 
 	/**
 	 * Constructor, for a set.
@@ -63,7 +76,28 @@ public record ControlUpdate(String controlId, String type, @Nullable String prev
 	 */
 	public ControlUpdate(String controlId, String type, @Nullable String previousValue, String value,
 			boolean published) {
-		this(controlId, type, previousValue, value, published, null);
+		this(controlId, type, previousValue, value, published, null, null, null);
+	}
+
+	/**
+	 * Constructor, for an Operational Mode Switch.
+	 *
+	 * @param controlId
+	 *        the control ID
+	 * @param type
+	 *        the control type name
+	 * @param previousValue
+	 *        the value before
+	 * @param value
+	 *        the value after
+	 * @param published
+	 *        {@code true} if the control published a datum of the value
+	 * @param mode
+	 *        the mode, for a change without a set
+	 */
+	public ControlUpdate(String controlId, String type, @Nullable String previousValue, String value,
+			boolean published, @Nullable String mode) {
+		this(controlId, type, previousValue, value, published, mode, null, null);
 	}
 
 }

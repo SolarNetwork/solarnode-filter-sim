@@ -22,6 +22,7 @@ package s10k.node.sim.filter.sim;
 import java.util.List;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import net.solarnetwork.service.ExpressionService;
 
@@ -34,11 +35,12 @@ import net.solarnetwork.service.ExpressionService;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class SimulationEngine {
 
 	private final FilterTypeRegistry registry;
+	private final DatumSourceTypeRegistry datumSourceTypes;
 	private final ExpressionService expressionService;
 	private final List<String> allowedCommands;
 
@@ -67,8 +69,27 @@ public class SimulationEngine {
 	 */
 	public SimulationEngine(FilterTypeRegistry registry, ExpressionService expressionService,
 			List<String> allowedCommands) {
+		this(registry, DatumSourceTypeRegistry.standard(), expressionService, allowedCommands);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
+	 * @param expressionService
+	 *        the expression service filters use
+	 * @param allowedCommands
+	 *        the paths of the external commands filters may run in every
+	 *        simulation, in addition to those a request allows
+	 */
+	public SimulationEngine(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes,
+			ExpressionService expressionService, List<String> allowedCommands) {
 		super();
 		this.registry = registry;
+		this.datumSourceTypes = datumSourceTypes;
 		this.expressionService = expressionService;
 		this.allowedCommands = List.copyOf(allowedCommands);
 	}
@@ -87,7 +108,8 @@ public class SimulationEngine {
 			throw new SimulationException("The filter configuration is required.");
 		}
 		// a snapshot, so reloading custom filters during the run does not change its filter types
-		return new SimulationRun(registry.snapshot(), expressionService, allowedCommands, request).run();
+		return new SimulationRun(registry.snapshot(), datumSourceTypes, expressionService,
+				allowedCommands, request).run();
 	}
 
 }

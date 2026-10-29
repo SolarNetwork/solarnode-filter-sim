@@ -23,8 +23,10 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -39,11 +41,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
+import org.springframework.scheduling.Trigger;
+import org.springframework.scheduling.support.CronExpression;
+import org.springframework.scheduling.support.SimpleTriggerContext;
 import net.solarnetwork.domain.datum.DatumSamplesType;
 import net.solarnetwork.domain.NodeControlPropertyType;
 import net.solarnetwork.domain.SimpleLocation;
@@ -52,14 +58,17 @@ import net.solarnetwork.domain.datum.DatumSamplesOperations;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.control.conductor.ControlConductor;
 import net.solarnetwork.node.control.conductor.ControlTaskConfig;
+import net.solarnetwork.node.datum.battery.mock.MockBatteryDatumDataSource;
 import net.solarnetwork.node.domain.LocalState;
 import net.solarnetwork.node.domain.datum.NodeDatum;
+import net.solarnetwork.node.job.JobUtils;
 import net.solarnetwork.node.metrics.domain.Metric;
 import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.runtime.DatumHistory;
 import net.solarnetwork.node.runtime.DefaultLocalStateService;
 import net.solarnetwork.node.runtime.DefaultOperationalModesService;
 import net.solarnetwork.node.service.DatumHistorian;
+import net.solarnetwork.node.service.NodeControlProvider;
 import net.solarnetwork.node.service.DatumQueueProcessObserver.Stage;
 import net.solarnetwork.node.service.support.DatumFilterChainService;
 import net.solarnetwork.node.service.support.ExpressionConfig;
@@ -69,8 +78,10 @@ import net.solarnetwork.service.ExpressionService;
 import net.solarnetwork.service.StaticOptionalService;
 import s10k.node.sim.filter.domain.ControlConductorConfig;
 import s10k.node.sim.filter.domain.ControlKind;
+import s10k.node.sim.filter.domain.ControlPublishMode;
 import s10k.node.sim.filter.domain.DatumInfo;
 import s10k.node.sim.filter.domain.DatumOrigin;
+import s10k.node.sim.filter.domain.DatumSourceConfig;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.InstructionInfo;
 import s10k.node.sim.filter.domain.LocalStateInfo;
@@ -87,6 +98,8 @@ import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.domain.SimulationState;
 import s10k.node.sim.filter.domain.SimulationStats;
 import s10k.node.sim.filter.domain.UserMetadataConfig;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
@@ -140,15 +153,19 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		private final @Nullable String filterId;
 		/** What logged the message when it was not a filter. */
 		private final @Nullable String source;
+		/** The datum source that logged the message. */
+		private final @Nullable String datumSourceId;
 		private final @Nullable Integer datumSeq;
 		private final boolean error;
 		private final String message;
 		private int count = 1;
 
-		private LogRecord(@Nullable String filterId, @Nullable String source, @Nullable Integer datumSeq,
-				boolean error, String message) {
+		private LogRecord(@Nullable String filterId, @Nullable String source,
+				@Nullable String datumSourceId, @Nullable Integer datumSeq, boolean error,
+				String message) {
 			this.filterId = filterId;
 			this.source = source;
+			this.datumSourceId = datumSourceId;
 			this.datumSeq = datumSeq;
 			this.error = error;
 			this.message = message;
@@ -162,6 +179,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	}
 
 	private final FilterTypeRegistry registry;
+	private final DatumSourceTypeRegistry datumSourceTypes;
 	private final ExpressionService expressionService;
 	private final SimulationRequest request;
 	private final SimulationOptions options;
@@ -182,6 +200,10 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private @Nullable String creating;
 	/** The scheduled task running, and the datum it generated. */
 	private SimTaskScheduler.@Nullable Task firing;
+	/** The datum source being created or polled. */
+	private SimDatumSources.@Nullable Source polling;
+	private final Map<String, DatumSourceConfig> datumSourceConfigs = new HashMap<>(4);
+	private int polledCount;
 	private final List<QueuedDatum> taskGenerated = new ArrayList<>(2);
 	private int taskRuns;
 	/** The Instruction Execution Job schedule, and the instructions it ran. */
@@ -198,6 +220,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
 	 * @param expressionService
 	 *        the expression service
 	 * @param allowedCommands
@@ -208,10 +232,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 * @throws SimulationException
 	 *         if the request input datum or metadata are not valid
 	 */
-	SimulationRun(FilterTypeRegistry registry, ExpressionService expressionService,
-			List<String> allowedCommands, SimulationRequest request) {
+	SimulationRun(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes,
+			ExpressionService expressionService, List<String> allowedCommands,
+			SimulationRequest request) {
 		super();
 		this.registry = registry;
+		this.datumSourceTypes = datumSourceTypes;
 		this.request = request;
 		this.options = (request.options() != null ? request.options() : SimulationOptions.DEFAULTS);
 		this.input = parseInput();
@@ -225,11 +251,13 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		this.jobSeconds = options.instructionJobSecondsValue();
 		this.context = new SimulationContext(firstDate != null ? firstDate : defaultStartDate(),
 				expressionService, this, nodeMetadata(), commands);
+		// placeholders first, as datum source control IDs can have them
+		loadPlaceholders();
 		loadControls();
+		loadDatumSources();
 		loadConductors();
 		registerUserMetadataServices();
 		loadNodeLocation();
-		loadPlaceholders();
 		loadDatumMetadata();
 		this.tracer = new FilterTracer(context.opModesService());
 		context.setTaskOwner(() -> {
@@ -255,6 +283,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		context.controlService()
 				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
 		context.modeSwitches().setListener(tracer::controlUpdated);
+		context.datumSources().setListener(tracer::controlUpdated);
 		context.eventAdmin()
 				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
 	}
@@ -289,6 +318,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final int maxDatum = options.maxDatumValue();
 		final Instant runUntil = runUntil();
 		final SimTaskScheduler scheduler = context.taskScheduler();
+		startDatumSources(firstDate, runUntil, maxDatum);
 		while ( true ) {
 			// run scheduled tasks and the Instruction Execution Job due before the next datum,
 			// or by the end time; a task first when both are due at the same time
@@ -340,7 +370,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 
 		addPendingTaskMessages(scheduler, filters);
 		addPendingInstructionMessages();
+		addDatumSourceMessages(firstDate);
 		shutdown(filters);
+		shutdownDatumSources();
 		context.stopOperationalModes();
 		addDepthLimitMessages();
 		addLogMessages(filters);
@@ -350,7 +382,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		return new SimulationResult(records.stream().map(DatumRecord::toTrace).toList(),
 				runs.stream().map(RunRecord::toRun).toList(), List.copyOf(messages), finalState,
 				new SimulationStats(records.size(), generatedCount, outputCount, discardedCount,
-						durationMs));
+						durationMs, polledCount));
 	}
 
 	/**
@@ -539,10 +571,11 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final StepRecord step = tracer.currentStep();
 		final SimTaskScheduler.Task task = firing;
 		final RunRecord run = tracer.currentRun();
-		final String source = (step == null && task == null && run != null ? runLabel(run.instruction)
-				: null);
+		final SimDatumSources.Source datumSource = (step == null ? polling : null);
+		final String source = (datumSource != null ? datumSource.label()
+				: step == null && task == null && run != null ? runLabel(run.instruction) : null);
 		final String filterId = (step != null ? step.filterId
-				: task != null ? task.owner() : source != null ? null : creating);
+				: source != null ? null : task != null ? task.owner() : creating);
 		final QueuedDatum datum = this.current;
 		final String text = LogMessages.shorten(message);
 		// repeats of a problem are counted together, with the first one's text
@@ -551,8 +584,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		if ( existing != null ) {
 			existing.count++;
 		} else {
-			logs.put(key,
-					new LogRecord(filterId, source, datum != null ? datum.seq() : null, error, text));
+			logs.put(key, new LogRecord(filterId, source, datumSource != null ? datumSource.id() : null,
+					datum != null ? datum.seq() : null, error, text));
 		}
 	}
 
@@ -563,10 +596,10 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			final String text = "%s logged: %s%s".formatted(
 					filter != null ? label(filter) : log.source != null ? log.source : "A filter",
 					log.message, log.count > 1 ? " (%d times)".formatted(log.count) : "");
-			messages.add(log.error
+			messages.add((log.error
 					? SimulationMessage.error(SimulationMessage.CODE_FILTER_LOG, text, log.filterId)
 					: SimulationMessage.warning(SimulationMessage.CODE_FILTER_LOG, text, log.filterId,
-							log.datumSeq));
+							log.datumSeq)).withDatumSourceId(log.datumSourceId));
 		}
 	}
 
@@ -958,6 +991,319 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 						.formatted(controlId, SimulationMessage.quoted(type)),
 				null, null);
 		return null;
+	}
+
+	/* === Datum sources === */
+
+	/**
+	 * Create the datum sources, with the clock at the start of the simulation,
+	 * as a datum source might read the time when it is created.
+	 */
+	private void loadDatumSources() {
+		final List<DatumSourceConfig> configs = request.datumSources();
+		if ( configs == null ) {
+			return;
+		}
+		for ( int i = 0; i < configs.size(); i++ ) {
+			final DatumSourceConfig config = configs.get(i);
+			if ( config == null ) {
+				continue;
+			}
+			final String id = (config.id() != null && !config.id().isBlank() ? config.id()
+					: "datumSource" + (i + 1));
+			final Map<String, String> settings = new LinkedHashMap<>(config.settingsOrEmpty().size());
+			for ( Map.Entry<String, String> e : config.settingsOrEmpty().entrySet() ) {
+				if ( e.getKey() != null && e.getValue() != null ) {
+					settings.put(e.getKey(), e.getValue());
+				}
+			}
+			final DatumSourceTypeDefinition type = datumSourceTypes.definition(config.factoryUid());
+			final String label = datumSourceLabel(i, type, settings);
+			if ( datumSourceConfigs.putIfAbsent(id, config) != null ) {
+				warnDatumSource("%s has the id %s, which another datum source has, so it is left out."
+						.formatted(label, SimulationMessage.quoted(id)), null);
+				continue;
+			}
+			if ( type == null ) {
+				warnDatumSource(
+						"%s has the type %s, which the simulator does not support, so it is not polled."
+								.formatted(label, config.factoryUid()),
+						id);
+				continue;
+			}
+			final SimDatumSources.Source source = context.createDatumSource(type, id, label,
+					new SplittableRandom(31L * type.factoryUid().hashCode() + i));
+			polling = source;
+			try {
+				for ( SettingsApplier.Problem p : SettingsApplier.apply(source.job(), settings) ) {
+					if ( p.unknown() ) {
+						messages.add(SimulationMessage
+								.warning(SimulationMessage.CODE_UNKNOWN_SETTING,
+										"%s has no setting %s.".formatted(label, p.key()), null, null)
+								.withDatumSourceId(id));
+					} else {
+						messages.add(SimulationMessage
+								.warning(SimulationMessage.CODE_INVALID_SETTING,
+										"%s setting %s could not be applied: %s".formatted(label,
+												p.key(), p.message()),
+										null, null)
+								.withDatumSourceId(id));
+					}
+				}
+				source.job().serviceDidStartup();
+			} finally {
+				polling = null;
+			}
+			final String limitation = type.limitations(settings);
+			if ( limitation != null ) {
+				messages.add(SimulationMessage
+						.warning(SimulationMessage.CODE_FILTER_LIMITATION, limitation, null, null)
+						.withDatumSourceId(id));
+			}
+			context.addDatumSource(source);
+			// before the conductors are loaded, as their checks look for controls
+			addDatumSourceControls(source);
+		}
+	}
+
+	/**
+	 * Get the label of a datum source in messages: its Service Name, or its
+	 * position and type.
+	 */
+	private static String datumSourceLabel(int index, @Nullable DatumSourceTypeDefinition type,
+			Map<String, String> settings) {
+		final String uid = settings.get(DatumSourceTypeDefinition.SETTING_PREFIX + UID_SETTING);
+		if ( uid != null && !uid.isBlank() ) {
+			return "The datum source " + SimulationMessage.quoted(uid);
+		}
+		return (type != null ? "Datum source %d (%s)".formatted(index + 1, type.displayName())
+				: "Datum source %d".formatted(index + 1));
+	}
+
+	private void warnDatumSource(String message, @Nullable String datumSourceId) {
+		messages.add(SimulationMessage
+				.warning(SimulationMessage.CODE_INVALID_DATUM_SOURCE, message, null, null)
+				.withDatumSourceId(datumSourceId));
+	}
+
+	/**
+	 * Check the datum sources and schedule their polls, once the services they
+	 * use are loaded.
+	 *
+	 * @param start
+	 *        the start of the simulation
+	 * @param runUntil
+	 *        the time the simulation runs until, after the last input datum, or
+	 *        {@code null}
+	 * @param maxDatum
+	 *        the maximum number of datum to process
+	 */
+	private void startDatumSources(Instant start, @Nullable Instant runUntil, int maxDatum) {
+		final SimTaskScheduler scheduler = context.taskScheduler();
+		Instant end = runUntil;
+		if ( end == null && !input.isEmpty() ) {
+			end = timestamp(input.getLast());
+		}
+		for ( SimDatumSources.Source source : context.datumSources().sources() ) {
+			final String label = source.label();
+			final String sourceId = source.type().sourceId().apply(source.datumSource());
+			if ( sourceId == null || sourceId.isBlank() ) {
+				warnDatumSource(
+						"%s has no Source ID, so the Datum Queue discards its datum.".formatted(label),
+						source.id());
+			}
+			polling = source;
+			try {
+				final String problem = source.type().check(source.datumSource(), context);
+				if ( problem != null ) {
+					warnDatumSource(problem, source.id());
+				}
+			} finally {
+				polling = null;
+			}
+
+			final Trigger trigger = trigger(source);
+			source.setTrigger(trigger);
+			if ( trigger == null ) {
+				continue;
+			}
+			if ( end != null ) {
+				final int polls = pollCount(trigger, start, end, maxDatum + 1);
+				if ( polls > maxDatum ) {
+					warnDatumSource(
+							"%s is polled more than %d times by %s, the maximum number of datum allowed, so the simulation stops before then."
+									.formatted(label, maxDatum, end),
+							source.id());
+				}
+			}
+			// a background task, as polls never end
+			scheduler.background(() -> {
+				var _ = scheduler.schedule(() -> poll(source), trigger);
+			});
+		}
+	}
+
+	/**
+	 * Get the poll trigger of a datum source, like the node's job scheduler.
+	 *
+	 * @return the trigger, or {@code null} if the datum source is not polled
+	 */
+	private @Nullable Trigger trigger(SimDatumSources.Source source) {
+		final String schedule = source.job().getSchedule();
+		final String label = source.label();
+		if ( schedule == null || schedule.isBlank() ) {
+			warnDatumSource("%s has no Schedule, so it is never polled.".formatted(label), source.id());
+			return null;
+		}
+		final String expr = schedule.trim();
+		try {
+			final long ms = Long.parseLong(expr);
+			if ( ms < 0 ) {
+				warnDatumSource(
+						"%s has the Schedule %s, which is not a valid period or cron expression, so it is never polled."
+								.formatted(label, SimulationMessage.quoted(expr)),
+						source.id());
+				return null;
+			}
+			if ( ms == 0 ) {
+				warnDatumSource(
+						"%s has the Schedule 0, which a node runs without a pause, so the simulator does not poll it."
+								.formatted(label),
+						source.id());
+				return null;
+			}
+		} catch ( NumberFormatException e ) {
+			if ( !CronExpression.isValidExpression(expr) ) {
+				warnDatumSource(
+						"%s has the Schedule %s, which is not a valid period or cron expression, so it is never polled."
+								.formatted(label, SimulationMessage.quoted(expr)),
+						source.id());
+				return null;
+			}
+		}
+		// cron seconds are not randomized, so runs repeat
+		return JobUtils.triggerForExpression(expr, TimeUnit.MILLISECONDS, false);
+	}
+
+	/**
+	 * Count the polls of a trigger from a start time to an end time, up to a
+	 * limit.
+	 */
+	private static int pollCount(Trigger trigger, Instant start, Instant end, int limit) {
+		final SimpleTriggerContext ctx = new SimpleTriggerContext(
+				Clock.fixed(start, ZoneId.systemDefault()));
+		int count = 0;
+		while ( count < limit ) {
+			final Instant next = trigger.nextExecution(ctx);
+			if ( next == null || next.isAfter(end) ) {
+				break;
+			}
+			count++;
+			ctx.update(next, next, next);
+		}
+		return count;
+	}
+
+	/**
+	 * Get the time of a datum source's first poll.
+	 */
+	private static @Nullable Instant firstPoll(Trigger trigger, Instant start) {
+		return trigger
+				.nextExecution(new SimpleTriggerContext(Clock.fixed(start, ZoneId.systemDefault())));
+	}
+
+	/**
+	 * Add the controls of a datum source that is a control provider, unless
+	 * another control has the same ID.
+	 */
+	private void addDatumSourceControls(SimDatumSources.Source source) {
+		if ( !(source.datumSource() instanceof NodeControlProvider provider) ) {
+			return;
+		}
+		final DatumSourceConfig config = datumSourceConfigs.get(source.id());
+		for ( String controlId : provider.getAvailableControlIds() ) {
+			if ( controlId == null || controlId.isBlank() ) {
+				continue;
+			}
+			if ( context.hasControl(controlId) ) {
+				warnDatumSource(
+						"%s has the control ID %s, which another control also has. That control is asked first, so it handles the control's instructions."
+								.formatted(source.label(), controlId),
+						source.id());
+				continue;
+			}
+			context.datumSources().addControl(source, controlId, readsPrevious(source, controlId),
+					config != null ? config.publishValue() : ControlPublishMode.Change,
+					config != null && config.persistValue());
+		}
+	}
+
+	/**
+	 * Test if a datum source control's value can be read before a set without
+	 * side effects: only a set changes the Mock Battery's target power rate,
+	 * but its state of charge changes over time.
+	 */
+	private boolean readsPrevious(SimDatumSources.Source source, String controlId) {
+		return (source.datumSource() instanceof MockBatteryDatumDataSource b && controlId.equals(context
+				.placeholderService().resolvePlaceholders(b.getTargetPowerRateControlId(), null)));
+	}
+
+	/**
+	 * Poll a datum source, like the node's job scheduler running its job. The
+	 * datum it offers are processed next, before datum due after them.
+	 */
+	private void poll(SimDatumSources.Source source) {
+		final int before = polledCount;
+		polling = source;
+		try {
+			source.job().getJobService().executeJobService();
+		} catch ( Exception e ) {
+			// the poll job logs its own errors
+			warnDatumSource("Error polling %s: %s"
+					.formatted(source.label().replaceFirst("^The ", "the "), e.toString()), source.id());
+		} finally {
+			polling = null;
+		}
+		source.polled(context.simulatedClock().instant(), polledCount - before);
+	}
+
+	private void addDatumSourceMessages(Instant start) {
+		for ( SimDatumSources.Source source : context.datumSources().sources() ) {
+			final Trigger trigger = source.trigger();
+			if ( trigger == null ) {
+				continue;
+			}
+			if ( source.polls() == 0 ) {
+				final Instant first = firstPoll(trigger, start);
+				messages.add(SimulationMessage
+						.info(SimulationMessage.CODE_DATUM_SOURCE_POLLS, first != null
+								? "%s was not polled, as the simulation ended before its first poll, due at %s. Keep running after the last datum to poll it."
+										.formatted(source.label(), first)
+								: "%s was not polled, as its schedule has no time after the simulation started."
+										.formatted(source.label()),
+								null)
+						.withDatumSourceId(source.id()));
+			} else if ( source.emptyPolls() > 0 ) {
+				messages.add(SimulationMessage.info(SimulationMessage.CODE_DATUM_SOURCE_POLLS,
+						(source.emptyPolls() == source.polls()
+								? "%1$s returned no datum from any of its %3$d polls."
+								: "%1$s returned no datum from %2$d of its %3$d polls, the first at %4$s.")
+										.formatted(source.label(), source.emptyPolls(), source.polls(),
+												source.firstEmptyPoll()),
+						null).withDatumSourceId(source.id()));
+			}
+		}
+	}
+
+	private void shutdownDatumSources() {
+		for ( SimDatumSources.Source source : context.datumSources().sources() ) {
+			polling = source;
+			try {
+				source.job().serviceDidShutdown();
+			} finally {
+				polling = null;
+			}
+		}
 	}
 
 	/* === Control Conductors === */
@@ -1381,6 +1727,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			generatedCount++;
 			return true;
 		}
+		final SimDatumSources.Source datumSource = polling;
+		if ( datumSource != null && step == null ) {
+			// a poll: processed after the poll, before later datum
+			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0,
+					DatumOrigin.polled(datumSource.id()).withControlId(controlId));
+			datumBySeq.put(qd.seq(), qd);
+			taskGenerated.add(qd);
+			polledCount++;
+			return true;
+		}
 		final SimTaskScheduler.Task task = firing;
 		if ( task != null && step == null ) {
 			// a scheduled task: processed after the task, before later datum
@@ -1448,7 +1804,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		for ( Metric m : savedMetrics ) {
 			metrics.add(metricInfo(m));
 		}
-		return new SimulationState(modes, localState, metrics, context.controlInfos(),
+		// the final state reads the datum source controls' values
+		return new SimulationState(modes, localState, metrics, context.controlInfos(includeCsv),
 				context.instructionService().waiting(), includeCsv ? localStateCsv() : null,
 				history(context.datumService()), history(context.datumService().unfiltered()), queued);
 	}

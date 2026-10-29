@@ -32,6 +32,7 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
+import org.springframework.scheduling.support.SimpleTriggerContext;
 
 /**
  * A {@link TaskScheduler} that runs tasks on the simulated clock.
@@ -46,7 +47,10 @@ import org.springframework.scheduling.Trigger;
  * </p>
  *
  * <p>
- * Trigger-based scheduling is not supported, as no supported filter uses it.
+ * A task scheduled with a {@link Trigger}, such as a datum source's poll job,
+ * gets its times from the trigger, with a trigger context on the simulated
+ * clock, which is updated after each run with the due time as the scheduled and
+ * actual execution time.
  * </p>
  *
  * <p>
@@ -55,7 +59,7 @@ import org.springframework.scheduling.Trigger;
  * </p>
  *
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 public final class SimTaskScheduler implements TaskScheduler {
 
@@ -65,6 +69,8 @@ public final class SimTaskScheduler implements TaskScheduler {
 		private final long seq;
 		private final Runnable runnable;
 		private final @Nullable Duration period;
+		private final @Nullable Trigger trigger;
+		private final @Nullable SimpleTriggerContext triggerContext;
 		private final @Nullable String owner;
 		private final boolean background;
 		private Instant due;
@@ -72,12 +78,14 @@ public final class SimTaskScheduler implements TaskScheduler {
 		private boolean done;
 
 		private Task(long seq, Runnable runnable, Instant due, @Nullable Duration period,
-				@Nullable String owner, boolean background) {
+				@Nullable Trigger trigger, @Nullable String owner, boolean background) {
 			super();
 			this.seq = seq;
 			this.runnable = runnable;
 			this.due = due;
 			this.period = period;
+			this.trigger = trigger;
+			this.triggerContext = (trigger != null ? new SimpleTriggerContext(clock) : null);
 			this.owner = owner;
 			this.background = background;
 		}
@@ -219,8 +227,19 @@ public final class SimTaskScheduler implements TaskScheduler {
 		} finally {
 			running = null;
 			final Duration period = task.period;
-			if ( period != null && !task.cancelled ) {
-				task.due = task.due.plus(period);
+			final Trigger trigger = task.trigger;
+			final SimpleTriggerContext triggerContext = task.triggerContext;
+			Instant next = null;
+			if ( task.cancelled ) {
+				// done
+			} else if ( period != null ) {
+				next = task.due.plus(period);
+			} else if ( trigger != null && triggerContext != null ) {
+				triggerContext.update(task.due, task.due, clock.instant());
+				next = trigger.nextExecution(triggerContext);
+			}
+			if ( next != null ) {
+				task.due = next;
 				tasks.add(task);
 			} else {
 				task.done = true;
@@ -229,10 +248,11 @@ public final class SimTaskScheduler implements TaskScheduler {
 		return true;
 	}
 
-	private Task add(Runnable runnable, Instant due, @Nullable Duration period) {
+	private Task add(Runnable runnable, Instant due, @Nullable Duration period,
+			@Nullable Trigger trigger) {
 		final Task current = running;
 		final boolean bg = (current != null ? current.background : background > 0);
-		final Task task = new Task(nextSeq++, runnable, due, period,
+		final Task task = new Task(nextSeq++, runnable, due, period, trigger,
 				bg ? null : current != null ? current.owner : owner.get(), bg);
 		tasks.add(task);
 		return task;
@@ -273,32 +293,36 @@ public final class SimTaskScheduler implements TaskScheduler {
 
 	@Override
 	public @Nullable ScheduledFuture<?> schedule(Runnable task, Trigger trigger) {
-		throw new UnsupportedOperationException("Trigger scheduling is not supported.");
+		final Instant first = trigger.nextExecution(new SimpleTriggerContext(clock));
+		if ( first == null ) {
+			return null;
+		}
+		return add(task, due(first), null, trigger);
 	}
 
 	@Override
 	public ScheduledFuture<?> schedule(Runnable task, Instant startTime) {
-		return add(task, due(startTime), null);
+		return add(task, due(startTime), null, null);
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Instant startTime, Duration period) {
-		return add(task, due(startTime), period);
+		return add(task, due(startTime), period, null);
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleAtFixedRate(Runnable task, Duration period) {
-		return add(task, clock.instant(), period);
+		return add(task, clock.instant(), period, null);
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Instant startTime, Duration delay) {
-		return add(task, due(startTime), delay);
+		return add(task, due(startTime), delay, null);
 	}
 
 	@Override
 	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Duration delay) {
-		return add(task, clock.instant(), delay);
+		return add(task, clock.instant(), delay, null);
 	}
 
 }

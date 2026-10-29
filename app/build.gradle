@@ -121,9 +121,18 @@ dependencies {
 	implementation(libs.sn.node, snExcludes)
 	implementation(libs.sn.node.control.conductor, snExcludes)
 	implementation(libs.sn.node.control.opmode, snExcludes)
+	implementation(libs.sn.node.datum.battery.mock, snExcludes)
+	implementation(libs.sn.node.datum.energymeter.mock, snExcludes)
+	implementation(libs.sn.node.datum.fixed, snExcludes)
 	implementation(libs.sn.node.datum.filter.standard, snExcludes)
 	implementation(libs.sn.node.datum.filter.tariff, snExcludes)
 	implementation(libs.sn.node.datum.filter.pvlib, snExcludes)
+	// the TOU bundle's SolarQuery schedule provider, which needs the web library, is not used
+	implementation(libs.sn.node.datum.tou) {
+		snExcludes.delegate = delegate
+		snExcludes()
+		exclude group: 'net.solarnetwork.common', module: 'net.solarnetwork.common.web.jakarta'
+	}
 	implementation(libs.sn.node.metrics, snExcludes)
 	implementation(libs.sn.node.metrics.harvester, snExcludes)
 
@@ -543,10 +552,12 @@ abstract class NativeSmokeTest extends DefaultTask {
 			}
 			d
 		}
-		def summary = [messages: result.messages.collect { it.code },
-			stats: ['processed', 'generated', 'output', 'discarded'].collectEntries {
-				[(it): result.stats[it]] },
-			datum: datum]
+		def stats = ['processed', 'generated', 'output', 'discarded'].collectEntries {
+			[(it): result.stats[it]] }
+		if ( result.stats.polled ) {
+			stats.polled = result.stats.polled
+		}
+		def summary = [messages: result.messages.collect { it.code }, stats: stats, datum: datum]
 		def metrics = (result.finalState?.metrics ?: []).collect { [name: it.name, value: it.value] }
 		if ( metrics ) {
 			summary.metrics = metrics

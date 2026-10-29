@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
+import java.util.random.RandomGenerator;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
 import org.springframework.core.task.SyncTaskExecutor;
@@ -36,17 +37,23 @@ import org.springframework.util.AntPathMatcher;
 import s10k.node.sim.filter.domain.ControlInfo;
 import s10k.node.sim.filter.domain.ControlPublishMode;
 import s10k.node.sim.filter.domain.InstructionHandlerInfo;
-import s10k.node.sim.filter.registry.FilterContext;
+import s10k.node.sim.filter.registry.DatumSourceContext;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.dao.DefaultTransientSettingDao;
 import net.solarnetwork.node.dao.TransientSettingDao;
 import net.solarnetwork.node.control.conductor.ControlConductor;
+import net.solarnetwork.node.job.DatumDataSourcePollManagedJob;
+import net.solarnetwork.node.job.SimpleManagedJob;
+import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.reactor.InstructionExecutionService;
 import net.solarnetwork.node.reactor.ReactorService;
 import net.solarnetwork.node.runtime.DefaultDatumService;
 import net.solarnetwork.node.runtime.DefaultOperationalModesService;
+import net.solarnetwork.node.service.DatumDataSource;
 import net.solarnetwork.node.service.DatumMetadataService;
 import net.solarnetwork.node.service.DatumQueue;
+import net.solarnetwork.node.service.PlaceholderService;
 import net.solarnetwork.node.service.TariffScheduleProvider;
 import net.solarnetwork.node.service.support.SettingsPlaceholderService;
 import net.solarnetwork.node.service.support.BaseDatumFilterSupport;
@@ -72,19 +79,20 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  * <p>
  * The context also has a simple service registry, in place of the OSGi one. It
  * holds the Node Metadata Service, the simulated controls, the Operational Mode
- * Switches, the Control Conductors, the User Metadata Services, and the
- * filters, in that order. {@link SimServiceTracker} finds services in it.
+ * Switches, the datum sources, the Control Conductors, the User Metadata
+ * Services, and the filters, in that order. {@link SimServiceTracker} finds
+ * services in it.
  * </p>
  *
  * <p>
- * The operational modes service and the Operational Mode Switches post events
- * to a {@link SimEventAdmin}.
+ * The operational modes service, the Operational Mode Switches, and the datum
+ * sources post events to a {@link SimEventAdmin}.
  * </p>
  *
  * @author matt
- * @version 1.3
+ * @version 1.4
  */
-public final class SimulationContext implements FilterContext {
+public final class SimulationContext implements DatumSourceContext {
 
 	/**
 	 * The properties {@link #injectServices(DatumFilterService, MessageSource)}
@@ -122,6 +130,7 @@ public final class SimulationContext implements FilterContext {
 	private final DefaultDatumService datumService;
 	private final SimNodeControlService controlService;
 	private final SimModeSwitches modeSwitches;
+	private final SimDatumSources datumSources;
 	private final SimInstructionService instructionService;
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
@@ -193,6 +202,7 @@ public final class SimulationContext implements FilterContext {
 
 		this.controlService = new SimNodeControlService(clock);
 		this.modeSwitches = new SimModeSwitches(clock, opModesService, eventAdmin);
+		this.datumSources = new SimDatumSources(clock, eventAdmin);
 		this.instructionService = new SimInstructionService(clock);
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
@@ -264,24 +274,77 @@ public final class SimulationContext implements FilterContext {
 	}
 
 	/**
-	 * Test if a simulated control or Operational Mode Switch has a control ID.
+	 * Create a datum source with the simulated clock and the services its
+	 * blueprint gives it, wrapped in the node's poll job and managed job, like
+	 * its blueprint does.
+	 *
+	 * <p>
+	 * The datum source still needs its settings, applied to the managed job,
+	 * and to be added with {@link #addDatumSource(SimDatumSources.Source)}.
+	 * </p>
+	 *
+	 * @param type
+	 *        the datum source type
+	 * @param id
+	 *        the {@code id} of the datum source configuration
+	 * @param label
+	 *        the label of the datum source in messages
+	 * @param rng
+	 *        the random number generator to give the datum source
+	 * @return the source
+	 */
+	public SimDatumSources.Source createDatumSource(DatumSourceTypeDefinition type, String id,
+			String label, RandomGenerator rng) {
+		final DatumDataSource source = type.factory().create(this, rng);
+		final DatumDataSourcePollManagedJob poll = new DatumDataSourcePollManagedJob();
+		poll.setDatumDataSource(source);
+		poll.setDatumQueue(datumQueue());
+		poll.setDatumMetadataService(datumMetadataService());
+		final SimpleManagedJob job = new SimpleManagedJob(poll, type.defaultSchedule());
+		return datumSources.add(id, label, type, job, source);
+	}
+
+	/**
+	 * Add a datum source, as the services its blueprint publishes it as.
+	 *
+	 * @param source
+	 *        the source, configured and started
+	 */
+	public void addDatumSource(SimDatumSources.Source source) {
+		registerService(source.datumSource());
+		if ( source.type().isInstructionHandler()
+				&& source.datumSource() instanceof InstructionHandler ) {
+			instructionService.addHandler(InstructionHandlerInfo.Type.DatumSource,
+					datumSources.handler(source), SimDatumSources.handlerName(source));
+		}
+	}
+
+	/**
+	 * Test if a simulated control, Operational Mode Switch, or datum source has
+	 * a control ID.
 	 *
 	 * @param controlId
 	 *        the control ID
 	 * @return {@code true} if one has it
 	 */
 	public boolean hasControl(String controlId) {
-		return controlService.hasControl(controlId) || modeSwitches.hasControl(controlId);
+		return controlService.hasControl(controlId) || modeSwitches.hasControl(controlId)
+				|| datumSources.hasControl(controlId);
 	}
 
 	/**
-	 * Get the state of the simulated controls and Operational Mode Switches.
+	 * Get the state of the simulated controls, Operational Mode Switches, and
+	 * datum source controls.
 	 *
-	 * @return the controls, then the switches
+	 * @param read
+	 *        {@code true} to read each datum source control's current value,
+	 *        else the value of its last set
+	 * @return the controls, then the switches, then the datum source controls
 	 */
-	public List<ControlInfo> controlInfos() {
+	public List<ControlInfo> controlInfos(boolean read) {
 		final List<ControlInfo> result = new ArrayList<>(controlService.controlInfos());
 		result.addAll(modeSwitches.controlInfos());
+		result.addAll(datumSources.controlInfos(read));
 		return result;
 	}
 
@@ -574,10 +637,20 @@ public final class SimulationContext implements FilterContext {
 	}
 
 	/**
-	 * Get the event admin.
+	 * Get the datum sources.
 	 *
-	 * @return the event admin
+	 * @return the datum sources
 	 */
+	public SimDatumSources datumSources() {
+		return datumSources;
+	}
+
+	@Override
+	public PlaceholderService placeholderService() {
+		return placeholderService;
+	}
+
+	@Override
 	public SimEventAdmin eventAdmin() {
 		return eventAdmin;
 	}

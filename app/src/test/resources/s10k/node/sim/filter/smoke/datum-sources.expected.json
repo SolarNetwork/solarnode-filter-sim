@@ -1,0 +1,333 @@
+{
+  "messages" : [ "FilterLimitation" ],
+  "stats" : {
+    "processed" : "23",
+    "generated" : "2",
+    "output" : "23",
+    "discarded" : "0",
+    "polled" : "19"
+  },
+  "datum" : [ {
+    "seq" : "1",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "ctl:Unchanged", "exp:Changed" ],
+    "output" : {
+      "i" : {
+        "watts" : "400"
+      },
+      "s" : {
+        "rate" : "0.25"
+      }
+    }
+  }, {
+    "seq" : "2",
+    "sourceId" : "/bat/rate",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "400"
+      },
+      "s" : {
+        "val" : "400"
+      }
+    }
+  }, {
+    "seq" : "3",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "400",
+        "availWattHours" : "5000",
+        "soc" : "50"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "4",
+    "sourceId" : "/meter/mock",
+    "steps" : [ "main:Changed", "ctl:Skipped", "exp:Changed" ],
+    "output" : {
+      "i" : {
+        "voltage" : "234.06549",
+        "frequency" : "50",
+        "powerFactor" : "1",
+        "current" : "10.394233",
+        "watts" : "2432"
+      },
+      "a" : {
+        "wattHours" : "8282880"
+      },
+      "s" : {
+        "rate" : "0.25",
+        "maker" : "SolarNetwork"
+      }
+    }
+  }, {
+    "seq" : "5",
+    "sourceId" : "/tou/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "price" : "0.25"
+      }
+    }
+  }, {
+    "seq" : "6",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "400",
+        "availWattHours" : "5003",
+        "soc" : "50.033333"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "7",
+    "sourceId" : "/fixed/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "100.5"
+      },
+      "s" : {
+        "status" : "ok"
+      }
+    }
+  }, {
+    "seq" : "8",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "400",
+        "availWattHours" : "5006",
+        "soc" : "50.066666"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "9",
+    "sourceId" : "/meter/mock",
+    "steps" : [ "main:Changed", "ctl:Skipped", "exp:Changed" ],
+    "output" : {
+      "i" : {
+        "voltage" : "239.67255",
+        "frequency" : "50",
+        "powerFactor" : "1",
+        "current" : "10.552229",
+        "watts" : "2529"
+      },
+      "a" : {
+        "wattHours" : "8282922"
+      },
+      "s" : {
+        "rate" : "0.25",
+        "maker" : "SolarNetwork"
+      }
+    }
+  }, {
+    "seq" : "10",
+    "sourceId" : "/tou/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "price" : "0.25"
+      }
+    }
+  }, {
+    "seq" : "11",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "ctl:Unchanged", "exp:Changed" ],
+    "output" : {
+      "i" : {
+        "watts" : "-1500"
+      },
+      "s" : {
+        "rate" : "0.25",
+        "maker" : "SolarNetwork"
+      }
+    }
+  }, {
+    "seq" : "12",
+    "sourceId" : "/bat/rate",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "v" : "-1000"
+      },
+      "s" : {
+        "val" : "-1000"
+      }
+    }
+  }, {
+    "seq" : "13",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "-1000",
+        "availWattHours" : "5009",
+        "soc" : "50.1"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "14",
+    "sourceId" : "/fixed/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "100.5"
+      },
+      "s" : {
+        "status" : "ok"
+      }
+    }
+  }, {
+    "seq" : "15",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "-1000",
+        "availWattHours" : "5001",
+        "soc" : "50.016666"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "16",
+    "sourceId" : "/meter/mock",
+    "steps" : [ "main:Changed", "ctl:Skipped", "exp:Changed" ],
+    "output" : {
+      "i" : {
+        "voltage" : "237.13455",
+        "frequency" : "50",
+        "powerFactor" : "1",
+        "current" : "9.727147",
+        "watts" : "2306"
+      },
+      "a" : {
+        "wattHours" : "8282960"
+      },
+      "s" : {
+        "rate" : "0.25",
+        "maker" : "SolarNetwork"
+      }
+    }
+  }, {
+    "seq" : "17",
+    "sourceId" : "/tou/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "price" : "0.25"
+      }
+    }
+  }, {
+    "seq" : "18",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "-1000",
+        "availWattHours" : "4993",
+        "soc" : "49.933334"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "19",
+    "sourceId" : "/fixed/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "100.5"
+      },
+      "s" : {
+        "status" : "ok"
+      }
+    }
+  }, {
+    "seq" : "20",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "-1000",
+        "availWattHours" : "4985",
+        "soc" : "49.85"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  }, {
+    "seq" : "21",
+    "sourceId" : "/meter/mock",
+    "steps" : [ "main:Changed", "ctl:Skipped", "exp:Changed" ],
+    "output" : {
+      "i" : {
+        "voltage" : "223.45456",
+        "frequency" : "50",
+        "powerFactor" : "1",
+        "current" : "8.002347",
+        "watts" : "1788"
+      },
+      "a" : {
+        "wattHours" : "8282990"
+      },
+      "s" : {
+        "rate" : "0.25",
+        "maker" : "SolarNetwork"
+      }
+    }
+  }, {
+    "seq" : "22",
+    "sourceId" : "/tou/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "price" : "0.25"
+      }
+    }
+  }, {
+    "seq" : "23",
+    "sourceId" : "/bat/1",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "exp:Skipped" ],
+    "output" : {
+      "i" : {
+        "powerRate" : "-1000",
+        "availWattHours" : "4976",
+        "soc" : "49.766666"
+      },
+      "s" : {
+        "capacityWattHours" : "10000"
+      }
+    }
+  } ],
+  "controls" : [ {
+    "controlId" : "/bat/rate",
+    "value" : "-1000",
+    "updates" : "2"
+  }, {
+    "controlId" : "/bat/soc",
+    "value" : "49.766666",
+    "updates" : "0"
+  } ]
+}

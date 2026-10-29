@@ -40,12 +40,45 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        {@code null}
  * @param datumSeq
  *        the sequence number of the datum the message is about, or {@code null}
+ * @param datumSourceId
+ *        the {@code id} of the datum source configuration the message is about,
+ *        or {@code null}
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record SimulationMessage(Level level, String code, String message, @Nullable String filterId,
-		@Nullable Integer datumSeq) {
+		@Nullable Integer datumSeq, @Nullable String datumSourceId) {
+
+	/**
+	 * Constructor, for a message not about a datum source.
+	 *
+	 * @param level
+	 *        the message level
+	 * @param code
+	 *        the message code
+	 * @param message
+	 *        the message
+	 * @param filterId
+	 *        the filter configuration {@code id}, or {@code null}
+	 * @param datumSeq
+	 *        the datum sequence number, or {@code null}
+	 */
+	public SimulationMessage(Level level, String code, String message, @Nullable String filterId,
+			@Nullable Integer datumSeq) {
+		this(level, code, message, filterId, datumSeq, null);
+	}
+
+	/**
+	 * Get a copy of this message about a datum source.
+	 *
+	 * @param datumSourceId
+	 *        the {@code id} of the datum source configuration
+	 * @return the new message
+	 */
+	public SimulationMessage withDatumSourceId(@Nullable String datumSourceId) {
+		return new SimulationMessage(level, code, message, filterId, datumSeq, datumSourceId);
+	}
 
 	/** A filter type the simulator does not support. */
 	public static final String CODE_UNSUPPORTED_FILTER = "UnsupportedFilter";
@@ -193,6 +226,17 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	 * simulation's environment.
 	 */
 	public static final String CODE_CONTROL_SETTINGS = "ControlSettings";
+
+	/**
+	 * A datum source whose configuration means it is not polled, or polls
+	 * differently than expected.
+	 */
+	public static final String CODE_INVALID_DATUM_SOURCE = "InvalidDatumSource";
+
+	/**
+	 * A datum source that was not polled, or whose polls returned no datum.
+	 */
+	public static final String CODE_DATUM_SOURCE_POLLS = "DatumSourcePolls";
 
 	/**
 	 * Message levels.

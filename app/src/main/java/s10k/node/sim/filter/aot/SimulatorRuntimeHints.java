@@ -74,7 +74,9 @@ import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.domain.UnavailableFilterTypeInfo;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.web.InfoController;
 import net.solarnetwork.domain.datum.Datum;
@@ -96,6 +98,8 @@ import net.solarnetwork.domain.tariff.Tariff;
 import net.solarnetwork.domain.tariff.TariffSchedule;
 import net.solarnetwork.domain.tariff.TemporalRangeSetsTariff;
 import net.solarnetwork.domain.tariff.TemporalTariff;
+import net.solarnetwork.domain.BasicDeviceInfo;
+import net.solarnetwork.domain.DeviceInfo;
 import net.solarnetwork.node.control.conductor.ControlConductor;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterExpressionRoot;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterExpressionRootImpl;
@@ -106,22 +110,29 @@ import net.solarnetwork.node.reactor.InstructionStatus;
 import net.solarnetwork.node.domain.ExpressionRoot;
 import net.solarnetwork.node.domain.LocalStateOperations;
 import net.solarnetwork.node.domain.TariffScheduleProvidersOperations;
+import net.solarnetwork.node.domain.datum.SimpleAcEnergyDatum;
 import net.solarnetwork.node.domain.datum.SimpleDatum;
+import net.solarnetwork.node.domain.datum.SimpleEnergyStorageDatum;
+import net.solarnetwork.node.domain.datum.SimpleNodeControlInfoDatum;
+import net.solarnetwork.node.job.DatumDataSourcePollManagedJob;
+import net.solarnetwork.node.job.SimpleManagedJob;
 
 /**
  * Native image runtime hints for the SolarNode filters.
  *
  * <ul>
- * <li>Filters, Control Conductors, and their nested configuration classes are
- * configured through a Spring {@code BeanWrapper}, which uses reflection on
- * their bean properties.</li>
+ * <li>Filters, Control Conductors, datum sources with their jobs, and their
+ * nested configuration classes are configured through a Spring
+ * {@code BeanWrapper}, which uses reflection on their bean properties.</li>
  * <li>Filter message sources load {@code .properties} resources.</li>
+ * <li>A datum source's poll job serializes its device info with Jackson, which
+ * uses reflection on its getters.</li>
  * <li>Expressions call methods on their root objects, and on common JDK types,
  * through reflection.</li>
  * </ul>
  *
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 
@@ -139,7 +150,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 	 */
 	public static final List<Class<?>> EXPRESSION_TYPES = List.of(ExpressionRoot.class,
 			DatumSamplesExpressionRoot.class, DatumExpressionRoot.class, Datum.class, GeneralDatum.class,
-			SimpleDatum.class, DatumSamples.class, DatumSamplesOperations.class,
+			SimpleDatum.class, SimpleEnergyStorageDatum.class, SimpleAcEnergyDatum.class,
+			SimpleNodeControlInfoDatum.class, DatumSamples.class, DatumSamplesOperations.class,
 			DatumMathFunctions.class, DatumDateFunctions.class, DatumStringFunctions.class,
 			DatumMetadataOperations.class, GeneralDatumMetadata.class, LocalStateOperations.class,
 			TariffScheduleProvidersOperations.class, TariffSchedule.class,
@@ -219,6 +231,18 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		}
 		// Control Conductors are configured with settings too
 		registerBeanType(hints, ControlConductor.class, registered);
+		// datum sources are configured through their jobs, whose properties are
+		// interfaces, so each class is registered
+		registerBeanType(hints, SimpleManagedJob.class, registered);
+		registerBeanType(hints, DatumDataSourcePollManagedJob.class, registered);
+		for ( DatumSourceTypeDefinition def : StandardDatumSourceTypes.definitions() ) {
+			registerBeanType(hints, def.sourceClass(), registered);
+		}
+
+		// the poll job publishes device info as metadata, serialized by Jackson
+		hints.reflection().registerType(BasicDeviceInfo.class, MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS,
+				MemberCategory.INVOKE_PUBLIC_METHODS);
+		hints.reflection().registerType(DeviceInfo.class, MemberCategory.INVOKE_PUBLIC_METHODS);
 
 		for ( Class<?> type : EXPRESSION_TYPES ) {
 			hints.reflection().registerType(type, MemberCategory.INVOKE_PUBLIC_METHODS);
