@@ -68,6 +68,12 @@ Allow only programs you trust, as they run on the computer running the simulator
 commands to allow in every simulation can also be set when starting the simulator, with
 `--sim.commands.allowed=/path/to/command,/another/command`.
 
+## Long runs
+
+A run processes up to its **Maximum Datum** (1,000 by default), and its time limit grows with it:
+10 seconds per 1,000 datum. The simulator allows at most 100,000 datum and 10 minutes per run;
+change these when starting it with `--sim.max-datum` and `--sim.max-run-time` (such as `30m`).
+
 ## Custom filters
 
 The simulator can also run datum filters that you write yourself, from the SolarNode bundles you

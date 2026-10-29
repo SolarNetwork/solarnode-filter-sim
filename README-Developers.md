@@ -100,6 +100,13 @@ records in the `s10k.node.sim.filter.domain` package.
 | `POST /api/settings/external` | Combine External Settings files the way a node applies its auto settings files: an `ExternalSettingsRequest` (`files` of `name` and `csv`) in, `ExternalSettings` out. |
 | `POST /api/settings/export` | Export a configuration as a settings CSV file: a `SettingsExportRequest` in, a `SettingsExport` out. With `external`, rows that the external settings already have are left out. |
 | `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
+| `POST /api/runs` | Start a simulation in the background: a `SimulationRequest` in, a `RunInfo` (`id`) out at once. An invalid request gets a `400` response with problem details, as does a request while the simulator is busy with other runs. |
+| `GET /api/runs/{id}/events` | A run's progress, as a `text/event-stream` (see below). |
+| `GET /api/runs/{id}/progress` | A run's progress now: a `RunProgress`. |
+| `GET /api/runs/{id}` | A finished run's result: a `RunResult` (see below). A run that is still running gets a `409` response, and one the simulator no longer has a `404`. |
+| `GET /api/runs/{id}/datum?seq=1,2` | The traces of some of a run's datum, by `seq`, up to 200, in the order asked. |
+| `GET /api/runs/{id}/datum.json` | Download a finished run's output datum (persisted, in processing order), or with `kind=input` each datum as it entered the Datum Queue, as a JSON array in the format of the Datum input. |
+| `DELETE /api/runs/{id}` | Cancel a run, which stops and keeps what it has, with a `Cancelled` message. |
 | `POST /api/capture` | Start capturing the datum a SolarNode captures: a `CaptureRequest` (`url`, `username`, `password`, and optional `sourceIds`) in, a `CaptureInfo` (`id` and `topics`) out. A node that cannot be reached or does not accept the login gets a `400` response with problem details. |
 | `GET /api/capture/{id}/events` | A capture's datum, as a `text/event-stream` (see below). |
 | `DELETE /api/capture/{id}` | End a capture. |
@@ -191,6 +198,36 @@ curl -H 'Content-Type: application/json' \
   http://localhost:8080/api/capture
 curl -N http://localhost:8080/api/capture/<id>/events
 curl -X DELETE http://localhost:8080/api/capture/<id>
+```
+
+## Background runs
+
+`POST /api/runs` runs a simulation on a small pool of threads (two at a time), for long runs
+that the UI shows progress for and can cancel. The simulator keeps the last three runs, however
+long ago they ran, until newer runs replace them. While a run runs, it keeps each datum's trace compressed,
+so memory grows with the compressed size.
+
+The event stream has a `progress` event at once and about every 250 ms while the run goes on,
+and a `done` event when it ends, each a `RunProgress`:
+`{"state":"Running"|"Done"|"Failed","processed":…,"expected":…,"date":…}`, plus `error` and
+`problems` when it failed. `expected` is the input datum plus each datum source's polls, up to
+Maximum Datum, without the datum filters generate. A run that has ended sends only `done`.
+
+A `RunResult` is a `SimulationResult` with the run's `id`. Up to 200 datum it has every trace.
+Above that, `datum` has the first 20 traces only, plus an `index` of every datum (`seq`,
+`sourceId`, `created`, `origin`, `outcome`, and `error`) and `filterStats`, each filter's counts
+(`in`, `out`, `dropped`, `changed`, `skipped`, `errors`). Load other traces with
+`/datum?seq=`.
+
+The server limits runs with `--sim.max-datum` (default 100,000) and `--sim.max-run-time` (default
+`10m`). A run's timeout is 10 seconds per 1,000 datum of its Maximum Datum (at least 10 seconds),
+up to the maximum run time.
+
+```sh
+curl -H 'Content-Type: application/json' -d @request.json http://localhost:8080/api/runs
+curl -N http://localhost:8080/api/runs/<id>/events
+curl -o output.json 'http://localhost:8080/api/runs/<id>/datum.json'
+curl -X DELETE http://localhost:8080/api/runs/<id>
 ```
 
 ## Settings CSV files

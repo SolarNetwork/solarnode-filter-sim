@@ -126,7 +126,7 @@ import tools.jackson.databind.JsonNode;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class SimulationRun implements SimulatedDatumQueue.Sink {
 
@@ -139,11 +139,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	/** A limit on how far back to look in the datum history. */
 	private static final int MAX_HISTORY_OFFSET = 1000;
 
-	/** A limit on the number of scheduled task runs. */
-	private static final int MAX_TASK_RUNS = 10_000;
-
 	private record QueuedDatum(int seq, NodeDatum datum, boolean persist, int depth,
 			DatumOrigin origin) {
+
+	}
+
+	/**
+	 * What a datum's generation path needs of it, kept for every datum, as the
+	 * datum themselves would take too much memory in a long run.
+	 */
+	private record Lineage(@Nullable String sourceId, @Nullable Integer parentSeq) {
 
 	}
 
@@ -183,13 +188,18 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private final ExpressionService expressionService;
 	private final SimulationRequest request;
 	private final SimulationOptions options;
+	private final SimulationLimits.RunLimits limits;
 	private final List<NodeDatum> input;
 	private final SimulationContext context;
 	private final FilterTracer tracer;
 	private final List<SimulationMessage> messages = new ArrayList<>(8);
 	private final Deque<QueuedDatum> queue = new ArrayDeque<>(16);
-	private final Map<Integer, QueuedDatum> datumBySeq = new HashMap<>(16);
-	private final List<DatumRecord> records = new ArrayList<>(16);
+	private final Map<Integer, Lineage> lineage = new HashMap<>(16);
+	/** Gets each datum's trace once it is processed. */
+	private SimulationObserver observer = _ -> {
+	};
+	private int processedCount;
+	private @Nullable Integer lastSeq;
 	private final Map<String, DepthLimit> depthLimits = new LinkedHashMap<>(2);
 	private final Map<String, LogRecord> logs = new LinkedHashMap<>(4);
 
@@ -227,19 +237,22 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 * @param allowedCommands
 	 *        the external commands filters may run, in addition to those the
 	 *        request allows
+	 * @param limits
+	 *        the server's limits
 	 * @param request
 	 *        the request
 	 * @throws SimulationException
 	 *         if the request input datum or metadata are not valid
 	 */
 	SimulationRun(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes,
-			ExpressionService expressionService, List<String> allowedCommands,
+			ExpressionService expressionService, List<String> allowedCommands, SimulationLimits limits,
 			SimulationRequest request) {
 		super();
 		this.registry = registry;
 		this.datumSourceTypes = datumSourceTypes;
 		this.request = request;
 		this.options = (request.options() != null ? request.options() : SimulationOptions.DEFAULTS);
+		this.limits = limits.runLimits(options);
 		this.input = parseInput();
 		final NodeDatum first = (input.isEmpty() ? null : input.getFirst());
 		final Instant firstDate = (first != null ? first.getTimestamp() : null);
@@ -291,11 +304,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	/**
 	 * Run the simulation.
 	 *
-	 * @return the result
+	 * @param observer
+	 *        gets each datum's trace once it is processed, and can cancel the
+	 *        run
+	 * @return the result, without the datum traces, which only the observer
+	 *         gets
 	 * @throws SimulationException
 	 *         if the request is not valid
 	 */
-	SimulationResult run() {
+	SimulationResult run(SimulationObserver observer) {
+		this.observer = observer;
 		FilterLogCapture.install();
 		FilterLogCapture.capture(this::logged);
 		try {
@@ -314,11 +332,18 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		loadHistory(firstDate);
 		context.startOperationalModes();
 
-		final long deadline = start + TimeUnit.MILLISECONDS.toNanos(options.timeoutMsValue());
-		final int maxDatum = options.maxDatumValue();
+		final long deadline = start + TimeUnit.MILLISECONDS.toNanos(limits.timeoutMs());
+		final int maxDatum = limits.maxDatum();
+		if ( limits.datumLimited() ) {
+			warn(SimulationMessage.CODE_DATUM_LIMIT,
+					"The Maximum Datum of %d is more than the simulator allows, so %d was used."
+							.formatted(limits.requestedMaxDatum(), maxDatum),
+					null, null);
+		}
 		final Instant runUntil = runUntil();
 		final SimTaskScheduler scheduler = context.taskScheduler();
-		startDatumSources(firstDate, runUntil, maxDatum);
+		final int polls = startDatumSources(firstDate, runUntil, maxDatum);
+		observer.started(Math.min(input.size() + polls, maxDatum));
 		while ( true ) {
 			// run scheduled tasks and the Instruction Execution Job due before the next datum,
 			// or by the end time; a task first when both are due at the same time
@@ -330,11 +355,15 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			final Instant due = (job ? jobTick : task != null ? task.due() : null);
 			if ( due != null && nextTime != null
 					&& (next != null ? due.isBefore(nextTime) : !due.isAfter(nextTime)) ) {
-				if ( taskRuns >= MAX_TASK_RUNS ) {
+				if ( taskRuns >= limits.maxTaskRuns() ) {
 					warn(SimulationMessage.CODE_TASK_LIMIT,
 							"Stopped after running %d scheduled tasks and stored instructions, the maximum allowed."
-									.formatted(MAX_TASK_RUNS),
+									.formatted(limits.maxTaskRuns()),
 							null, null);
+					break;
+				}
+				if ( observer.cancelled() ) {
+					cancelled();
 					break;
 				}
 				if ( job ) {
@@ -347,7 +376,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( next == null ) {
 				break;
 			}
-			if ( records.size() >= maxDatum ) {
+			if ( processedCount >= maxDatum ) {
 				warn(SimulationMessage.CODE_DATUM_LIMIT,
 						"Stopped after processing %d datum, the maximum allowed, so %d datum were not processed. Filters that keep generating datum can cause this."
 								.formatted(maxDatum, waiting()),
@@ -357,8 +386,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( System.nanoTime() > deadline ) {
 				warn(SimulationMessage.CODE_TIMEOUT,
 						"Stopped after %d ms, the maximum allowed, so %d datum were not processed."
-								.formatted(options.timeoutMsValue(), waiting()),
+								.formatted(limits.timeoutMs(), waiting()),
 						null, null);
+				break;
+			}
+			if ( observer.cancelled() ) {
+				cancelled();
 				break;
 			}
 			if ( queue.isEmpty() ) {
@@ -379,10 +412,16 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 
 		final SimulationState finalState = snapshot(true, null);
 		final long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-		return new SimulationResult(records.stream().map(DatumRecord::toTrace).toList(),
-				runs.stream().map(RunRecord::toRun).toList(), List.copyOf(messages), finalState,
-				new SimulationStats(records.size(), generatedCount, outputCount, discardedCount,
-						durationMs, polledCount));
+		return new SimulationResult(List.of(), runs.stream().map(RunRecord::toRun).toList(),
+				List.copyOf(messages), finalState, new SimulationStats(processedCount, generatedCount,
+						outputCount, discardedCount, durationMs, polledCount));
+	}
+
+	private void cancelled() {
+		messages.add(SimulationMessage.info(SimulationMessage.CODE_CANCELLED,
+				"Cancelled after processing %d datum, so %d datum were not processed."
+						.formatted(processedCount, waiting()),
+				null));
 	}
 
 	/**
@@ -414,7 +453,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		context.simulatedClock().setInstant(tick);
 		lastJobTick = tick;
 		final SimInstructionService service = context.instructionService();
-		final Integer afterSeq = (records.isEmpty() ? null : records.getLast().seq);
+		final Integer afterSeq = lastSeq;
 		for ( SimInstructionService.StoredInstruction s : service.dueBy(tick) ) {
 			taskRuns++;
 			final RunRecord run = new RunRecord(tick, afterSeq, service.info(s), s.issuer());
@@ -632,9 +671,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 
 	private List<NodeDatum> parseInput() {
 		final List<JsonNode> nodes = (request.datum() != null ? request.datum() : List.of());
-		if ( nodes.size() > options.maxDatumValue() ) {
+		if ( nodes.size() > limits.maxDatum() ) {
 			throw new SimulationException("Too many input datum: %d (the maximum is %d)."
-					.formatted(nodes.size(), options.maxDatumValue()));
+					.formatted(nodes.size(), limits.maxDatum()));
 		}
 		final Duration interval = options.datumIntervalValue();
 		final List<NodeDatum> result = new ArrayList<>(nodes.size());
@@ -1098,9 +1137,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 *        {@code null}
 	 * @param maxDatum
 	 *        the maximum number of datum to process
+	 * @return the number of polls by the end, up to {@code maxDatum} for each
+	 *         datum source
 	 */
-	private void startDatumSources(Instant start, @Nullable Instant runUntil, int maxDatum) {
+	private int startDatumSources(Instant start, @Nullable Instant runUntil, int maxDatum) {
 		final SimTaskScheduler scheduler = context.taskScheduler();
+		int total = 0;
 		Instant end = runUntil;
 		if ( end == null && !input.isEmpty() ) {
 			end = timestamp(input.getLast());
@@ -1130,6 +1172,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			}
 			if ( end != null ) {
 				final int polls = pollCount(trigger, start, end, maxDatum + 1);
+				total += Math.min(polls, maxDatum);
 				if ( polls > maxDatum ) {
 					warnDatumSource(
 							"%s is polled more than %d times by %s, the maximum number of datum allowed, so the simulation stops before then."
@@ -1142,6 +1185,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				var _ = scheduler.schedule(() -> poll(source), trigger);
 			});
 		}
+		return total;
 	}
 
 	/**
@@ -1636,7 +1680,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private QueuedDatum enqueue(NodeDatum datum, boolean persist, int depth, DatumOrigin origin) {
 		final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, depth, origin);
 		queue.addLast(qd);
-		datumBySeq.put(qd.seq(), qd);
+		addLineage(qd);
 		return qd;
 	}
 
@@ -1653,7 +1697,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		if ( options.detailValue() == SimulationOptions.Detail.Debug ) {
 			record.startState = snapshot(false, queue.stream().map(QueuedDatum::seq).toList());
 		}
-		records.add(record);
+		processedCount++;
+		lastSeq = qd.seq();
 
 		// like DefaultDatumQueue: unfiltered history, filters, then filtered history
 		context.datumService().datumQueueWillProcess(context.simulatedDatumQueue(), qd.datum(),
@@ -1688,6 +1733,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			discardedCount++;
 		}
 		this.current = null;
+		observer.processed(record.toTrace());
 	}
 
 	@Override
@@ -1722,7 +1768,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0, DatumOrigin
 					.instruction(run.instruction.number(), issuer != null ? issuer.filterId() : null)
 					.withControlId(controlId));
-			datumBySeq.put(qd.seq(), qd);
+			addLineage(qd);
 			taskGenerated.add(qd);
 			run.generated.add(qd.seq());
 			generatedCount++;
@@ -1733,7 +1779,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			// a poll: processed after the poll, before later datum
 			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0,
 					DatumOrigin.polled(datumSource.id()).withControlId(controlId));
-			datumBySeq.put(qd.seq(), qd);
+			addLineage(qd);
 			taskGenerated.add(qd);
 			polledCount++;
 			return true;
@@ -1743,7 +1789,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			// a scheduled task: processed after the task, before later datum
 			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0,
 					DatumOrigin.scheduled(task.owner()).withControlId(controlId));
-			datumBySeq.put(qd.seq(), qd);
+			addLineage(qd);
 			taskGenerated.add(qd);
 			generatedCount++;
 			return true;
@@ -1758,6 +1804,10 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		return true;
 	}
 
+	private void addLineage(QueuedDatum qd) {
+		lineage.put(qd.seq(), new Lineage(qd.datum().getSourceId(), qd.origin().parentSeq()));
+	}
+
 	private void depthLimitReached(NodeDatum datum, @Nullable QueuedDatum parent,
 			@Nullable String filterId) {
 		final String key = (filterId != null ? filterId : "");
@@ -1769,11 +1819,11 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		}
 		final List<String> path = new ArrayList<>(8);
 		path.add(String.valueOf(datum.getSourceId()));
-		QueuedDatum p = parent;
+		Lineage p = (parent != null ? lineage.get(parent.seq()) : null);
 		while ( p != null ) {
-			path.addFirst(String.valueOf(p.datum().getSourceId()));
-			Integer parentSeq = p.origin().parentSeq();
-			p = (parentSeq != null ? datumBySeq.get(parentSeq) : null);
+			path.addFirst(String.valueOf(p.sourceId()));
+			Integer parentSeq = p.parentSeq();
+			p = (parentSeq != null ? lineage.get(parentSeq) : null);
 		}
 		depthLimits.put(key, new DepthLimit(filterId, parent != null ? parent.seq() : null,
 				String.valueOf(datum.getSourceId()), String.join(" → ", path), 1));

@@ -65,6 +65,9 @@ import s10k.node.sim.filter.domain.DatumSourceTypeInfo;
 import s10k.node.sim.filter.domain.ExternalSettings;
 import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
+import s10k.node.sim.filter.domain.RunInfo;
+import s10k.node.sim.filter.domain.RunProgress;
+import s10k.node.sim.filter.domain.RunResult;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsForm;
@@ -75,6 +78,7 @@ import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.domain.UnavailableFilterTypeInfo;
+import s10k.node.sim.filter.run.DownloadDatum;
 import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
@@ -117,6 +121,7 @@ import net.solarnetwork.node.domain.datum.SimpleEnergyStorageDatum;
 import net.solarnetwork.node.domain.datum.SimpleNodeControlInfoDatum;
 import net.solarnetwork.node.job.DatumDataSourcePollManagedJob;
 import net.solarnetwork.node.job.SimpleManagedJob;
+import tools.jackson.databind.util.RawValue;
 
 /**
  * Native image runtime hints for the SolarNode filters.
@@ -133,7 +138,7 @@ import net.solarnetwork.node.job.SimpleManagedJob;
  * </ul>
  *
  * @author matt
- * @version 1.3
+ * @version 1.4
  */
 public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 
@@ -181,7 +186,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 			SimulationResult.class, SettingsFormRequest.class, SettingsForm.class, SettingsImport.class,
 			SettingsExportRequest.class, SettingsExport.class, SettingsMergeRequest.class,
 			ExternalSettingsRequest.class, ExternalSettings.class, InfoController.AppInfo.class,
-			CustomFiltersReload.class, CaptureInfo.class);
+			CustomFiltersReload.class, CaptureInfo.class, RunInfo.class, RunProgress.class,
+			RunResult.class, DownloadDatum.class);
 
 	/**
 	 * The JDK collection implementation types, which are not public, that
@@ -264,6 +270,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		registerElementArrayTypes(hints, DatumSourceTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, UnavailableFilterTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, SimulationMessage.class, true, walked);
+		// GET /api/runs/{id}/datum returns a list of traces
+		registerElementArrayTypes(hints, RawValue.class, true, walked);
 	}
 
 	/**

@@ -19,6 +19,7 @@
 
 package s10k.node.sim.filter.config;
 
+import java.time.Duration;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -34,14 +35,17 @@ import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
+import s10k.node.sim.filter.run.RunService;
 import s10k.node.sim.filter.sim.SimulationEngine;
+import s10k.node.sim.filter.sim.SimulationLimits;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Simulator configuration.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @Configuration(proxyBeanMethods = false)
 @ImportRuntimeHints(SimulatorRuntimeHints.class)
@@ -115,13 +119,37 @@ public class SimulatorConfig {
 	 *        the paths of the external commands filters may run in every
 	 *        simulation, from the {@code sim.commands.allowed} property, in
 	 *        addition to those each request allows
+	 * @param maxDatum
+	 *        the most datum a run may process, from the {@code sim.max-datum}
+	 *        property
+	 * @param maxRunTime
+	 *        the longest a run may take, from the {@code sim.max-run-time}
+	 *        property
 	 * @return the engine
 	 */
 	@Bean
 	public SimulationEngine simulationEngine(FilterTypeRegistry registry,
 			DatumSourceTypeRegistry datumSourceTypes, SpelExpressionService expressionService,
-			@Value("${sim.commands.allowed:}") List<String> allowedCommands) {
-		return new SimulationEngine(registry, datumSourceTypes, expressionService, allowedCommands);
+			@Value("${sim.commands.allowed:}") List<String> allowedCommands,
+			@Value("${sim.max-datum:100000}") int maxDatum,
+			@Value("${sim.max-run-time:10m}") Duration maxRunTime) {
+		return new SimulationEngine(registry, datumSourceTypes, expressionService, allowedCommands,
+				new SimulationLimits(maxDatum, maxRunTime));
+	}
+
+	/**
+	 * The run service, which runs simulations in the background and keeps their
+	 * results.
+	 *
+	 * @param engine
+	 *        the simulation engine
+	 * @param mapper
+	 *        the web API's JSON mapper
+	 * @return the service
+	 */
+	@Bean(destroyMethod = "close")
+	public RunService runService(SimulationEngine engine, JsonMapper mapper) {
+		return new RunService(engine, mapper);
 	}
 
 	/**

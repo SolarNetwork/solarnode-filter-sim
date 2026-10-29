@@ -44,7 +44,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the {@code id} of the datum source configuration the message is about,
  *        or {@code null}
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record SimulationMessage(Level level, String code, String message, @Nullable String filterId,
@@ -132,6 +132,9 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 
 	/** Processing stopped because of the timeout. */
 	public static final String CODE_TIMEOUT = "Timeout";
+
+	/** Processing stopped because the run was cancelled. */
+	public static final String CODE_CANCELLED = "Cancelled";
 
 	/** Processing stopped because of the scheduled task limit. */
 	public static final String CODE_TASK_LIMIT = "TaskLimit";

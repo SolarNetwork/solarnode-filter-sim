@@ -24,13 +24,15 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import s10k.node.sim.filter.capture.CaptureException;
+import s10k.node.sim.filter.run.RunNotFinishedException;
+import s10k.node.sim.filter.run.RunNotFoundException;
 import s10k.node.sim.filter.sim.SimulationException;
 
 /**
  * Turn web API exceptions into problem details responses.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -54,6 +56,34 @@ public class ApiExceptionHandler {
 		if ( !e.problems().isEmpty() ) {
 			result.setProperty("problems", e.problems());
 		}
+		return result;
+	}
+
+	/**
+	 * Handle a request for a run the server does not have.
+	 *
+	 * @param e
+	 *        the exception
+	 * @return the problem details, with a {@code 404} status
+	 */
+	@ExceptionHandler(RunNotFoundException.class)
+	public ProblemDetail runNotFound(RunNotFoundException e) {
+		ProblemDetail result = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+		result.setTitle("Run not found");
+		return result;
+	}
+
+	/**
+	 * Handle a request for the results of a run that is still running.
+	 *
+	 * @param e
+	 *        the exception
+	 * @return the problem details, with a {@code 409} status
+	 */
+	@ExceptionHandler(RunNotFinishedException.class)
+	public ProblemDetail runNotFinished(RunNotFinishedException e) {
+		ProblemDetail result = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+		result.setTitle("Run not finished");
 		return result;
 	}
 
