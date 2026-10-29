@@ -433,6 +433,11 @@ export interface SimulationOptions {
 	timeoutMs?: number | null;
 	detail?: SimulationDetail | null;
 	/**
+	 * The date of the first input datum without one, and the start of a run
+	 * without input datum, as an ISO 8601 instant, or `null` for now.
+	 */
+	startDate?: string | null;
+	/**
 	 * How long the simulated clock keeps running after the last input datum,
 	 * as an ISO 8601 duration like `PT5M`, so scheduled tasks can run.
 	 */
@@ -446,6 +451,28 @@ export interface SimulationOptions {
 	instructionJobSeconds?: number | null;
 }
 
+/** A simulated SolarNode datum source, which the simulation polls. */
+export interface DatumSourceConfig {
+	/** The id of the datum source, unique in the request. */
+	id: string;
+	/** The factory UID of the datum source type. */
+	factoryUid: string;
+	/** The SolarNode instance ID, or `null`. */
+	instanceKey?: string | null;
+	/**
+	 * The settings of the datum source's job, like `schedule` and
+	 * `jobService.datumDataSource.sourceId`.
+	 */
+	settings?: Record<string, string> | null;
+	/**
+	 * When its controls publish a datum, or `null` for `Change`; as datum
+	 * sources post only changes, any mode but `Never` publishes each one.
+	 */
+	publish?: ControlPublishMode | null;
+	/** `true` to persist the datum its controls publish. */
+	persist?: boolean | null;
+}
+
 /** A request to run a simulation. */
 export interface SimulationRequest {
 	config: SimConfig;
@@ -453,6 +480,8 @@ export interface SimulationRequest {
 	entryPoint?: string | null;
 	/** The input datum, as SolarNode datum JSON objects. */
 	datum?: unknown[] | null;
+	/** The datum sources the simulation polls for more input datum. */
+	datumSources?: DatumSourceConfig[] | null;
 	history?: SimulationHistory | null;
 	environment?: SimulationEnvironment | null;
 	options?: SimulationOptions | null;

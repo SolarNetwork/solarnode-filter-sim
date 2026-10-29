@@ -7,6 +7,7 @@ import type {
 	ControlConductorConfig,
 	ControlKind,
 	ControlPublishMode,
+	DatumSourceConfig,
 	NodeControlConfig,
 	NodeControlPropertyType,
 	NodeLocation,
@@ -40,7 +41,13 @@ export const DEFAULT_INSTRUCTION_JOB_SECONDS = 10;
 
 /** The input tabs. */
 export type InputTab =
-	"datum" | "history" | "environment" | "metadata" | "controls";
+	"datum" | "sources" | "history" | "environment" | "metadata" | "controls";
+
+/** The setting key of a datum source's schedule. */
+export const SCHEDULE_KEY = "schedule";
+
+/** The factory UID of the Mock Battery datum source. */
+export const MOCK_BATTERY_UID = "net.solarnetwork.node.datum.battery.mock";
 
 /** A simulated User Metadata Service, as entered. */
 export interface UserMetadataInput {
@@ -123,6 +130,33 @@ export interface ConductorInput {
 	tasks: ConductorTaskInput[];
 }
 
+/** A simulated datum source, as entered. */
+export interface DatumSourceInput {
+	/** A unique id, for the UI, and the datum source's id in requests. */
+	id: string;
+	/** The datum source type. */
+	factoryUid: string;
+	/** The SolarNode instance ID, or `""` for none. */
+	instanceKey: string;
+	/**
+	 * The settings of the datum source's job, like `schedule` and
+	 * `jobService.datumDataSource.sourceId`.
+	 */
+	settings: Record<string, string>;
+	/**
+	 * When its controls publish a datum: `Never`, or `Change`, as datum
+	 * sources post only changes.
+	 */
+	publish: ControlPublishMode;
+	/** `true` to persist the datum its controls publish. */
+	persist: boolean;
+	/**
+	 * The control IDs it provides, from its last settings form, with
+	 * placeholders resolved.
+	 */
+	controlIds: string[];
+}
+
 /** The inputs, as entered, which are saved in the browser. */
 export interface InputsState {
 	version: 1;
@@ -135,6 +169,12 @@ export interface InputsState {
 	opModes: string;
 	/** Local State CSV. */
 	localState: string;
+	/**
+	 * The date of the first datum without one, and the start of a run without
+	 * input datum, as a `datetime-local` value in the browser's time zone,
+	 * or `""` for now.
+	 */
+	startDate: string;
 	/** The seconds to keep running after the last datum. */
 	runAfter: string;
 	/** The Instruction Execution Job seconds, or `""` for the default. */
@@ -157,6 +197,8 @@ export interface InputsState {
 	controls: ControlInput[];
 	/** The simulated Control Conductors. */
 	conductors: ConductorInput[];
+	/** The simulated datum sources, which the simulation polls. */
+	datumSources: DatumSourceInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
 	entryPoint: string;
 }
@@ -170,11 +212,13 @@ export type InputField = Exclude<
 	| "datumMetadata"
 	| "controls"
 	| "conductors"
+	| "datumSources"
 >;
 
 /** The parts of a simulation request that come from the inputs. */
 export interface RequestInputs {
 	datum: unknown[];
+	datumSources: DatumSourceConfig[] | null;
 	history: SimulationHistory | null;
 	environment: SimulationEnvironment;
 	options: SimulationOptions;
@@ -213,6 +257,7 @@ function emptyState(): InputsState {
 		unfilteredSameAsHistory: true,
 		opModes: "",
 		localState: "",
+		startDate: "",
 		runAfter: "",
 		instructionJobSeconds: "",
 		placeholders: "",
@@ -225,6 +270,7 @@ function emptyState(): InputsState {
 		userMetadata: [],
 		controls: [],
 		conductors: [],
+		datumSources: [],
 		entryPoint: "",
 	};
 }
@@ -305,6 +351,80 @@ export function parseRunAfter(text: string): number {
 		throw new Error("Enter a number of seconds, like 300 for 5 minutes.");
 	}
 	return seconds;
+}
+
+/**
+ * Parse the Start Date.
+ *
+ * @param text the date, as a `datetime-local` value in the browser's time
+ *     zone
+ * @returns the date as an ISO 8601 instant, or `null` if the text is blank
+ * @throws Error if the text is not a date
+ */
+export function parseStartDate(text: string): string | null {
+	if (!text.trim()) {
+		return null;
+	}
+	const date = new Date(text.trim());
+	if (Number.isNaN(date.getTime())) {
+		throw new Error("Enter a date and time, like 2026-01-01 00:00:00.");
+	}
+	return date.toISOString();
+}
+
+/**
+ * Get the problem with a datum source's Schedule, like the simulator finds.
+ * Spring's cron expressions, which a node uses, have 6 fields.
+ *
+ * @param schedule the schedule, or `undefined` for the default
+ * @returns the problem, or `null` if there is none
+ */
+export function scheduleProblem(schedule: string | undefined): string | null {
+	if (schedule === undefined) {
+		return null;
+	}
+	const expr = schedule.trim();
+	if (!expr) {
+		return "Enter a schedule, like 60000 for every minute, or 0 * * * * ? for the start of every minute.";
+	}
+	if (/^[-+]?\d+$/.test(expr)) {
+		const ms = Number(expr);
+		if (ms < 0) {
+			return "Enter a positive number of milliseconds, like 60000 for every minute.";
+		}
+		if (ms === 0) {
+			return "A node runs a datum source with the Schedule 0 without a pause, so the simulator does not poll it. Enter a number of milliseconds, like 60000 for every minute.";
+		}
+		return null;
+	}
+	if (expr.split(/\s+/).length !== 6) {
+		return "Enter a number of milliseconds, like 60000 for every minute, or a cron expression of 6 fields (seconds, minutes, hours, day of month, month, and day of week), like 0 * * * * ?.";
+	}
+	return null;
+}
+
+/**
+ * Describe a datum source's schedule.
+ *
+ * @param schedule the schedule
+ * @returns the description, like `every 60 s` or the cron expression
+ */
+export function scheduleText(schedule: string): string {
+	const expr = schedule.trim();
+	if (/^\+?\d+$/.test(expr)) {
+		const ms = Number(expr);
+		return ms % 1000 === 0 ? `every ${ms / 1000} s` : `every ${ms} ms`;
+	}
+	return expr;
+}
+
+/**
+ * Get the input field of a datum source's schedule.
+ *
+ * @param id the datum source's id
+ */
+export function scheduleField(id: string): string {
+	return `${id}.${SCHEDULE_KEY}`;
 }
 
 /**
@@ -718,6 +838,18 @@ export class RunInputs extends EventTarget {
 		if (!Array.isArray(state.conductors)) {
 			state.conductors = [];
 		}
+		if (!Array.isArray(state.datumSources)) {
+			state.datumSources = [];
+		}
+		for (const d of state.datumSources) {
+			d.settings ??= {};
+			d.instanceKey ??= "";
+			d.publish ??= "Change";
+			d.persist ??= false;
+			if (!Array.isArray(d.controlIds)) {
+				d.controlIds = [];
+			}
+		}
 		for (const c of state.conductors) {
 			if (!Array.isArray(c.tasks)) {
 				c.tasks = [];
@@ -763,11 +895,21 @@ export class RunInputs extends EventTarget {
 		this.set("allowedCommands", text ? `${text}\n${cmd}` : cmd);
 	}
 
-	/** The IDs of the controls. */
+	/** The IDs of the controls, then those of the datum sources' controls. */
 	get controlIds(): string[] {
-		return this.#state.controls
+		const ids = this.#state.controls
 			.map((c) => c.controlId.trim())
 			.filter((id) => id.length > 0);
+		const all = new Set(ids);
+		for (const d of this.#state.datumSources) {
+			for (const id of d.controlIds) {
+				if (!all.has(id)) {
+					all.add(id);
+					ids.push(id);
+				}
+			}
+		}
+		return ids;
 	}
 
 	/** The Service Names of the Control Conductors. */
@@ -1250,6 +1392,82 @@ export class RunInputs extends EventTarget {
 	}
 
 	/**
+	 * Add a datum source.
+	 *
+	 * @param factoryUid the datum source type
+	 * @returns the new datum source
+	 */
+	addDatumSource(factoryUid: string): DatumSourceInput {
+		const item: DatumSourceInput = {
+			id: `ds-${Date.now().toString(36)}-${++this.#ids}`,
+			factoryUid,
+			instanceKey: "",
+			settings: {},
+			publish: "Change",
+			persist: false,
+			controlIds: [],
+		};
+		this.#update((s) => {
+			s.datumSources.push(item);
+		});
+		return item;
+	}
+
+	/**
+	 * Change a datum source.
+	 *
+	 * @param id the datum source's id
+	 * @param changes the changes
+	 */
+	updateDatumSource(
+		id: string,
+		changes: Partial<Omit<DatumSourceInput, "id" | "settings">>,
+	): void {
+		this.#update((s) => {
+			const item = s.datumSources.find((d) => d.id === id);
+			if (item) {
+				Object.assign(item, changes);
+			}
+		});
+	}
+
+	/**
+	 * Change the settings of a datum source.
+	 *
+	 * @param id the datum source's id
+	 * @param changes the changes, with `null` to remove a setting
+	 */
+	editDatumSourceSettings(
+		id: string,
+		changes: Record<string, string | null>,
+	): void {
+		this.#update((s) => {
+			const item = s.datumSources.find((d) => d.id === id);
+			if (!item) {
+				return;
+			}
+			for (const [key, value] of Object.entries(changes)) {
+				if (value === null) {
+					delete item.settings[key];
+				} else {
+					item.settings[key] = value;
+				}
+			}
+		});
+	}
+
+	/**
+	 * Remove a datum source.
+	 *
+	 * @param id the datum source's id
+	 */
+	removeDatumSource(id: string): void {
+		this.#update((s) => {
+			s.datumSources = s.datumSources.filter((d) => d.id !== id);
+		});
+	}
+
+	/**
 	 * Get the parts of a simulation request that come from the inputs.
 	 *
 	 * @returns the request parts
@@ -1271,13 +1489,27 @@ export class RunInputs extends EventTarget {
 		const datum = parse("datum", "datum", () =>
 			parseDatumList(s.datum, "Datum"),
 		);
-		if (datum.length === 0) {
+		if (datum.length === 0 && s.datumSources.length === 0) {
 			throw new InputError(
-				"Enter the datum to run through the filters, as a JSON object or array of objects.",
+				"Enter the datum to run through the filters, as a JSON object or array of objects, or add a datum source to poll.",
 				"datum",
 				"datum",
 			);
 		}
+		const datumSources: DatumSourceConfig[] = s.datumSources.map((d) => {
+			const problem = scheduleProblem(d.settings[SCHEDULE_KEY]);
+			if (problem) {
+				throw new InputError(problem, "sources", scheduleField(d.id));
+			}
+			return {
+				id: d.id,
+				factoryUid: d.factoryUid,
+				instanceKey: d.instanceKey.trim() || null,
+				settings: d.settings,
+				publish: d.publish,
+				persist: d.publish !== "Never" && d.persist ? true : null,
+			};
+		});
 		const filtered = parse("history", "history", () =>
 			parseDatumList(s.history, "History datum"),
 		);
@@ -1305,6 +1537,16 @@ export class RunInputs extends EventTarget {
 		);
 		const runAfter = parse("environment", "runAfter", () =>
 			parseRunAfter(s.runAfter),
+		);
+		if (datum.length === 0 && runAfter <= 0) {
+			throw new InputError(
+				"Enter how long to keep running, which is the length of a run without input datum, to poll the datum sources.",
+				"environment",
+				"runAfter",
+			);
+		}
+		const startDate = parse("environment", "startDate", () =>
+			parseStartDate(s.startDate),
 		);
 		const placeholders = parse("environment", "placeholders", () =>
 			parsePlaceholders(s.placeholders),
@@ -1418,7 +1660,9 @@ export class RunInputs extends EventTarget {
 		const allowedCommands = this.allowedCommands;
 		return {
 			datum,
+			datumSources: datumSources.length ? datumSources : null,
 			options: {
+				startDate,
 				runAfter: runAfter > 0 ? `PT${runAfter}S` : null,
 				allowedCommands: allowedCommands.length
 					? allowedCommands

@@ -116,6 +116,29 @@ body {
 	flex: 0 0 7.5rem;
 }
 
+// a datum source card: its header shows and hides its settings form
+.sim-datum-source-item {
+	.card-header {
+		border-bottom: 0;
+	}
+
+	&:not(.is-collapsed) .card-header {
+		border-bottom: var(--bs-card-border-width) solid
+			var(--bs-card-border-color);
+	}
+}
+
+.sim-datum-source-titles {
+	min-width: 0;
+	cursor: pointer;
+	line-height: 1.3;
+}
+
+.sim-datum-source-icon {
+	font-size: 1.1rem;
+	color: var(--bs-secondary-color);
+}
+
 .sim-conductor-task {
 	border: var(--bs-border-width) solid var(--bs-border-color-translucent);
 	border-radius: var(--bs-border-radius);

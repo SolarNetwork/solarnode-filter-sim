@@ -214,6 +214,17 @@ export class SettingsFormRenderer {
 	}
 
 	/**
+	 * Get the element of a rendered setting that problems mark, such as its
+	 * input.
+	 *
+	 * @param key the setting key
+	 * @returns the element, or `undefined` if the setting was not rendered
+	 */
+	control(key: string): HTMLElement | undefined {
+		return this.#controls.get(key)?.control;
+	}
+
+	/**
 	 * Mark the settings with problems, and clear the others.
 	 *
 	 * @param problems the problems

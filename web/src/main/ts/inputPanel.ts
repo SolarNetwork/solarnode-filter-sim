@@ -1,4 +1,6 @@
 import { Tab } from "bootstrap";
+import { getDatumSourceTypes, getSettingsForm } from "./api.ts";
+import { datumSourceIcon } from "./icons.ts";
 import {
 	conductorTaskField,
 	conductorTaskProblems,
@@ -16,6 +18,12 @@ import {
 	parseRunAfter,
 	parsePlaceholders,
 	parseLocationNumber,
+	parseStartDate,
+	SCHEDULE_KEY,
+	scheduleField,
+	scheduleProblem,
+	scheduleText,
+	type DatumSourceInput,
 	type InputError,
 	type InputField,
 	type ConductorInput,
@@ -32,8 +40,12 @@ import { jsonLint, type JsonSchema } from "./jsonLint.ts";
 import {
 	NODE_CONTROL_TYPES,
 	type ControlPublishMode,
+	type DatumSourceTypeInfo,
+	type SettingField,
+	type SettingsForm,
 	type SimulationState,
 } from "./model.ts";
+import { SettingsFormRenderer, type SettingsFormHost } from "./settingsForm.ts";
 import type { Workspace } from "./workspace.ts";
 
 /** How long after typing stops, in milliseconds, an input is checked. */
@@ -49,6 +61,7 @@ const TEXT_INPUTS: Record<Exclude<InputField, "entryPoint">, string> = {
 	unfilteredHistory: "#input-unfiltered",
 	opModes: "#input-opmodes",
 	localState: "#input-localstate",
+	startDate: "#input-start-date",
 	runAfter: "#input-runafter",
 	instructionJobSeconds: "#input-instruction-job-seconds",
 	placeholders: "#input-placeholders",
@@ -66,6 +79,7 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	unfilteredHistory: "history",
 	opModes: "environment",
 	localState: "environment",
+	startDate: "environment",
 	runAfter: "environment",
 	instructionJobSeconds: "environment",
 	placeholders: "environment",
@@ -93,6 +107,7 @@ const FIELD_CHECKS: Partial<
 	unfilteredHistory: (text) =>
 		parseDatumList(text, "Unfiltered History datum"),
 	nodeMetadata: (text) => parseMetadata(text, "Node metadata"),
+	startDate: (text) => parseStartDate(text),
 	runAfter: (text) => parseRunAfter(text),
 	instructionJobSeconds: (text) => parseInstructionJobSeconds(text),
 	placeholders: (text) => parsePlaceholders(text),
@@ -147,6 +162,59 @@ const SWITCH_PUBLISH_DESCS: Partial<Record<ControlPublishMode, string>> = {
 	Never: "The switch never publishes a datum.",
 	Change: "Each change of the switch's value publishes a datum, whatever started or stopped its mode.",
 };
+
+/** The browser storage key of the ids of the collapsed datum sources. */
+const COLLAPSED_SOURCES_KEY = "sn-filter-sim.collapsedSources";
+
+/** The Service Name and Source ID settings of a datum source. */
+const SOURCE_UID_KEY = "jobService.datumDataSource.uid";
+const SOURCE_ID_KEY = "jobService.datumDataSource.sourceId";
+
+/**
+ * The Publish choices of a datum source's controls, which post only their
+ * changes.
+ */
+const SOURCE_PUBLISH_MODES = PUBLISH_MODES.filter((m) => m.mode !== "Update");
+
+/** Find a setting in a form, including in its groups. */
+function findField(
+	fields: SettingField[],
+	key: string,
+): SettingField | undefined {
+	for (const f of fields) {
+		if (f.key === key) {
+			return f;
+		}
+		const found = f.fields ? findField(f.fields, key) : undefined;
+		if (found) {
+			return found;
+		}
+	}
+	return undefined;
+}
+
+/** The options of the input panel. */
+export interface InputPanelOptions {
+	/**
+	 * Get the Service Names of the simulated services that match a related
+	 * service filter, for a datum source setting's Choose menu.
+	 */
+	relatedServices(serviceFilter: string): string[];
+}
+
+/** A rendered datum source card. */
+interface SourceCard {
+	card: HTMLElement;
+	body: HTMLElement;
+	summary: HTMLElement;
+	alerts: HTMLElement;
+	fields: HTMLElement;
+	controls?: HTMLElement;
+	form?: SettingsForm;
+	renderer?: SettingsFormRenderer;
+	/** Increased for each form request, to ignore older answers. */
+	token: number;
+}
 
 /** The placeholder of a control's Value input, by control type. */
 const VALUE_PLACEHOLDERS: Record<ControlInput["type"], string> = {
@@ -206,6 +274,12 @@ export class InputPanel {
 	 * control field.
 	 */
 	readonly #invalid = new Map<string, InputTab>();
+	readonly #options: InputPanelOptions;
+	/** The datum source types, by factory UID. */
+	readonly #sourceTypes = new Map<string, DatumSourceTypeInfo>();
+	/** The rendered datum source cards, by datum source id. */
+	readonly #sourceCards = new Map<string, SourceCard>();
+	readonly #collapsedSources: Set<string>;
 	#finalState: SimulationState | null = null;
 
 	/**
@@ -213,10 +287,13 @@ export class InputPanel {
 	 *
 	 * @param inputs the inputs
 	 * @param ws the workspace, for the Entry Point select
+	 * @param options the options
 	 */
-	constructor(inputs: RunInputs, ws: Workspace) {
+	constructor(inputs: RunInputs, ws: Workspace, options: InputPanelOptions) {
 		this.#inputs = inputs;
 		this.#ws = ws;
+		this.#options = options;
+		this.#collapsedSources = this.#loadCollapsedSources();
 		this.#bindTabs();
 		this.#bindTextInputs();
 		this.#bindHistory();
@@ -224,6 +301,7 @@ export class InputPanel {
 		this.#bindDatumMetadata();
 		this.#bindControls();
 		this.#bindConductors();
+		this.#bindDatumSources();
 		this.#bindEntryPoint();
 		$("#use-final-state").addEventListener("click", () =>
 			this.useFinalState(),
@@ -257,7 +335,13 @@ export class InputPanel {
 	showError(e: InputError): void {
 		this.#showTab(e.tab);
 		this.#setInvalid(e.field, e.tab, e.message);
-		this.#fieldElement(e.field)?.focus();
+		const el = this.#fieldElement(e.field);
+		const source = el?.closest<HTMLElement>(".sim-datum-source-item")
+			?.dataset.datumSourceId;
+		if (source) {
+			this.#setSourceCollapsed(source, false);
+		}
+		el?.focus();
 	}
 
 	/* === Tabs === */
@@ -457,6 +541,7 @@ export class InputPanel {
 		this.#renderDatumMetadata();
 		this.#renderControls();
 		this.#renderConductors();
+		this.#renderDatumSources();
 		this.#renderEntryPoints();
 	}
 
@@ -802,6 +887,501 @@ export class InputPanel {
 		feedback.dataset.feedbackFor = field;
 		head.after(feedback);
 		return card;
+	}
+
+	/* === Datum Sources === */
+
+	#bindDatumSources(): void {
+		void getDatumSourceTypes()
+			.then((types) => {
+				for (const t of types) {
+					this.#sourceTypes.set(t.factoryUid, t);
+				}
+				this.#renderSourceTypes();
+				for (const [id, c] of this.#sourceCards) {
+					this.#refreshSourceHead(id, c);
+				}
+			})
+			.catch((e: unknown) => {
+				const item = element("li");
+				item.append(
+					element(
+						"span",
+						"dropdown-item-text text-danger small",
+						`The datum source types did not load: ${message(e)}`,
+					),
+				);
+				$("#datum-source-types").replaceChildren(item);
+			});
+		this.#renderDatumSources();
+	}
+
+	/** Render the Add a datum source menu. */
+	#renderSourceTypes(): void {
+		$("#datum-source-types").replaceChildren(
+			...[...this.#sourceTypes.values()].map((t) => {
+				const item = element("li");
+				const button = element("button", "dropdown-item");
+				button.type = "button";
+				if (t.description) {
+					button.title = t.description;
+				}
+				const icon = element(
+					"i",
+					`bi bi-${datumSourceIcon(t.factoryUid)} me-2`,
+				);
+				icon.setAttribute("aria-hidden", "true");
+				button.append(icon, t.name);
+				button.addEventListener("click", () =>
+					this.#addDatumSource(t.factoryUid),
+				);
+				item.append(button);
+				return item;
+			}),
+		);
+	}
+
+	#addDatumSource(factoryUid: string): void {
+		const item = this.#inputs.addDatumSource(factoryUid);
+		const card = this.#datumSourceItem(item);
+		$("#datum-source-list").append(card);
+		card.scrollIntoView({ block: "nearest" });
+	}
+
+	#renderDatumSources(): void {
+		this.#clearInvalid("sources");
+		this.#sourceCards.clear();
+		$("#datum-source-list").replaceChildren(
+			...this.#inputs.state.datumSources.map((d) =>
+				this.#datumSourceItem(d),
+			),
+		);
+		this.#refreshTabMarks();
+	}
+
+	#datumSource(id: string): DatumSourceInput | undefined {
+		return this.#inputs.state.datumSources.find((d) => d.id === id);
+	}
+
+	#loadCollapsedSources(): Set<string> {
+		try {
+			const ids: unknown = JSON.parse(
+				localStorage.getItem(COLLAPSED_SOURCES_KEY) ?? "[]",
+			);
+			if (Array.isArray(ids)) {
+				return new Set(
+					ids.filter((id): id is string => typeof id === "string"),
+				);
+			}
+		} catch {
+			// all expanded
+		}
+		return new Set();
+	}
+
+	#setSourceCollapsed(id: string, collapsed: boolean): void {
+		const c = this.#sourceCards.get(id);
+		if (!c || collapsed === this.#collapsedSources.has(id)) {
+			return;
+		}
+		if (collapsed) {
+			this.#collapsedSources.add(id);
+		} else {
+			this.#collapsedSources.delete(id);
+		}
+		this.#showSourceCollapsed(c, collapsed);
+		const known = new Set(this.#inputs.state.datumSources.map((d) => d.id));
+		try {
+			localStorage.setItem(
+				COLLAPSED_SOURCES_KEY,
+				JSON.stringify(
+					[...this.#collapsedSources].filter((i) => known.has(i)),
+				),
+			);
+		} catch {
+			// not saved
+		}
+	}
+
+	#showSourceCollapsed(c: SourceCard, collapsed: boolean): void {
+		c.body.hidden = collapsed;
+		c.card.classList.toggle("is-collapsed", collapsed);
+		const toggle = c.card.querySelector<HTMLElement>(
+			".sim-datum-source-collapse",
+		);
+		if (toggle) {
+			toggle.setAttribute("aria-expanded", String(!collapsed));
+			toggle.title = collapsed
+				? "Show the settings"
+				: "Hide the settings";
+			toggle.setAttribute("aria-label", toggle.title);
+			toggle.querySelector("i")!.className =
+				`bi bi-chevron-${collapsed ? "right" : "down"}`;
+		}
+	}
+
+	/**
+	 * Render a datum source card: its type, name, and schedule, with a
+	 * remove button, then its settings form, which collapses.
+	 */
+	#datumSourceItem(item: DatumSourceInput): HTMLElement {
+		const id = item.id;
+		const card = element("div", "card mb-2 sim-datum-source-item");
+		card.dataset.datumSourceId = id;
+
+		const head = element(
+			"div",
+			"card-header d-flex align-items-center gap-1 px-2 py-1",
+		);
+		const toggle = element(
+			"button",
+			"btn btn-sm btn-link sim-tool sim-datum-source-collapse",
+		);
+		toggle.type = "button";
+		toggle.append(element("i"));
+		toggle.addEventListener("click", () =>
+			this.#setSourceCollapsed(id, !this.#collapsedSources.has(id)),
+		);
+		const icon = element(
+			"i",
+			`bi bi-${datumSourceIcon(item.factoryUid)} sim-datum-source-icon`,
+		);
+		icon.setAttribute("aria-hidden", "true");
+		const titles = element("div", "flex-grow-1 sim-datum-source-titles");
+		const type = element("div", "small fw-semibold text-truncate");
+		type.dataset.sourceType = "";
+		const summary = element(
+			"div",
+			"small text-body-secondary text-truncate",
+		);
+		titles.append(type, summary);
+		// the header shows and hides the settings too
+		titles.addEventListener("click", () => toggle.click());
+		const remove = element(
+			"button",
+			"btn btn-sm btn-link text-body-secondary sim-tool",
+		);
+		remove.type = "button";
+		remove.title = "Remove this datum source";
+		remove.setAttribute("aria-label", remove.title);
+		remove.append(element("i", "bi bi-trash"));
+		remove.addEventListener("click", () => {
+			this.#inputs.removeDatumSource(id);
+			this.#sourceCards.delete(id);
+			card.remove();
+			this.#clearInvalid("sources", id);
+			this.#refreshTabMarks();
+			this.#refreshControlChoices();
+		});
+		head.append(toggle, icon, titles, remove);
+
+		const body = element("div", "card-body p-2");
+		const alerts = element("div");
+		const fields = element("div", "sim-datum-source-form");
+		fields.append(
+			element(
+				"div",
+				"small text-body-secondary",
+				"Loading the settings…",
+			),
+		);
+		body.append(alerts, fields);
+
+		const c: SourceCard = { card, body, summary, alerts, fields, token: 0 };
+		if (
+			this.#sourceTypes
+				.get(item.factoryUid)
+				?.capabilities?.includes("Controls")
+		) {
+			c.controls = this.#sourceControls(item);
+			body.append(c.controls);
+		}
+		card.append(head, body);
+		this.#sourceCards.set(id, c);
+		this.#showSourceCollapsed(c, this.#collapsedSources.has(id));
+		this.#refreshSourceHead(id, c);
+		this.#checkSchedule(id);
+		void this.#loadSourceForm(id, true);
+		return card;
+	}
+
+	/** Show a datum source's type, name, and schedule in its header. */
+	#refreshSourceHead(id: string, c: SourceCard): void {
+		const item = this.#datumSource(id);
+		if (!item) {
+			return;
+		}
+		const type = this.#sourceTypes.get(item.factoryUid);
+		const typeEl = c.card.querySelector<HTMLElement>("[data-source-type]");
+		if (typeEl) {
+			typeEl.textContent = type?.name ?? item.factoryUid;
+		}
+		if (!c.controls && type?.capabilities?.includes("Controls")) {
+			c.controls = this.#sourceControls(item);
+			c.body.append(c.controls);
+			this.#refreshSourceControls(id, c);
+		}
+		const value = (key: string): string => {
+			const v = item.settings[key];
+			if (v !== undefined) {
+				return v.trim();
+			}
+			const field = c.form ? findField(c.form.fields, key) : undefined;
+			return (field?.value ?? field?.defaultValue ?? "").trim();
+		};
+		const name = value(SOURCE_UID_KEY) || value(SOURCE_ID_KEY);
+		const schedule =
+			item.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
+		const parts = [];
+		if (name) {
+			parts.push(name);
+		}
+		if (schedule.trim()) {
+			parts.push(scheduleText(schedule));
+		}
+		c.summary.textContent = parts.join(" · ");
+		c.summary.title = c.summary.textContent;
+	}
+
+	/** Check a datum source's Schedule, which the form also marks. */
+	#checkSchedule(id: string): void {
+		const item = this.#datumSource(id);
+		if (!item) {
+			return;
+		}
+		this.#setInvalid(
+			scheduleField(id),
+			"sources",
+			scheduleProblem(item.settings[SCHEDULE_KEY]) ?? undefined,
+		);
+	}
+
+	/**
+	 * Get a datum source's settings form, to show it or else its problems.
+	 *
+	 * @param id the datum source's id
+	 * @param render `true` to render the form, `false` to only show its
+	 *     problems and the controls
+	 */
+	async #loadSourceForm(id: string, render: boolean): Promise<void> {
+		const c = this.#sourceCards.get(id);
+		const item = this.#datumSource(id);
+		if (!c || !item) {
+			return;
+		}
+		const token = ++c.token;
+		let form: SettingsForm;
+		try {
+			form = await getSettingsForm(item.factoryUid, item.settings);
+		} catch (e) {
+			if (token === c.token && render) {
+				c.fields.replaceChildren(
+					element(
+						"div",
+						"alert alert-danger py-1 px-2 small mb-0",
+						`The settings did not load: ${message(e)}`,
+					),
+				);
+			}
+			return;
+		}
+		if (token !== c.token || this.#sourceCards.get(id) !== c) {
+			return;
+		}
+		c.form = form;
+		if (render) {
+			c.renderer = new SettingsFormRenderer(this.#sourceFormHost(id));
+			c.fields.replaceChildren(...c.renderer.render(form.fields));
+			const schedule = c.renderer.control(SCHEDULE_KEY);
+			if (schedule) {
+				schedule.dataset.inputField = scheduleField(id);
+			}
+		}
+		c.alerts.replaceChildren();
+		if (form.limitation) {
+			c.alerts.append(
+				element(
+					"div",
+					"alert alert-info py-1 px-2 small mb-2",
+					form.limitation,
+				),
+			);
+		}
+		this.#showSourceProblems(id, c);
+		const controlIds = form.controlIds ?? [];
+		if (controlIds.join("\n") !== item.controlIds.join("\n")) {
+			this.#inputs.updateDatumSource(id, { controlIds });
+			this.#refreshControlChoices();
+		}
+		this.#refreshSourceControls(id, c);
+		this.#refreshSourceHead(id, c);
+	}
+
+	/** Mark the settings with problems, and the tab. */
+	#showSourceProblems(id: string, c: SourceCard): void {
+		const item = this.#datumSource(id);
+		if (!item) {
+			return;
+		}
+		const problems = [...(c.form?.problems ?? [])];
+		const schedule = scheduleProblem(item.settings[SCHEDULE_KEY]);
+		if (schedule) {
+			problems.push({
+				key: SCHEDULE_KEY,
+				code: "Schedule",
+				message: schedule,
+			});
+		}
+		c.renderer?.showProblems(problems);
+		const key = `${id}#form`;
+		if (c.form?.problems.length) {
+			this.#invalid.set(key, "sources");
+		} else {
+			this.#invalid.delete(key);
+		}
+		this.#checkSchedule(id);
+	}
+
+	#sourceFormHost(id: string): SettingsFormHost {
+		return {
+			settings: () => this.#datumSource(id)?.settings ?? {},
+			edit: (changes, _mergeKey, rerender) => {
+				this.#inputs.editDatumSourceSettings(id, changes);
+				const c = this.#sourceCards.get(id);
+				if (!c) {
+					return;
+				}
+				this.#refreshSourceHead(id, c);
+				if (rerender) {
+					void this.#loadSourceForm(id, true);
+					return;
+				}
+				this.#showSourceProblems(id, c);
+				const key = `${id}#validate`;
+				window.clearTimeout(this.#timers.get(key));
+				this.#timers.set(
+					key,
+					window.setTimeout(() => {
+						this.#timers.delete(key);
+						void this.#loadSourceForm(id, false);
+					}, VALIDATE_DELAY),
+				);
+			},
+			relatedServices: (serviceFilter) =>
+				this.#options.relatedServices(serviceFilter),
+		};
+	}
+
+	/**
+	 * Render the Publish and Persist inputs of a datum source's controls, and
+	 * the list of its control IDs.
+	 */
+	#sourceControls(item: DatumSourceInput): HTMLElement {
+		const id = item.id;
+		const section = element("div", "sim-group mt-2");
+		const heading = element(
+			"div",
+			"form-label small fw-semibold mb-0",
+			"Controls",
+		);
+		const ids = element("div", "form-text mt-0 sim-datum-source-controls");
+
+		const row = element("div", "d-flex gap-2 align-items-end mt-1");
+		const publishId = `source-publish-${id}`;
+		const publishCol = element("div", "sim-control-type");
+		const publishLabel = element(
+			"label",
+			"form-label small fw-semibold mb-0",
+			"Publish",
+		);
+		publishLabel.htmlFor = publishId;
+		const publish = element("select", "form-select form-select-sm");
+		publish.id = publishId;
+		publish.append(
+			...SOURCE_PUBLISH_MODES.map((m) => {
+				const option = new Option(m.label, m.mode);
+				option.title = m.desc;
+				return option;
+			}),
+		);
+		publish.value = item.publish === "Never" ? "Never" : "Change";
+		publishCol.append(publishLabel, publish);
+
+		const persistId = `source-persist-${id}`;
+		const persistCheck = element("div", "form-check mb-1");
+		const persist = element("input", "form-check-input");
+		persist.type = "checkbox";
+		persist.id = persistId;
+		persist.checked = item.persist;
+		const persistLabel = element(
+			"label",
+			"form-check-label small",
+			"Persist",
+		);
+		persistLabel.htmlFor = persistId;
+		persistCheck.title =
+			"Persist the published datum. A node's Control datum source does not by default.";
+		persistCheck.append(persist, persistLabel);
+		row.append(publishCol, persistCheck);
+		const desc = element("div", "form-text mt-1");
+		const showPublish = () => {
+			const mode = publish.value as ControlPublishMode;
+			desc.textContent =
+				mode === "Never"
+					? "Its controls never publish a datum."
+					: "Each change of a control's value publishes a datum, as the datum source posts only changes.";
+			persistCheck.hidden = mode === "Never";
+		};
+		publish.addEventListener("change", () => {
+			showPublish();
+			this.#inputs.updateDatumSource(id, {
+				publish: publish.value as ControlPublishMode,
+			});
+		});
+		persist.addEventListener("change", () =>
+			this.#inputs.updateDatumSource(id, { persist: persist.checked }),
+		);
+		showPublish();
+		section.append(heading, ids, row, desc);
+		return section;
+	}
+
+	/** Show the control IDs a datum source provides. */
+	#refreshSourceControls(id: string, c: SourceCard): void {
+		const el = c.controls?.querySelector<HTMLElement>(
+			".sim-datum-source-controls",
+		);
+		const item = this.#datumSource(id);
+		if (!el || !item) {
+			return;
+		}
+		const controlIds = item.controlIds;
+		if (!controlIds.length) {
+			el.textContent =
+				"Set the control IDs to set and read the datum source with instructions, like a Control Updater's.";
+			return;
+		}
+		const own = new Set(
+			this.#inputs.state.controls.map((ctl) => ctl.controlId.trim()),
+		);
+		el.replaceChildren(
+			controlIds.length === 1 ? "Its control: " : "Its controls: ",
+		);
+		controlIds.forEach((controlId, i) => {
+			if (i > 0) {
+				el.append(", ");
+			}
+			el.append(element("code", undefined, controlId));
+			if (own.has(controlId)) {
+				const warning = element(
+					"span",
+					"text-warning-emphasis",
+					" (also a control in the Controls tab, which is used instead)",
+				);
+				el.append(warning);
+			}
+		});
+		el.append(".");
 	}
 
 	/* === Controls === */
@@ -1247,6 +1827,9 @@ export class InputPanel {
 			...this.#inputs.controlIds.map((id) => new Option(id)),
 		);
 		this.#checkConductors();
+		for (const [id, c] of this.#sourceCards) {
+			this.#refreshSourceControls(id, c);
+		}
 	}
 
 	/** Create a small label, with help as its tooltip. */

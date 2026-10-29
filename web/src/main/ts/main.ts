@@ -196,7 +196,10 @@ class App {
 			conductorUids: () => inputs.conductorUids,
 			addConductor: (uid) => this.#inputPanel.addConductor(uid),
 		});
-		this.#inputPanel = new InputPanel(inputs, ws);
+		this.#inputPanel = new InputPanel(inputs, ws, {
+			relatedServices: (serviceFilter) =>
+				this.#relatedServices(serviceFilter),
+		});
 		this.#results = new ResultsPanel($("#results"), ws);
 		this.#capture = new CapturePanel($("#capture"));
 		this.#renderPalette(types);

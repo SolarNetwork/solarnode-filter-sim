@@ -66,8 +66,8 @@ The main TypeScript modules are:
 | `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
 | `settingsForm.ts` | The settings form fields of a filter or datum source, rendered from `/api/settings-form`, which edit a settings map: help, notes, resets, dynamic lists, and Choose menus. |
-| `inputs.ts`    | The run inputs (datum, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
-| `inputPanel.ts` | The input tabs and the Entry Point select. |
+| `inputs.ts`    | The run inputs (datum, datum sources, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
+| `inputPanel.ts` | The input tabs, including the datum source cards, and the Entry Point select. |
 | `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
 | `debug.ts`     | Debug mode: the cursor positions, the node state rebuilt at each filter step, and the state tabs. |
 | `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, and instruction lists. |
