@@ -1091,7 +1091,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 								.formatted(SimulationMessage.quoted(uid)),
 						null, null);
 			}
-			context.registerService(new SimMetadataService(uid, meta));
+			context.registerMetadataService(new SimMetadataService(uid, meta));
 		}
 	}
 

@@ -74,7 +74,7 @@ import net.solarnetwork.util.StringUtils;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class SimNodeControlService implements NodeControlProvider, InstructionHandler {
 
@@ -255,12 +255,33 @@ public class SimNodeControlService implements NodeControlProvider, InstructionHa
 		if ( !handlesTopic(instruction.getTopic()) ) {
 			return null;
 		}
+		final Control control = handlingControl(instruction);
+		if ( control == null ) {
+			return null;
+		}
+		final boolean ok = set(control, instruction.getParameterValue(control.controlId));
+		return InstructionUtils.createStatus(instruction,
+				ok ? InstructionState.Completed : InstructionState.Declined);
+	}
+
+	/**
+	 * Get the ID of the control that handles an instruction.
+	 *
+	 * @param instruction
+	 *        the instruction
+	 * @return the control ID, or {@code null} if no control handles it
+	 */
+	public @Nullable String handlingControlId(Instruction instruction) {
+		final Control control = (handlesTopic(instruction.getTopic()) ? handlingControl(instruction)
+				: null);
+		return (control != null ? control.controlId : null);
+	}
+
+	private @Nullable Control handlingControl(Instruction instruction) {
 		// like asking one Mock control after another
 		for ( Control control : controls.values() ) {
 			if ( instruction.isParameterAvailable(control.controlId) ) {
-				final boolean ok = set(control, instruction.getParameterValue(control.controlId));
-				return InstructionUtils.createStatus(instruction,
-						ok ? InstructionState.Completed : InstructionState.Declined);
+				return control;
 			}
 		}
 		return null;

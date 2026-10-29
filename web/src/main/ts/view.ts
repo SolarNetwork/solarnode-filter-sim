@@ -6,9 +6,11 @@ import type {
 	ControlInfo,
 	DatumOrigin,
 	FilterBundleInfo,
+	InstructionHandlerInfo,
 	InstructionInfo,
 	InstructionRun,
 	MessageLevel,
+	OpModeChange,
 	SamplesInfo,
 	SimulationMessage,
 } from "./model.ts";
@@ -415,6 +417,41 @@ export function instructionLabel(instruction: InstructionInfo): string {
 }
 
 /**
+ * Name the component that handled an instruction, like `the Control Conductor
+ * "HVAC DR"`.
+ *
+ * @param handler the handler
+ * @returns the name, starting with a lowercase letter
+ */
+export function handlerLabel(handler: InstructionHandlerInfo): string {
+	switch (handler.type) {
+		case "Reactor":
+			return "the reactor";
+		case "OperationalModes":
+			return "the operational modes service";
+		case "Metadata":
+			return `the metadata service ${quoted(handler.name ?? "")}`;
+		case "Control":
+			return `control ${handler.name ?? ""}`;
+		case "Conductor":
+			return `the Control Conductor ${quoted(handler.name ?? "")}`;
+	}
+}
+
+/**
+ * Describe a change to the active operational modes, like `+boost −eco`.
+ *
+ * @param change the change
+ * @returns the description
+ */
+export function opModesText(change: OpModeChange): string {
+	return [
+		...(change.enabled ?? []).map((m) => `+${m}`),
+		...(change.disabled ?? []).map((m) => `−${m}`),
+	].join(" ");
+}
+
+/**
  * Describe where a datum published during an instruction run came from, like
  * "Published by control /hvac/1/mode, set by Control Conductor "HVAC DR" task
  * 1 at 2025-10-01 00:09:00Z".
@@ -482,6 +519,15 @@ export function instructionsList(
 				instr.state ?? "not handled: no control or service handles it",
 			),
 		);
+		if (instr.handler) {
+			heading.append(
+				element(
+					"span",
+					"text-body-secondary",
+					`handled by ${handlerLabel(instr.handler)}`,
+				),
+			);
+		}
 		if (instr.executeAt) {
 			heading.append(
 				element(

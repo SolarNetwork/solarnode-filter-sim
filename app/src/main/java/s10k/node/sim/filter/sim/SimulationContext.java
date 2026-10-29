@@ -33,6 +33,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.util.AntPathMatcher;
+import s10k.node.sim.filter.domain.InstructionHandlerInfo;
 import s10k.node.sim.filter.registry.FilterContext;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.dao.DefaultTransientSettingDao;
@@ -74,7 +75,7 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  * </p>
  *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 public final class SimulationContext implements FilterContext {
 
@@ -179,7 +180,7 @@ public final class SimulationContext implements FilterContext {
 				new StaticOptionalService<>(datumMetadataService));
 
 		this.controlService = new SimNodeControlService(clock);
-		this.instructionService = new SimInstructionService(clock, controlService);
+		this.instructionService = new SimInstructionService(clock);
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
 		// the node's own placeholder service, without its cache, so placeholders
@@ -192,9 +193,13 @@ public final class SimulationContext implements FilterContext {
 			return (owner != null ? owner.get() : null);
 		});
 		this.nodeMetadataService = new SimMetadataService(SimMetadataService.NODE_METADATA_SERVICE_UID,
-				nodeMetadata);
-		registerService(nodeMetadataService);
+				nodeMetadata, true);
+		instructionService.addHandler(InstructionHandlerInfo.Type.OperationalModes, opModesService,
+				_ -> null);
+		registerMetadataService(nodeMetadataService);
 		registerService(controlService);
+		instructionService.addHandler(InstructionHandlerInfo.Type.Control, controlService,
+				controlService::handlingControlId);
 		this.expressionServices = new StaticOptionalServiceCollection<>(List.of(expressionService));
 		this.tariffScheduleProviders = new SimServiceTracker<>(TariffScheduleProvider.class, services,
 				true);
@@ -212,6 +217,18 @@ public final class SimulationContext implements FilterContext {
 	 */
 	public void registerService(Object service) {
 		services.add(service);
+	}
+
+	/**
+	 * Register a metadata service, as a service and an instruction handler.
+	 *
+	 * @param service
+	 *        the service
+	 */
+	public void registerMetadataService(SimMetadataService service) {
+		registerService(service);
+		instructionService.addHandler(InstructionHandlerInfo.Type.Metadata, service,
+				_ -> service.getUid());
 	}
 
 	/**

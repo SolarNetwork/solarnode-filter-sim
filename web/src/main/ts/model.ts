@@ -492,6 +492,20 @@ export interface LocalStateChange {
 	previousValue?: unknown;
 }
 
+/** The kinds of simulated component that handle instructions. */
+export type InstructionHandlerType =
+	"Reactor" | "OperationalModes" | "Metadata" | "Control" | "Conductor";
+
+/** The simulated component that gave an instruction its status. */
+export interface InstructionHandlerInfo {
+	type: InstructionHandlerType;
+	/**
+	 * The control ID of a control, or the Service Name of a Control Conductor
+	 * or metadata service.
+	 */
+	name?: string;
+}
+
 /** An instruction issued by a filter. */
 export interface InstructionInfo {
 	/**
@@ -520,6 +534,11 @@ export interface InstructionInfo {
 	conductor?: string;
 	/** For a Control Conductor task's `Signal`, the task number, from 1. */
 	task?: number;
+	/**
+	 * The component that gave the instruction its status when it was
+	 * executed, or missing if none did.
+	 */
+	handler?: InstructionHandlerInfo;
 }
 
 /** A stored instruction the simulated Instruction Execution Job ran. */
@@ -536,6 +555,8 @@ export interface InstructionRun {
 	controls?: ControlUpdate[];
 	/** The sequence numbers of the datum published while it ran. */
 	generated?: number[];
+	/** The change to the active operational modes while it ran. */
+	opModes?: OpModeChange;
 	/** The datum whose filter step issued the instruction. */
 	datumSeq?: number;
 	/** The ID of the filter step that issued the instruction. */

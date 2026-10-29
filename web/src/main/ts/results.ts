@@ -33,11 +33,13 @@ import {
 	formatDuration,
 	formatTimestamp,
 	formatValue,
+	handlerLabel,
 	instructionLabel,
 	instructionOriginText,
 	instructionsList,
 	LEVEL_CLASSES,
 	messageItem,
+	opModesText,
 	quoted,
 	SAMPLE_TYPES,
 	samplesLine,
@@ -1534,11 +1536,11 @@ export class ResultsPanel extends EventTarget {
 			);
 		}
 		if (step.opModes) {
-			const modes = [
-				...(step.opModes.enabled ?? []).map((m) => `+${m}`),
-				...(step.opModes.disabled ?? []).map((m) => `−${m}`),
-			];
-			chip(`modes: ${modes.join(" ")}`, "", "Operational modes changed");
+			chip(
+				`modes: ${opModesText(step.opModes)}`,
+				"",
+				"Operational modes changed",
+			);
 		}
 		for (const ls of step.localState ?? []) {
 			chip(
@@ -1765,6 +1767,15 @@ export class ResultsPanel extends EventTarget {
 			),
 		);
 		const chips = element("span", "d-flex flex-wrap gap-1");
+		if (run.opModes) {
+			const el = element(
+				"span",
+				"sim-chip",
+				`modes: ${opModesText(run.opModes)}`,
+			);
+			el.title = "Operational modes changed";
+			chips.append(el);
+		}
 		for (const c of run.controls ?? []) {
 			const changed = c.previousValue !== c.value;
 			const el = element(
@@ -2053,6 +2064,9 @@ function instructionTitle(
 	instructions: readonly InstructionInfo[],
 ): string {
 	const lines: string[] = [];
+	if (instr.handler) {
+		lines.push(`Handled by ${handlerLabel(instr.handler)}`);
+	}
 	if (instr.message) {
 		lines.push(instr.message + (instr.code ? ` (${instr.code})` : ""));
 	}

@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import net.solarnetwork.domain.InstructionStatus.InstructionState;
@@ -41,18 +42,21 @@ import net.solarnetwork.node.reactor.InstructionStatus;
 import net.solarnetwork.node.reactor.InstructionUtils;
 import net.solarnetwork.node.reactor.ReactorService;
 import net.solarnetwork.util.StringUtils;
+import s10k.node.sim.filter.domain.InstructionHandlerInfo;
 import s10k.node.sim.filter.domain.InstructionInfo;
 
 /**
  * Simulated instruction execution and reactor services.
  *
  * <p>
- * Executed instructions go to the handlers in order (the simulated controls,
- * then the Control Conductors), like SolarNode's
- * {@code SimpleInstructionExecutionService}: the first status that is not
- * {@code null} wins, so an instruction no handler handles has no status. Topics
- * no handler can handle, other than {@code SetControlParameter},
- * {@code OrchestrateControls}, and {@code Signal}, complete successfully.
+ * Executed instructions go to the handlers in order, like SolarNode's
+ * {@code SimpleInstructionExecutionService} asks its handlers in service order:
+ * the operational modes service, the metadata services, the simulated controls,
+ * and then the Control Conductors ({@link InstructionHandlerInfo.Type}). The
+ * first status that is not {@code null} wins, so an instruction no handler
+ * handles has no status. Topics no handler can handle, other than
+ * {@code SetControlParameter}, {@code OrchestrateControls}, and {@code Signal},
+ * complete successfully.
  * </p>
  *
  * <p>
@@ -76,11 +80,12 @@ import s10k.node.sim.filter.domain.InstructionInfo;
  *
  * <p>
  * Each instruction gets a number, from {@code 1}, and the listener gets its
- * {@link InstructionInfo} every time it is stored or executed.
+ * {@link InstructionInfo} every time it is stored or executed, with the handler
+ * that gave it its status.
  * </p>
  *
  * @author matt
- * @version 2.0
+ * @version 2.1
  */
 public class SimInstructionService
 		implements InstructionExecutionService, ReactorService, InstructionHandler {
@@ -175,9 +180,25 @@ public class SimInstructionService
 
 	}
 
+	/**
+	 * An instruction handler.
+	 *
+	 * @param type
+	 *        the kind of handler, which sets its place in the order
+	 * @param handler
+	 *        the handler
+	 * @param name
+	 *        gives the name of what in the handler handled an instruction
+	 */
+	private record Handler(InstructionHandlerInfo.Type type, InstructionHandler handler,
+			Function<Instruction, @Nullable String> name) {
+
+	}
+
 	private final InstantSource clock;
-	private final List<InstructionHandler> handlers = new ArrayList<>(4);
+	private final List<Handler> handlers = new ArrayList<>(8);
 	private final List<ControlConductor> conductors = new ArrayList<>(2);
+	private final Map<Integer, InstructionHandlerInfo> handledBy = new HashMap<>(16);
 	private final Map<String, Integer> numbers = new HashMap<>(16);
 	private final Map<Integer, @Nullable Integer> parents = new HashMap<>(16);
 	private final Map<Integer, StoredInstruction> stored = new LinkedHashMap<>(16);
@@ -192,13 +213,37 @@ public class SimInstructionService
 	 * @param clock
 	 *        the clock, for the date stored instructions without an execution
 	 *        date are due
-	 * @param controls
-	 *        the handler of {@code SetControlParameter} instructions
 	 */
-	public SimInstructionService(InstantSource clock, InstructionHandler controls) {
+	public SimInstructionService(InstantSource clock) {
 		super();
 		this.clock = clock;
-		handlers.add(controls);
+	}
+
+	/**
+	 * Add an instruction handler, after the handlers of its type and the types
+	 * before it.
+	 *
+	 * @param type
+	 *        the kind of handler; {@link InstructionHandlerInfo.Type#Reactor}
+	 *        is this service itself, so is not allowed
+	 * @param handler
+	 *        the handler
+	 * @param name
+	 *        gives the name of what in the handler gave an instruction its
+	 *        status, such as a control ID, or {@code null}
+	 * @throws IllegalArgumentException
+	 *         if {@code type} is {@code Reactor}
+	 */
+	public void addHandler(InstructionHandlerInfo.Type type, InstructionHandler handler,
+			Function<Instruction, @Nullable String> name) {
+		if ( type == InstructionHandlerInfo.Type.Reactor ) {
+			throw new IllegalArgumentException("The reactor is not added as a handler.");
+		}
+		int i = handlers.size();
+		while ( i > 0 && handlers.get(i - 1).type.compareTo(type) > 0 ) {
+			i--;
+		}
+		handlers.add(i, new Handler(type, handler, name));
 	}
 
 	/**
@@ -208,7 +253,7 @@ public class SimInstructionService
 	 *        the conductor
 	 */
 	public void addConductor(ControlConductor conductor) {
-		handlers.add(conductor);
+		addHandler(InstructionHandlerInfo.Type.Conductor, conductor, _ -> conductor.getUid());
 		conductors.add(conductor);
 	}
 
@@ -235,13 +280,14 @@ public class SimInstructionService
 				status = processInstruction(instruction);
 				return status;
 			}
-			for ( InstructionHandler handler : handlers ) {
-				if ( !handler.handlesTopic(topic) ) {
+			for ( Handler h : handlers ) {
+				if ( !h.handler.handlesTopic(topic) ) {
 					continue;
 				}
 				handled = true;
-				status = handler.processInstruction(instruction);
+				status = h.handler.processInstruction(instruction);
 				if ( status != null ) {
+					handledBy.put(number, new InstructionHandlerInfo(h.type, h.name.apply(instruction)));
 					break;
 				}
 			}
@@ -278,6 +324,7 @@ public class SimInstructionService
 			// SimpleReactorService handles CancelInstruction, even when deferred
 			final int number = number(instruction);
 			final InstructionStatus status = cancel(instruction);
+			handledBy.put(number, new InstructionHandlerInfo(InstructionHandlerInfo.Type.Reactor, null));
 			record(instruction, number, status.getInstructionState(), status, null);
 			return status;
 		}
@@ -584,7 +631,7 @@ public class SimInstructionService
 		}
 		return new InstructionInfo(number, instruction.getId(), topic != null ? topic : "", params,
 				state != null ? state.name() : null, parents.get(number), executeAt, message, code,
-				conductor, task);
+				conductor, task, handledBy.get(number));
 	}
 
 	/**
