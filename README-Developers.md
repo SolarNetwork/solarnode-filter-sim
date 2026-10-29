@@ -371,7 +371,10 @@ distribution sets the executable's mode explicitly.
 A native image only has the reflection metadata that Spring's AOT processing and
 `SimulatorRuntimeHints` give it, so an expression can fail natively that works on the JVM. The
 `nativeSmokeTest` task builds the executable (if needed), starts it on a free port, and runs
-the smoke fixtures through `/api/simulate`:
+each smoke fixture twice: through `/api/simulate`, and as a background run through the runs API,
+as the UI does (following its events, then getting its result and both downloads). It then runs
+the `datum-sources` fixture for an hour of simulated time, so the result is over 200 datum, and
+checks that the runs API's result, with the traces it loads by number, matches `/api/simulate`'s:
 
 ```sh
 GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeSmokeTest

@@ -469,27 +469,34 @@ abstract class NativeSmokeTest extends DefaultTask {
 				def name = f.name - '.json'
 				// commands kept with the fixtures are referred to by this token
 				def body = f.text.replace('@FIXTURES@', f.parentFile.absolutePath)
-				def req = java.net.http.HttpRequest.newBuilder(URI.create("${base}/simulate"))
-						.header('Content-Type', 'application/json')
-						.POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
-						.build()
-				def res = http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString())
-				if ( res.statusCode() != 200 ) {
-					failures << "${name}: HTTP ${res.statusCode()}: ${res.body()}"
-					return
-				}
-				def actual = summary(new groovy.json.JsonSlurper().parseText(res.body()))
 				def expected = new groovy.json.JsonSlurper().parse(
 						new File(f.parentFile, "${name}.expected.json"))
-				if ( actual != expected ) {
-					new File(reports, "${name}.actual.json").text =
-							groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(actual))
-					def diffs = []
-					differences('', expected, actual, diffs)
-					failures << "${name}: the result differs from ${name}.expected.json:\n  " +
-							diffs.take(20).join('\n  ')
-				} else {
-					logger.lifecycle("${name}: OK")
+				// each fixture runs at once, and as a background run, as the UI does
+				try {
+					compare(name, expected, summary(simulate(http, base, body)), reports, failures)
+					compare("${name} (runs API)", expected, summary(run(http, base, body)), reports,
+							failures)
+				} catch ( GradleException e ) {
+					failures << "${name}: ${e.message}"
+				}
+			}
+			// over 200 datum, a run's result has the first traces and an index, and the
+			// others are loaded by number
+			def large = fixtureFiles().find { it.name == 'datum-sources.json' }
+			if ( large != null ) {
+				def request = new groovy.json.JsonSlurper().parse(large)
+				request.options.runAfter = 'PT1H'
+				def body = groovy.json.JsonOutput.toJson(request)
+				try {
+					def expected = summary(simulate(http, base, body))
+					if ( expected.datum.size() <= 200 ) {
+						failures << "large run: only ${expected.datum.size()} datum"
+					} else {
+						compare('large run (runs API)', expected, summary(run(http, base, body)),
+								reports, failures)
+					}
+				} catch ( GradleException e ) {
+					failures << "large run: ${e.message}"
 				}
 			}
 			if ( failures ) {
@@ -502,6 +509,99 @@ abstract class NativeSmokeTest extends DefaultTask {
 				process.destroyForcibly()
 			}
 		}
+	}
+
+	protected void compare(String name, Object expected, Object actual, File reports,
+			List failures) {
+		if ( actual != expected ) {
+			new File(reports, "${name.replaceAll(/[^\w-]+/, '-')}.actual.json").text =
+					groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(actual))
+			def diffs = []
+			differences('', expected, actual, diffs)
+			failures << "${name}: the result differs from the expected one:\n  " +
+					diffs.take(20).join('\n  ')
+		} else {
+			logger.lifecycle("${name}: OK")
+		}
+	}
+
+	protected static Object send(def http, java.net.http.HttpRequest req) {
+		def res = http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString())
+		if ( res.statusCode() != 200 ) {
+			throw new GradleException("${req.method()} ${req.uri().path}: HTTP ${res.statusCode()}: ${res.body()}")
+		}
+		return new groovy.json.JsonSlurper().parseText(res.body())
+	}
+
+	protected static Object get(def http, String url) {
+		return send(http, java.net.http.HttpRequest.newBuilder(URI.create(url)).build())
+	}
+
+	protected static Object post(def http, String url, String body) {
+		return send(http, java.net.http.HttpRequest.newBuilder(URI.create(url))
+				.header('Content-Type', 'application/json')
+				.POST(java.net.http.HttpRequest.BodyPublishers.ofString(body))
+				.build())
+	}
+
+	/** Run a request with {@code /api/simulate}. */
+	protected static Map simulate(def http, String base, String body) {
+		return post(http, "${base}/simulate", body)
+	}
+
+	/**
+	 * Run a request with the runs API, like the UI: start it, follow its events
+	 * until it is done, get its result, load the traces it leaves out, and
+	 * download its datum.
+	 */
+	protected static Map run(def http, String base, String body) {
+		def id = post(http, "${base}/runs", body).id
+		def events = http.send(java.net.http.HttpRequest.newBuilder(
+				URI.create("${base}/runs/${id}/events")).build(),
+				java.net.http.HttpResponse.BodyHandlers.ofLines())
+		def done = null
+		String event = null
+		events.body().withCloseable { lines ->
+			for ( String line : lines.iterator() ) {
+				if ( line.startsWith('event:') ) {
+					event = line.substring(6).trim()
+				} else if ( line.startsWith('data:') && event == 'done' ) {
+					done = new groovy.json.JsonSlurper().parseText(line.substring(5).trim())
+					break
+				}
+			}
+		}
+		if ( done?.state != 'Done' ) {
+			throw new GradleException("run ${id} ended with ${done}")
+		}
+		if ( get(http, "${base}/runs/${id}/progress").state != 'Done' ) {
+			throw new GradleException("run ${id} progress is not Done")
+		}
+		Map result = get(http, "${base}/runs/${id}")
+		if ( result.index != null ) {
+			if ( result.filterStats == null ) {
+				throw new GradleException("run ${id} has an index but no filterStats")
+			}
+			def traces = result.datum.collectEntries { [(it.seq): it] }
+			def missing = result.index.collect { it.seq }.findAll { !traces.containsKey(it) }
+			missing.collate(200).each { seqs ->
+				get(http, "${base}/runs/${id}/datum?seq=${seqs.join(',')}").each {
+					traces[it.seq] = it
+				}
+			}
+			result.datum = result.index.collect { traces[it.seq] }
+		}
+		def input = get(http, "${base}/runs/${id}/datum.json?kind=input")
+		if ( input.size() != result.stats.processed ) {
+			throw new GradleException(
+					"run ${id} has ${input.size()} input datum for ${result.stats.processed} processed")
+		}
+		def output = get(http, "${base}/runs/${id}/datum.json")
+		if ( output.size() > result.stats.output ) {
+			throw new GradleException(
+					"run ${id} has ${output.size()} output datum for ${result.stats.output} output")
+		}
+		return result
 	}
 
 	protected List<File> fixtureFiles() {
