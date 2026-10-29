@@ -24,6 +24,10 @@ settings.
 The **Schedule** is a cron expression, like `0 * * * * ?` to poll at the start of every minute, or
 a number of milliseconds between polls, like `30000` to poll every 30 seconds.
 
+Importing a SolarNode settings CSV file also adds its datum sources of these types to the tab,
+with their settings. See [Creating a simulation](./creating-a-simulation.md) for how the import
+adds or replaces them. Exports never include datum sources.
+
 ## Running with datum sources
 
 The simulation polls each datum source on its schedule, on the simulated clock, from the first

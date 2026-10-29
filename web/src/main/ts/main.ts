@@ -46,6 +46,7 @@ import {
 	type ExportStyle,
 	type FilterTypeInfo,
 	type RunProgress,
+	type SettingsImport,
 	type SimulationResult,
 	type UnavailableFilterType,
 } from "./model.ts";
@@ -147,6 +148,23 @@ function pollCounts(
 		}
 	}
 	return counts;
+}
+
+/**
+ * Name the input tabs that an import changed, which have no undo.
+ *
+ * @param result the import result
+ * @returns the tab names, like `Controls and Datum Sources tabs`
+ */
+function environmentTabs(result: SettingsImport): string {
+	const tabs: string[] = [];
+	if (result.controls?.length || result.conductors?.length) {
+		tabs.push("Controls");
+	}
+	if (result.datumSources?.length) {
+		tabs.push("Datum Sources");
+	}
+	return `${tabs.join(" and ")} tab${tabs.length === 1 ? "" : "s"}`;
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -498,8 +516,7 @@ class App {
 					? this.#ws.mergeConfig(result.config)
 					: this.#ws.importConfig(result.config);
 			const environmentNotes = this.#inputs.importEnvironment(
-				result.controls,
-				result.conductors,
+				result,
 				mode === "replace",
 			);
 			if (environmentNotes.length) {
@@ -527,7 +544,7 @@ class App {
 				showMessages({
 					title: "Settings imported",
 					summary: environmentNotes.length
-						? `${summary} You can undo the filter changes with Ctrl+Z, but not the Controls tab changes.`
+						? `${summary} You can undo the filter changes with Ctrl+Z, but not the ${environmentTabs(result)} changes.`
 						: `${summary} You can undo the import with Ctrl+Z.`,
 					notes,
 					messages: result.messages,

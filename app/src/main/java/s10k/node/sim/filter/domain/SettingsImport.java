@@ -41,12 +41,17 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the Control Conductors from the file's settings, for the simulation's
  *        environment, or {@code null} if there are none; the export never
  *        includes them
+ * @param datumSources
+ *        the datum sources from the file's settings of the supported datum
+ *        source types, for the simulation, or {@code null} if there are none;
+ *        the export never includes them
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SettingsImport(SimConfig config, List<SimulationMessage> messages,
 		List<IgnoredComponent> ignored, @Nullable List<NodeControlConfig> controls,
-		@Nullable List<ControlConductorConfig> conductors) {
+		@Nullable List<ControlConductorConfig> conductors,
+		@Nullable List<DatumSourceConfig> datumSources) {
 
 }

@@ -150,6 +150,11 @@ export interface SettingsImport {
 	controls?: NodeControlConfig[] | null;
 	/** The file's Control Conductors, for the Controls tab. */
 	conductors?: ControlConductorConfig[] | null;
+	/**
+	 * The file's datum sources of the supported types, for the Datum Sources
+	 * tab, with the current setting keys.
+	 */
+	datumSources?: DatumSourceConfig[] | null;
 }
 
 /** An External Settings file: a settings CSV file the simulation applies first. */
@@ -457,8 +462,11 @@ export interface SimulationOptions {
 
 /** A simulated SolarNode datum source, which the simulation polls. */
 export interface DatumSourceConfig {
-	/** The id of the datum source, unique in the request. */
-	id: string;
+	/**
+	 * The id of the datum source, unique in the request; an imported datum
+	 * source has none.
+	 */
+	id?: string | null;
 	/** The factory UID of the datum source type. */
 	factoryUid: string;
 	/** The SolarNode instance ID, or `null`. */

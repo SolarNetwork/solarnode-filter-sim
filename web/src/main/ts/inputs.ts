@@ -1382,24 +1382,29 @@ export class RunInputs extends EventTarget {
 	}
 
 	/**
-	 * Use the controls and Control Conductors of an imported settings CSV file.
+	 * Use the controls, Control Conductors, and datum sources of an imported
+	 * settings CSV file.
 	 *
 	 * Replacing the simulation's settings replaces the controls when the file
-	 * has controls, and the conductors when it has conductors. Adding the
-	 * settings replaces the controls with the same control ID, and the
-	 * conductors with the same Service Name (ignoring case), and adds the
-	 * others.
+	 * has controls, the conductors when it has conductors, and the datum
+	 * sources when it has datum sources. Adding the settings replaces the
+	 * controls with the same control ID, the conductors with the same Service
+	 * Name (ignoring case), and the datum sources with the same type and
+	 * instance ID, and adds the others.
 	 *
-	 * @param controls the file's controls
-	 * @param conductors the file's conductors
+	 * @param imported the file's controls, conductors, and datum sources
 	 * @param replace `true` to replace, `false` to add
 	 * @returns notes about the changes, or an empty list if there are none
 	 */
 	importEnvironment(
-		controls: NodeControlConfig[] | null | undefined,
-		conductors: ControlConductorConfig[] | null | undefined,
+		imported: {
+			controls?: NodeControlConfig[] | null;
+			conductors?: ControlConductorConfig[] | null;
+			datumSources?: DatumSourceConfig[] | null;
+		},
 		replace: boolean,
 	): string[] {
+		const { controls, conductors } = imported;
 		const newControls = (controls ?? []).map((c): ControlInput => ({
 			id: `ctl-${Date.now().toString(36)}-${++this.#ids}`,
 			controlId: c.controlId ?? "",
@@ -1419,7 +1424,22 @@ export class RunInputs extends EventTarget {
 		const newConductors = (conductors ?? []).map((c) =>
 			this.#conductorInput(c.settings ?? {}),
 		);
-		if (!newControls.length && !newConductors.length) {
+		const newSources = (imported.datumSources ?? []).map(
+			(d): DatumSourceInput => ({
+				id: `ds-${Date.now().toString(36)}-${++this.#ids}`,
+				factoryUid: d.factoryUid,
+				instanceKey: d.instanceKey ?? "",
+				settings: { ...(d.settings ?? {}) },
+				publish: d.publish ?? "Change",
+				persist: d.persist ?? false,
+				controlIds: [],
+			}),
+		);
+		if (
+			!newControls.length &&
+			!newConductors.length &&
+			!newSources.length
+		) {
 			return [];
 		}
 		const notes: string[] = [];
@@ -1477,6 +1497,41 @@ export class RunInputs extends EventTarget {
 						`Added the file's ${count} Control Conductor${count === 1 ? "" : "s"} to the Controls tab` +
 							(replaced
 								? `, replacing ${replaced} with the same Service Name.`
+								: "."),
+					);
+				}
+			}
+			if (newSources.length) {
+				const count = newSources.length;
+				const plural = count === 1 ? "" : "s";
+				if (replace) {
+					s.datumSources = newSources;
+					notes.push(
+						`The Datum Sources tab now has the file's ${count} datum source${plural}.`,
+					);
+				} else {
+					let replaced = 0;
+					for (const d of newSources) {
+						const i = s.datumSources.findIndex(
+							(e) =>
+								e.factoryUid === d.factoryUid &&
+								e.instanceKey === d.instanceKey,
+						);
+						if (i < 0) {
+							s.datumSources.push(d);
+						} else {
+							// keep the card's id, for its collapsed state
+							s.datumSources[i] = {
+								...d,
+								id: s.datumSources[i].id,
+							};
+							replaced++;
+						}
+					}
+					notes.push(
+						`Added the file's ${count} datum source${plural} to the Datum Sources tab` +
+							(replaced
+								? `, replacing ${replaced} with the same type and instance ID.`
 								: "."),
 					);
 				}

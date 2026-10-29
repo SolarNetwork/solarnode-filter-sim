@@ -35,7 +35,8 @@ and click the **Export to file** button to download the node's settings as a CSV
 The exported file will include all of SolarNode's settings. The SolarNode Filter Simulator will
 ignore non-filter settings so you do not have to worry about any other settings are included in the
 export, **except** for some controls and Control Conductors, which the Simulator adds to the
-**Controls** tab:
+**Controls** tab, and the [datum sources](./datum-sources.md) it supports, which it adds to the
+**Datum Sources** tab:
 
 - Each [Modbus][modbus-control] or [BACnet][bacnet-control] Control becomes a control of its type,
   without a starting value, which publishes a datum every time it is set. A Modbus control keeps
@@ -50,11 +51,15 @@ export, **except** for some controls and Control Conductors, which the Simulator
   and whether its datum are persisted. A file without Control Datum Sources publishes every
   control's datum, without persisting them, like a Control Datum Source with its default settings.
 - Each [Control Conductor][control-conductor] keeps its settings.
+- Each Fixed Data, Mock Battery, Mock Energy Meter, and Time-based Tariff datum source keeps its
+  settings. Settings from SolarNode 1.x, like `triggerCronExpression`, are changed to their current
+  names, like `schedule`, so the datum source's card shows them.
 
-When you add a file to a simulation, its controls replace those with the same control ID, and its
-conductors those with the same Service Name. When you replace the simulation with a file that has
-controls or conductors, they replace all of them. ++ctrl+z++ does not undo changes to the
-**Controls** tab. Exports include only the filter settings.
+When you add a file to a simulation, its controls replace those with the same control ID, its
+conductors those with the same Service Name, and its datum sources those of the same type and
+instance ID. When you replace the simulation with a file that has controls, conductors, or datum
+sources, they replace all of them. ++ctrl+z++ does not undo changes to the **Controls** and
+**Datum Sources** tabs. Exports include only the filter settings.
 
 Now in the Simulator, click on the **Import settings** button in the [Control pane][control-pane]
 and select the file you exported from SolarNode.

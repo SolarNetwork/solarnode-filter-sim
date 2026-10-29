@@ -242,6 +242,12 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	public static final String CODE_DATUM_SOURCE_POLLS = "DatumSourcePolls";
 
 	/**
+	 * A datum source imported from a settings CSV file with SolarNode 1.x
+	 * setting keys, which were changed to the current ones.
+	 */
+	public static final String CODE_LEGACY_SETTINGS = "LegacySettings";
+
+	/**
 	 * Message levels.
 	 */
 	public enum Level {
