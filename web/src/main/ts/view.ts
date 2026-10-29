@@ -26,6 +26,76 @@ export function quoted(name: string): string {
 	return `"${name}"`;
 }
 
+/** How the results name a datum source of the run they show. */
+export interface DatumSourceName {
+	/** The Service Name, if it has one. */
+	name?: string;
+	/** The type's name. */
+	type: string;
+	/** The position in the run's datum sources, counting from 1. */
+	position: number;
+}
+
+/**
+ * The datum sources of the run the results show, by id, as they were when it
+ * ran, so later edits do not rename them.
+ */
+let datumSourceNames = new Map<string, DatumSourceName>();
+
+/**
+ * Set the datum sources of the run the results show.
+ *
+ * @param names the datum source names, by id
+ */
+export function setDatumSourceNames(
+	names: ReadonlyMap<string, DatumSourceName>,
+): void {
+	datumSourceNames = new Map(names);
+}
+
+/**
+ * Name a datum source of the run the results show, like the server's
+ * messages: `"Meter 1" (Mock Energy Meter)`, or `datum source 2 (Mock Energy
+ * Meter)` without a Service Name.
+ *
+ * @param id the datum source id
+ * @returns the name, starting with a lowercase letter
+ */
+export function datumSourceLabel(id: string): string {
+	const n = datumSourceNames.get(id);
+	if (!n) {
+		return `datum source ${quoted(id)}`;
+	}
+	return n.name
+		? `${quoted(n.name)} (${n.type})`
+		: `datum source ${n.position} (${n.type})`;
+}
+
+/**
+ * Name a datum source of the run the results show in short: its Service
+ * Name, else `datum source 2`.
+ *
+ * @param id the datum source id
+ * @returns the name, starting with a lowercase letter
+ */
+export function datumSourceShortLabel(id: string): string {
+	const n = datumSourceNames.get(id);
+	return n?.name
+		? quoted(n.name)
+		: `datum source ${n?.position ?? quoted(id)}`;
+}
+
+/**
+ * Describe where a polled datum came from, like `Polled from "Meter 1" (Mock
+ * Energy Meter)`.
+ *
+ * @param origin the datum's origin, of type `Polled`
+ * @returns the description, starting with a capital letter
+ */
+export function polledOriginText(origin: DatumOrigin): string {
+	return `Polled from ${datumSourceLabel(origin.datumSourceId ?? "")}`;
+}
+
 /**
  * Get a bundle's name and version, for messages.
  *
@@ -394,6 +464,16 @@ export function controlsTable(
 		} else {
 			type.append(c.type);
 		}
+		if (c.component) {
+			type.append(
+				element(
+					"div",
+					"small",
+					`of ${datumSourceShortLabel(c.component)}`,
+				),
+			);
+			type.title = `A ${c.type} control of ${datumSourceLabel(c.component)}`;
+		}
 		row.append(
 			element("td", "font-monospace", c.controlId),
 			type,
@@ -447,6 +527,8 @@ export function handlerLabel(handler: InstructionHandlerInfo): string {
 			return `control ${handler.name ?? ""}`;
 		case "OperationalModeSwitch":
 			return `the Operational Mode Switch ${handler.name ?? ""}`;
+		case "DatumSource":
+			return datumSourceLabel(handler.name ?? "");
 		case "Conductor":
 			return `the Control Conductor ${quoted(handler.name ?? "")}`;
 	}

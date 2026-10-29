@@ -46,6 +46,7 @@ import {
 	type SimulationState,
 } from "./model.ts";
 import { SettingsFormRenderer, type SettingsFormHost } from "./settingsForm.ts";
+import type { DatumSourceName } from "./view.ts";
 import type { Workspace } from "./workspace.ts";
 
 /** How long after typing stops, in milliseconds, an input is checked. */
@@ -207,6 +208,8 @@ interface SourceCard {
 	card: HTMLElement;
 	body: HTMLElement;
 	summary: HTMLElement;
+	/** The number of datum the last run polled. */
+	polls: HTMLElement;
 	alerts: HTMLElement;
 	fields: HTMLElement;
 	controls?: HTMLElement;
@@ -280,6 +283,8 @@ export class InputPanel {
 	/** The rendered datum source cards, by datum source id. */
 	readonly #sourceCards = new Map<string, SourceCard>();
 	readonly #collapsedSources: Set<string>;
+	/** The datum each datum source polled in the last run, by id. */
+	#pollCounts: ReadonlyMap<string, number> | null = null;
 	#finalState: SimulationState | null = null;
 
 	/**
@@ -325,6 +330,59 @@ export class InputPanel {
 		$<HTMLButtonElement>("#use-final-state").disabled = !state;
 		$<HTMLButtonElement>("#use-final-controls").disabled =
 			!state?.controls?.length;
+	}
+
+	/**
+	 * Get the names of the datum sources a run sends, for its results.
+	 *
+	 * @returns the names, by datum source id
+	 */
+	datumSourceNames(): Map<string, DatumSourceName> {
+		return new Map(
+			this.#inputs.state.datumSources.map((d, i) => [
+				d.id,
+				{
+					name: d.settings[SOURCE_UID_KEY]?.trim() || undefined,
+					type:
+						this.#sourceTypes.get(d.factoryUid)?.name ??
+						d.factoryUid,
+					position: i + 1,
+				},
+			]),
+		);
+	}
+
+	/**
+	 * Show the number of datum each datum source polled in the last run on its
+	 * card.
+	 *
+	 * @param counts the counts, by datum source id, or `null` if there was no
+	 *     run
+	 */
+	setPollCounts(counts: ReadonlyMap<string, number> | null): void {
+		this.#pollCounts = counts;
+		for (const [id, c] of this.#sourceCards) {
+			this.#showPollCount(id, c);
+		}
+	}
+
+	/**
+	 * Show a datum source's card: switch to its tab, expand it, and scroll to
+	 * it.
+	 *
+	 * @param id the datum source id
+	 */
+	showDatumSource(id: string): void {
+		const c = this.#sourceCards.get(id);
+		if (!c) {
+			return;
+		}
+		this.#showTab("sources");
+		this.#setSourceCollapsed(id, false);
+		c.card.scrollIntoView({ block: "nearest" });
+		c.card.classList.remove("is-flashed");
+		void c.card.offsetWidth;
+		c.card.classList.add("is-flashed");
 	}
 
 	/**
@@ -1057,6 +1115,8 @@ export class InputPanel {
 		titles.append(type, summary);
 		// the header shows and hides the settings too
 		titles.addEventListener("click", () => toggle.click());
+		const polls = element("span", "badge rounded-pill sim-pill-soft");
+		polls.hidden = true;
 		const remove = element(
 			"button",
 			"btn btn-sm btn-link text-body-secondary sim-tool",
@@ -1073,7 +1133,7 @@ export class InputPanel {
 			this.#refreshTabMarks();
 			this.#refreshControlChoices();
 		});
-		head.append(toggle, icon, titles, remove);
+		head.append(toggle, icon, titles, polls, remove);
 
 		const body = element("div", "card-body p-2");
 		const alerts = element("div");
@@ -1087,7 +1147,15 @@ export class InputPanel {
 		);
 		body.append(alerts, fields);
 
-		const c: SourceCard = { card, body, summary, alerts, fields, token: 0 };
+		const c: SourceCard = {
+			card,
+			body,
+			summary,
+			polls,
+			alerts,
+			fields,
+			token: 0,
+		};
 		if (
 			this.#sourceTypes
 				.get(item.factoryUid)
@@ -1100,9 +1168,23 @@ export class InputPanel {
 		this.#sourceCards.set(id, c);
 		this.#showSourceCollapsed(c, this.#collapsedSources.has(id));
 		this.#refreshSourceHead(id, c);
+		this.#showPollCount(id, c);
 		this.#checkSchedule(id);
 		void this.#loadSourceForm(id, true);
 		return card;
+	}
+
+	/** Show how many datum the last run polled from a datum source. */
+	#showPollCount(id: string, c: SourceCard): void {
+		const count = this.#pollCounts?.get(id);
+		c.polls.hidden = count === undefined;
+		if (count !== undefined) {
+			c.polls.textContent = `${count} polled`;
+			c.polls.title =
+				count === 1
+					? "The last run polled 1 datum from this datum source"
+					: `The last run polled ${count === 0 ? "no" : count} datum from this datum source`;
+		}
 	}
 
 	/** Show a datum source's type, name, and schedule in its header. */

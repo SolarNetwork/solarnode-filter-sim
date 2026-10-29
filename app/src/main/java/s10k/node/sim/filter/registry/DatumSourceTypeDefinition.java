@@ -91,6 +91,19 @@ public record DatumSourceTypeDefinition(String factoryUid, String displayName,
 	}
 
 	/**
+	 * Get the name of the datum source type: its message source's title, like
+	 * the node's settings page shows, else its display name.
+	 *
+	 * @param locale
+	 *        the locale to use
+	 * @return the name
+	 */
+	public String name(Locale locale) {
+		final String title = messageSource.getMessage("title", null, null, locale);
+		return (title != null ? title : displayName);
+	}
+
+	/**
 	 * Get information about the datum source type.
 	 *
 	 * @param locale
@@ -98,7 +111,6 @@ public record DatumSourceTypeDefinition(String factoryUid, String displayName,
 	 * @return the information
 	 */
 	public DatumSourceTypeInfo info(Locale locale) {
-		final String title = messageSource.getMessage("title", null, null, locale);
 		final Set<DatumSourceCapability> capabilities = EnumSet.noneOf(DatumSourceCapability.class);
 		if ( services.contains(NodeControlProvider.class) ) {
 			capabilities.add(DatumSourceCapability.Controls);
@@ -109,7 +121,7 @@ public record DatumSourceTypeDefinition(String factoryUid, String displayName,
 		if ( services.contains(TariffScheduleProvider.class) ) {
 			capabilities.add(DatumSourceCapability.TariffSchedule);
 		}
-		return new DatumSourceTypeInfo(factoryUid, title != null ? title : displayName,
+		return new DatumSourceTypeInfo(factoryUid, name(locale),
 				messageSource.getMessage("desc", null, null, locale), defaultSchedule, capabilities);
 	}
 

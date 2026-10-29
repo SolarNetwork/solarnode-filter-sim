@@ -126,6 +126,10 @@ body {
 		border-bottom: var(--bs-card-border-width) solid
 			var(--bs-card-border-color);
 	}
+
+	&.is-flashed {
+		animation: sim-flash 1.2s ease-out;
+	}
 }
 
 .sim-datum-source-titles {

@@ -28,6 +28,7 @@ import {
 	commandLine,
 	commandName,
 	controlsTable,
+	datumSourceLabel,
 	diffSamples,
 	element,
 	formatDuration,
@@ -41,6 +42,7 @@ import {
 	LEVEL_CLASSES,
 	messageItem,
 	opModesText,
+	polledOriginText,
 	quoted,
 	SAMPLE_TYPES,
 	samplesLine,
@@ -318,6 +320,7 @@ function summaryText(result: SimulationResult): string {
 	const s = result.stats;
 	return [
 		`${s.processed} datum processed`,
+		s.polled ? `${s.polled} polled` : "",
 		s.generated ? `${s.generated} generated` : "",
 		`${s.output} output`,
 		s.discarded ? `${s.discarded} discarded` : "",
@@ -898,6 +901,17 @@ export class ResultsPanel extends EventTarget {
 					title: "Show the datum",
 					show: () => this.#scrollToDatum(seq),
 				};
+			} else if (m.datumSourceId) {
+				const id = m.datumSourceId;
+				link = {
+					title: "Show the datum source",
+					show: () =>
+						this.dispatchEvent(
+							new CustomEvent<string>("datumsource", {
+								detail: id,
+							}),
+						),
+				};
 			}
 			const item = messageItem(m, link);
 			item.dataset.level = m.level;
@@ -1164,6 +1178,8 @@ export class ResultsPanel extends EventTarget {
 		const origin = element("span", "small text-body-secondary");
 		if (trace.origin.type === "Input") {
 			origin.append(`Input ${(trace.origin.index ?? 0) + 1}`);
+		} else if (trace.origin.type === "Polled") {
+			origin.append(polledOriginText(trace.origin));
 		} else if (
 			trace.origin.type === "Scheduled" &&
 			trace.origin.controlId &&
@@ -2020,7 +2036,15 @@ export class ResultsPanel extends EventTarget {
  */
 function controlUpdateText(c: ControlUpdate): string {
 	const changed = c.previousValue !== c.value;
-	return `control: ${c.controlId} ${changed && c.previousValue !== undefined ? `${c.previousValue} → ` : "= "}${c.value}${c.mode !== undefined ? " (mode)" : changed ? "" : " (same)"}`;
+	const note =
+		c.mode !== undefined
+			? " (mode)"
+			: c.requested !== undefined
+				? ` (asked ${c.requested})`
+				: changed
+					? ""
+					: " (same)";
+	return `control: ${c.controlId} ${changed && c.previousValue !== undefined ? `${c.previousValue} → ` : "= "}${c.value}${note}`;
 }
 
 /** Describe a control update for its chip's tooltip. */
@@ -2030,7 +2054,12 @@ function controlUpdateTitle(c: ControlUpdate): string {
 		return `Operational Mode Switch ${c.controlId} changed with its mode ${c.mode}${published}`;
 	}
 	const changed = c.previousValue !== c.value;
-	return `Control ${c.controlId} (${c.type}) set${changed ? "" : " to the same value"}${published}`;
+	const of = c.component ? ` of ${datumSourceLabel(c.component)}` : "";
+	const asked =
+		c.requested !== undefined
+			? `, to ${c.value} when asked for ${c.requested}`
+			: "";
+	return `Control ${c.controlId} (${c.type})${of} set${changed ? "" : " to the same value"}${asked}${published}`;
 }
 
 function controlUpdatesTable(updates: ControlUpdate[]): HTMLElement {
@@ -2064,7 +2093,18 @@ function controlUpdatesTable(updates: ControlUpdate[]): HTMLElement {
 				element("span", "text-body-secondary", ` (mode ${c.mode})`),
 			);
 		} else {
-			row.title = `A ${c.type} control`;
+			row.title = c.component
+				? `A ${c.type} control of ${datumSourceLabel(c.component)}`
+				: `A ${c.type} control`;
+		}
+		if (c.requested !== undefined) {
+			after.append(
+				element(
+					"span",
+					"text-body-secondary",
+					` (asked ${c.requested})`,
+				),
+			);
 		}
 		row.append(
 			element("td", "font-monospace", c.controlId),

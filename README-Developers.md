@@ -67,10 +67,10 @@ The main TypeScript modules are:
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
 | `settingsForm.ts` | The settings form fields of a filter or datum source, rendered from `/api/settings-form`, which edit a settings map: help, notes, resets, dynamic lists, and Choose menus. |
 | `inputs.ts`    | The run inputs (datum, datum sources, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
-| `inputPanel.ts` | The input tabs, including the datum source cards, and the Entry Point select. |
+| `inputPanel.ts` | The input tabs, including the datum source cards with their poll counts, and the Entry Point select. |
 | `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
 | `debug.ts`     | Debug mode: the cursor positions, the node state rebuilt at each filter step, and the state tabs. |
-| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, and instruction lists. |
+| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, instruction lists, and the names of a run's datum sources. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
 | `session.ts`   | Simulation files: the workspace and run inputs saved as JSON, to share a simulation or open it in another browser. |

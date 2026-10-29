@@ -58,6 +58,7 @@ import {
 } from "./session.ts";
 import { buildReport, REPORT_FILE_NAME } from "./report.ts";
 import { initColumnSplitter, initSplitter } from "./splitter.ts";
+import { setDatumSourceNames } from "./view.ts";
 import { Workspace } from "./workspace.ts";
 
 /** The browser storage key of the hidden side panels. */
@@ -115,6 +116,27 @@ function download(text: string, fileName: string, type: string): void {
 }
 
 /** Test if keyboard events go to a form control rather than the canvas. */
+/**
+ * Count the datum a run polled from each datum source.
+ *
+ * @param result the result
+ * @param sourceIds the ids of the datum sources the run had
+ * @returns the counts, by datum source id
+ */
+function pollCounts(
+	result: SimulationResult,
+	sourceIds: readonly string[],
+): Map<string, number> {
+	const counts = new Map(sourceIds.map((id) => [id, 0]));
+	for (const trace of result.datum) {
+		const id = trace.origin.datumSourceId;
+		if (trace.origin.type === "Polled" && id && counts.has(id)) {
+			counts.set(id, counts.get(id)! + 1);
+		}
+	}
+	return counts;
+}
+
 function isTyping(target: EventTarget | null): boolean {
 	return (
 		target instanceof HTMLElement &&
@@ -583,6 +605,8 @@ class App {
 			throw e;
 		}
 		const mark = auto ? this.#results.debugMark : null;
+		// as they are now, as the results name them after later edits too
+		const sourceNames = this.#inputPanel.datumSourceNames();
 		this.#setRunning(true);
 		try {
 			const result = await simulate({
@@ -590,7 +614,8 @@ class App {
 				...parts,
 				options: { ...parts.options, detail: debug ? "Debug" : null },
 			});
-			this.#showResult(result, debug, mark);
+			setDatumSourceNames(sourceNames);
+			this.#showResult(result, debug, mark, [...sourceNames.keys()]);
 		} catch (e) {
 			if (auto) {
 				showToast(
@@ -637,6 +662,7 @@ class App {
 		result: SimulationResult,
 		debug: boolean,
 		mark: DebugMark | null,
+		sourceIds: readonly string[],
 	): void {
 		// the canvas first, as debug mode then highlights the cursor on it
 		this.#canvas.setRun({
@@ -654,6 +680,7 @@ class App {
 		// the top stays where it is
 		this.#refreshBottom();
 		this.#inputPanel.setFinalState(result.finalState);
+		this.#inputPanel.setPollCounts(pollCounts(result, sourceIds));
 	}
 
 	#stopDebug(): void {
@@ -667,6 +694,7 @@ class App {
 
 	#closeResults(): void {
 		window.clearTimeout(this.#rerunTimer);
+		this.#inputPanel.setPollCounts(null);
 		this.#results.clear();
 		this.#refreshBottom();
 		this.#canvas.setRun(null);
@@ -810,6 +838,9 @@ class App {
 		);
 		results.addEventListener("filter", (e) =>
 			this.#canvas.selectFilter((e as CustomEvent<string>).detail),
+		);
+		results.addEventListener("datumsource", (e) =>
+			this.#inputPanel.showDatumSource((e as CustomEvent<string>).detail),
 		);
 		results.addEventListener("datum", (e) =>
 			this.#canvas.setPath((e as CustomEvent<DatumPath | null>).detail),

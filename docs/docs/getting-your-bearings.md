@@ -72,7 +72,7 @@ Mock Battery, or a Time-based Tariff Datum Source. The simulation polls each one
 and the Datum Queue processes the datum they return, like the input datum. Use **Add a datum
 source** to add one, then configure it in its card's settings form, as you would on a node. A run
 without input datum starts at the **Environment** tab's **Start Date** (or now), and runs for its
-**Keep Running After the Last Datum** time.
+**Keep Running After the Last Datum** time. See [Datum Sources](./datum-sources.md) for more details.
 
 The **History**, **Environment**, **Metadata**, and **Controls** tabs in this pane allow you to
 configure other simulated SolarNode services like [Metadata][metadata],

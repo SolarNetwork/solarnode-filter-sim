@@ -1076,7 +1076,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		if ( uid != null && !uid.isBlank() ) {
 			return "The datum source " + SimulationMessage.quoted(uid);
 		}
-		return (type != null ? "Datum source %d (%s)".formatted(index + 1, type.displayName())
+		return (type != null
+				? "Datum source %d (%s)".formatted(index + 1, type.name(Locale.getDefault()))
 				: "Datum source %d".formatted(index + 1));
 	}
 
