@@ -1,0 +1,83 @@
+{
+  "messages" : [ ],
+  "stats" : {
+    "processed" : "7",
+    "generated" : "4",
+    "output" : "7",
+    "discarded" : "0"
+  },
+  "datum" : [ {
+    "seq" : "1",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Changed", "ctl:Unchanged", "mode:Unchanged", "boost:Changed" ],
+    "output" : {
+      "i" : {
+        "watts" : "1500",
+        "boosted" : "3000"
+      }
+    }
+  }, {
+    "seq" : "2",
+    "sourceId" : "/switch/boost",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "mode:Skipped", "boost:Skipped" ],
+    "output" : {
+      "s" : {
+        "val" : "1"
+      }
+    }
+  }, {
+    "seq" : "3",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Unchanged", "ctl:Unchanged", "mode:Unchanged", "boost:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "100"
+      }
+    }
+  }, {
+    "seq" : "4",
+    "sourceId" : "/switch/boost",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "mode:Skipped", "boost:Skipped" ],
+    "output" : {
+      "s" : {
+        "val" : "0"
+      }
+    }
+  }, {
+    "seq" : "5",
+    "sourceId" : "/switch/eco",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "mode:Skipped", "boost:Skipped" ],
+    "output" : {
+      "s" : {
+        "val" : "1"
+      }
+    }
+  }, {
+    "seq" : "6",
+    "sourceId" : "/switch/eco",
+    "steps" : [ "main:Unchanged", "ctl:Skipped", "mode:Skipped", "boost:Skipped" ],
+    "output" : {
+      "s" : {
+        "val" : "0"
+      }
+    }
+  }, {
+    "seq" : "7",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Unchanged", "ctl:Unchanged", "mode:Unchanged", "boost:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "500"
+      }
+    }
+  } ],
+  "controls" : [ {
+    "controlId" : "/switch/boost",
+    "value" : "false",
+    "updates" : "3"
+  }, {
+    "controlId" : "/switch/eco",
+    "value" : "false",
+    "updates" : "0"
+  } ]
+}

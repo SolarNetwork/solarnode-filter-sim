@@ -292,6 +292,28 @@ public class SmokeFixtureTests {
 	}
 
 	@Test
+	public void modeSwitch() throws IOException {
+		// GIVEN
+		final String name = "mode-switch";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("No messages")
+			.isEmpty()
+			;
+		then(expected.path("datum").valueStream().map(d -> d.path("sourceId").asString()))
+			.as("The switches publish their changes")
+			.contains("/switch/boost", "/switch/eco")
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void pvlibAndMetrics() throws IOException {
 		// GIVEN
 		final String name = "pvlib-and-metrics";

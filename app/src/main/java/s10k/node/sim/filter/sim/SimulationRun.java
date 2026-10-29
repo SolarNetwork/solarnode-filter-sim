@@ -68,6 +68,7 @@ import net.solarnetwork.service.DatumFilterService;
 import net.solarnetwork.service.ExpressionService;
 import net.solarnetwork.service.StaticOptionalService;
 import s10k.node.sim.filter.domain.ControlConductorConfig;
+import s10k.node.sim.filter.domain.ControlKind;
 import s10k.node.sim.filter.domain.DatumInfo;
 import s10k.node.sim.filter.domain.DatumOrigin;
 import s10k.node.sim.filter.domain.FilterConfig;
@@ -253,6 +254,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		context.controlService().setListener(tracer::controlUpdated);
 		context.controlService()
 				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
+		context.modeSwitches().setListener(tracer::controlUpdated);
+		context.eventAdmin()
+				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
 	}
 
 	/**
@@ -279,6 +283,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final Instant firstDate = context.simulatedClock().instant();
 		loadEnvironment(firstDate);
 		loadHistory(firstDate);
+		context.startOperationalModes();
 
 		final long deadline = start + TimeUnit.MILLISECONDS.toNanos(options.timeoutMsValue());
 		final int maxDatum = options.maxDatumValue();
@@ -336,6 +341,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		addPendingTaskMessages(scheduler, filters);
 		addPendingInstructionMessages();
 		shutdown(filters);
+		context.stopOperationalModes();
 		addDepthLimitMessages();
 		addLogMessages(filters);
 
@@ -510,9 +516,12 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		try {
 			scheduler.runNext();
 		} catch ( RuntimeException e ) {
-			warn(SimulationMessage.CODE_FILTER_ERROR, "Error in a scheduled task of the filter %s: %s"
-					.formatted(SimulationMessage.quoted(task.owner()), e.toString()), task.owner(),
-					null);
+			warn(SimulationMessage.CODE_FILTER_ERROR,
+					task.owner() != null
+							? "Error in a scheduled task of the filter %s: %s"
+									.formatted(SimulationMessage.quoted(task.owner()), e.toString())
+							: "Error in a scheduled task: " + e,
+					task.owner(), null);
 		} finally {
 			firing = null;
 		}
@@ -565,6 +574,10 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			Map<String, TracingDatumFilterService> filters) {
 		final Map<String, Instant> next = new LinkedHashMap<>(4);
 		for ( SimTaskScheduler.Task task : scheduler.pending() ) {
+			if ( task.background() ) {
+				// a node service's task, which never ends
+				continue;
+			}
 			next.putIfAbsent(task.owner() != null ? task.owner() : "", task.due());
 		}
 		for ( Map.Entry<String, Instant> e : next.entrySet() ) {
@@ -876,11 +889,15 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 						"Control %d has no Control ID, so it is left out.".formatted(i + 1), null, null);
 				continue;
 			}
-			if ( controls.hasControl(controlId) ) {
+			if ( context.hasControl(controlId) ) {
 				warn(SimulationMessage.CODE_DUPLICATE_CONTROL_ID,
 						"More than one control has the Control ID %s, so only the first one is used."
 								.formatted(controlId),
 						null, null);
+				continue;
+			}
+			if ( config.kindValue() == ControlKind.OperationalModeSwitch ) {
+				loadModeSwitch(controlId, config);
 				continue;
 			}
 			final NodeControlPropertyType type = controlType(controlId, config.type());
@@ -894,6 +911,18 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 						null, null);
 			}
 		}
+	}
+
+	private void loadModeSwitch(String controlId, NodeControlConfig config) {
+		final String mode = (config.mode() != null && !config.mode().isBlank() ? config.mode().trim()
+				: null);
+		if ( mode == null ) {
+			warn(SimulationMessage.CODE_INVALID_CONTROL,
+					"The Operational Mode Switch %s has no Operational Mode, so it handles no instructions, and its value is always false."
+							.formatted(controlId),
+					null, null);
+		}
+		context.addModeSwitch(controlId, mode, config.publishValue(), config.persistValue());
 	}
 
 	private NodeControlPropertyType controlType(String controlId, @Nullable String type) {
@@ -1026,7 +1055,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			}
 			final String controlId = task.getControlId();
 			if ( controlId != null && !controlId.contains("{")
-					&& !context.controlService().hasControl(controlId.trim()) ) {
+					&& !context.hasControl(controlId.trim()) ) {
 				warn(SimulationMessage.CODE_INVALID_CONDUCTOR,
 						"%s sets the control %s, which is not one of the simulation's Controls, so the task is declined, as on a node without that control."
 								.formatted(taskLabel, controlId.trim()),
@@ -1170,6 +1199,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				String m = mode.trim().toLowerCase(Locale.ROOT);
 				if ( !m.isEmpty() ) {
 					context.opModes().put(m, DefaultOperationalModesService.NO_EXPIRATION);
+					// where the service reads the active modes when it starts
+					context.settingDao().storeSetting(DefaultOperationalModesService.SETTING_OP_MODE, m,
+							m);
 				}
 			}
 		}
@@ -1416,7 +1448,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		for ( Metric m : savedMetrics ) {
 			metrics.add(metricInfo(m));
 		}
-		return new SimulationState(modes, localState, metrics, context.controlService().controlInfos(),
+		return new SimulationState(modes, localState, metrics, context.controlInfos(),
 				context.instructionService().waiting(), includeCsv ? localStateCsv() : null,
 				history(context.datumService()), history(context.datumService().unfiltered()), queued);
 	}

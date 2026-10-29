@@ -1,0 +1,98 @@
+{
+ "config": {
+  "mainChainId": "main",
+  "filters": [
+   {
+    "id": "main",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Main"
+    },
+    "filterIds": [
+     "ctl",
+     "mode",
+     "boost"
+    ]
+   },
+   {
+    "id": "ctl",
+    "factoryUid": "net.solarnetwork.node.datum.filter.control.update",
+    "settings": {
+     "uid": "Boost Switch",
+     "sourceId": "^/meter/1$",
+     "controlConfigsCount": "1",
+     "controlConfigs[0].controlId": "/switch/boost",
+     "controlConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "controlConfigs[0].expression": "watts > 1000"
+    }
+   },
+   {
+    "id": "mode",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.opmode",
+    "settings": {
+     "uid": "Eco Mode",
+     "sourceId": "^/meter/1$",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].operationalMode": "eco",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "watts < 200",
+     "expressionConfigs[0].expireSeconds": "30"
+    }
+   },
+   {
+    "id": "boost",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.expression",
+    "settings": {
+     "uid": "Boosted",
+     "sourceId": "^/meter/1$",
+     "requiredOperationalMode": "boost",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].name": "boosted",
+     "expressionConfigs[0].datumPropertyTypeKey": "i",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "watts * 2"
+    }
+   }
+  ]
+ },
+ "datum": [
+  {
+   "created": "2025-10-01 00:00:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 1500
+   }
+  },
+  {
+   "created": "2025-10-01 00:01:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 100
+   }
+  },
+  {
+   "created": "2025-10-01 00:02:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 500
+   }
+  }
+ ],
+ "environment": {
+  "controls": [
+   {
+    "controlId": "/switch/boost",
+    "kind": "OperationalModeSwitch",
+    "mode": "boost",
+    "publish": "Change",
+    "persist": true
+   },
+   {
+    "controlId": "/switch/eco",
+    "kind": "OperationalModeSwitch",
+    "mode": "eco",
+    "publish": "Change"
+   }
+  ]
+ }
+}

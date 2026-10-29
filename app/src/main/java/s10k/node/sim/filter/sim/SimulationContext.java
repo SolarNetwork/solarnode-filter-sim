@@ -33,6 +33,8 @@ import org.springframework.context.MessageSource;
 import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.util.AntPathMatcher;
+import s10k.node.sim.filter.domain.ControlInfo;
+import s10k.node.sim.filter.domain.ControlPublishMode;
 import s10k.node.sim.filter.domain.InstructionHandlerInfo;
 import s10k.node.sim.filter.registry.FilterContext;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
@@ -69,13 +71,18 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  *
  * <p>
  * The context also has a simple service registry, in place of the OSGi one. It
- * holds the Node Metadata Service, the simulated controls, the Control
- * Conductors, the User Metadata Services, and the filters, in that order.
- * {@link SimServiceTracker} finds services in it.
+ * holds the Node Metadata Service, the simulated controls, the Operational Mode
+ * Switches, the Control Conductors, the User Metadata Services, and the
+ * filters, in that order. {@link SimServiceTracker} finds services in it.
+ * </p>
+ *
+ * <p>
+ * The operational modes service and the Operational Mode Switches post events
+ * to a {@link SimEventAdmin}.
  * </p>
  *
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 public final class SimulationContext implements FilterContext {
 
@@ -108,10 +115,13 @@ public final class SimulationContext implements FilterContext {
 	private final SimLocalStateDao localStateDao;
 	private final SimSettingDao settingDao;
 	private final ConcurrentMap<String, Long> opModes;
+	private final SimEventAdmin eventAdmin;
 	private final DefaultOperationalModesService opModesService;
+	private boolean opModesStarted;
 	private final SimDatumMetadataService datumMetadataService;
 	private final DefaultDatumService datumService;
 	private final SimNodeControlService controlService;
+	private final SimModeSwitches modeSwitches;
 	private final SimInstructionService instructionService;
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
@@ -167,9 +177,11 @@ public final class SimulationContext implements FilterContext {
 		this.localStateDao = new SimLocalStateDao(clock);
 		this.settingDao = new SimSettingDao(clock);
 		this.opModes = new ConcurrentHashMap<>(8, 0.9f, 2);
+		this.eventAdmin = new SimEventAdmin();
 		// on the simulated clock, so modes expire in simulated time
 		this.opModesService = new DefaultOperationalModesService(clock, opModes,
-				new ConcurrentHashMap<>(4), new StaticOptionalService<>(settingDao), null);
+				new ConcurrentHashMap<>(4), new StaticOptionalService<>(settingDao),
+				new StaticOptionalService<>(eventAdmin));
 		this.datumMetadataService = new SimDatumMetadataService();
 
 		// the path matcher configuration from the net.solarnetwork.node blueprint
@@ -180,6 +192,7 @@ public final class SimulationContext implements FilterContext {
 				new StaticOptionalService<>(datumMetadataService));
 
 		this.controlService = new SimNodeControlService(clock);
+		this.modeSwitches = new SimModeSwitches(clock, opModesService, eventAdmin);
 		this.instructionService = new SimInstructionService(clock);
 		this.transientSettingDao = new DefaultTransientSettingDao();
 		this.datumQueue = new SimulatedDatumQueue(datumSink);
@@ -200,6 +213,8 @@ public final class SimulationContext implements FilterContext {
 		registerService(controlService);
 		instructionService.addHandler(InstructionHandlerInfo.Type.Control, controlService,
 				controlService::handlingControlId);
+		instructionService.addHandler(InstructionHandlerInfo.Type.OperationalModeSwitch, modeSwitches,
+				modeSwitches::handlingControlId);
 		this.expressionServices = new StaticOptionalServiceCollection<>(List.of(expressionService));
 		this.tariffScheduleProviders = new SimServiceTracker<>(TariffScheduleProvider.class, services,
 				true);
@@ -229,6 +244,78 @@ public final class SimulationContext implements FilterContext {
 		registerService(service);
 		instructionService.addHandler(InstructionHandlerInfo.Type.Metadata, service,
 				_ -> service.getUid());
+	}
+
+	/**
+	 * Add an Operational Mode Switch, as a service.
+	 *
+	 * @param controlId
+	 *        the control ID, which must not be used by another switch
+	 * @param mode
+	 *        the operational mode, or {@code null} for none
+	 * @param publish
+	 *        when the switch publishes a datum
+	 * @param persist
+	 *        {@code true} to persist the datum the switch publishes
+	 */
+	public void addModeSwitch(String controlId, @Nullable String mode, ControlPublishMode publish,
+			boolean persist) {
+		registerService(modeSwitches.add(controlId, mode, publish, persist));
+	}
+
+	/**
+	 * Test if a simulated control or Operational Mode Switch has a control ID.
+	 *
+	 * @param controlId
+	 *        the control ID
+	 * @return {@code true} if one has it
+	 */
+	public boolean hasControl(String controlId) {
+		return controlService.hasControl(controlId) || modeSwitches.hasControl(controlId);
+	}
+
+	/**
+	 * Get the state of the simulated controls and Operational Mode Switches.
+	 *
+	 * @return the controls, then the switches
+	 */
+	public List<ControlInfo> controlInfos() {
+		final List<ControlInfo> result = new ArrayList<>(controlService.controlInfos());
+		result.addAll(modeSwitches.controlInfos());
+		return result;
+	}
+
+	/**
+	 * Start the operational modes service as on a node, if there are
+	 * Operational Mode Switches to hear its events.
+	 *
+	 * <p>
+	 * The service reads the starting modes from the setting DAO, without the
+	 * node's startup delay, and its first event tells the switches of them,
+	 * without publishing anything, as starting values are state, not changes.
+	 * Its auto-expire task then runs on the simulated clock, as a background
+	 * task, and posts an event when modes expire.
+	 * </p>
+	 */
+	public void startOperationalModes() {
+		if ( modeSwitches.isEmpty() || opModesStarted ) {
+			return;
+		}
+		opModesStarted = true;
+		opModesService.setStartupDelay(0);
+		opModesService.setTaskScheduler(taskScheduler);
+		eventAdmin.quietly(() -> taskScheduler.background(opModesService::serviceDidStartup));
+		modeSwitches.started();
+	}
+
+	/**
+	 * Stop the operational modes service, if it was started.
+	 */
+	public void stopOperationalModes() {
+		if ( opModesStarted ) {
+			opModesService.serviceDidShutdown();
+			opModesStarted = false;
+		}
 	}
 
 	/**
@@ -475,6 +562,24 @@ public final class SimulationContext implements FilterContext {
 	 */
 	public SimNodeControlService controlService() {
 		return controlService;
+	}
+
+	/**
+	 * Get the Operational Mode Switches.
+	 *
+	 * @return the switches
+	 */
+	public SimModeSwitches modeSwitches() {
+		return modeSwitches;
+	}
+
+	/**
+	 * Get the event admin.
+	 *
+	 * @return the event admin
+	 */
+	public SimEventAdmin eventAdmin() {
+		return eventAdmin;
 	}
 
 	/**

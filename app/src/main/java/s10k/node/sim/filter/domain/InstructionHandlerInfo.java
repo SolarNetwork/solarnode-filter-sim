@@ -28,11 +28,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param type
  *        the kind of component
  * @param name
- *        the component's name: the control ID of a control, or the Service Name
- *        of a Control Conductor or metadata service; or {@code null} for a
- *        component that has none
+ *        the component's name: the control ID of a control or Operational Mode
+ *        Switch, or the Service Name of a Control Conductor or metadata
+ *        service; or {@code null} for a component that has none
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record InstructionHandlerInfo(Type type, @Nullable String name) {
@@ -63,6 +63,12 @@ public record InstructionHandlerInfo(Type type, @Nullable String name) {
 
 		/** A simulated control, which handles {@code SetControlParameter}. */
 		Control,
+
+		/**
+		 * An Operational Mode Switch, which handles {@code SetControlParameter}
+		 * by enabling or disabling its operational mode.
+		 */
+		OperationalModeSwitch,
 
 		/**
 		 * A Control Conductor, which handles {@code OrchestrateControls} and

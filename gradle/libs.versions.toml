@@ -9,6 +9,7 @@ sn-common = "4.56.0"
 sn-common-expr-spel = "4.2.2"
 sn-node = "4.11.0"
 sn-node-control-conductor = "2.3.2"
+sn-node-control-opmode = "4.2.0"
 sn-node-datum-filter-pvlib = "2.3.0"
 sn-node-datum-filter-standard = "4.8.0"
 sn-node-datum-filter-tariff = "4.1.1"
@@ -23,6 +24,7 @@ sn-common = { module = "net.solarnetwork.common:net.solarnetwork.common", versio
 sn-common-expr-spel = { module = "net.solarnetwork.common:net.solarnetwork.common.expr.spel", version.ref = "sn-common-expr-spel" }
 sn-node = { module = "net.solarnetwork.node:net.solarnetwork.node", version.ref = "sn-node" }
 sn-node-control-conductor = { module = "net.solarnetwork.node:net.solarnetwork.node.control.conductor", version.ref = "sn-node-control-conductor" }
+sn-node-control-opmode = { module = "net.solarnetwork.node:net.solarnetwork.node.control.opmode", version.ref = "sn-node-control-opmode" }
 sn-node-datum-filter-pvlib = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.pvlib", version.ref = "sn-node-datum-filter-pvlib" }
 sn-node-datum-filter-standard = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.standard", version.ref = "sn-node-datum-filter-standard" }
 sn-node-datum-filter-tariff = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.tariff", version.ref = "sn-node-datum-filter-tariff" }

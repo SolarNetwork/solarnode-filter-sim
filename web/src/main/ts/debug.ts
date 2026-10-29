@@ -303,8 +303,11 @@ export function debugState(
 			);
 			if (control) {
 				control.value = update.value;
-				control.updates++;
-				control.modified = trace.input.timestamp;
+				if (update.mode === undefined) {
+					// a set, not a switch changing with its mode
+					control.updates++;
+					control.modified = trace.input.timestamp;
+				}
 			}
 			if (last) {
 				state.controlsChanged.add(update.controlId);

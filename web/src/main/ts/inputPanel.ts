@@ -124,6 +124,30 @@ const PUBLISH_MODES: readonly {
 	},
 ];
 
+/** The Kind choices of a control, with their descriptions. */
+const CONTROL_KINDS: readonly {
+	kind: ControlInput["kind"];
+	label: string;
+	desc: string;
+}[] = [
+	{
+		kind: "Mock",
+		label: "Mock",
+		desc: "A control whose value instructions set, like a Mock control.",
+	},
+	{
+		kind: "OperationalModeSwitch",
+		label: "Operational Mode Switch",
+		desc: "A Boolean control whose value is whether its operational mode is active. Setting it enables or disables the mode, and the mode starting or stopping any other way changes it.",
+	},
+];
+
+/** The description of a switch's Publish choice, by publish mode. */
+const SWITCH_PUBLISH_DESCS: Partial<Record<ControlPublishMode, string>> = {
+	Never: "The switch never publishes a datum.",
+	Change: "Each change of the switch's value publishes a datum, whatever started or stopped its mode.",
+};
+
 /** The placeholder of a control's Value input, by control type. */
 const VALUE_PLACEHOLDERS: Record<ControlInput["type"], string> = {
 	Boolean: "false",
@@ -519,6 +543,10 @@ export class InputPanel {
 		);
 		let changed = false;
 		for (const c of this.#inputs.state.controls) {
+			if (c.kind === "OperationalModeSwitch") {
+				// its value follows its mode
+				continue;
+			}
 			const final = finals.get(c.controlId.trim());
 			const value = final?.value ?? "";
 			if (final && value !== c.value) {
@@ -882,6 +910,49 @@ export class InputPanel {
 		const idFeedback = element("div", "invalid-feedback");
 		idFeedback.dataset.feedbackFor = item.id;
 
+		const kindRow = element("div", "d-flex gap-2 mt-2");
+		const kindId = `control-kind-${item.id}`;
+		const kindCol = element("div", "sim-control-type");
+		const kindLabel = element(
+			"label",
+			"form-label small fw-semibold mb-0",
+			"Kind",
+		);
+		kindLabel.htmlFor = kindId;
+		const kind = element("select", "form-select form-select-sm");
+		kind.id = kindId;
+		kind.append(
+			...CONTROL_KINDS.map((k) => {
+				const option = new Option(k.label, k.kind);
+				option.title = k.desc;
+				return option;
+			}),
+		);
+		kind.value = item.kind;
+		kindCol.append(kindLabel, kind);
+		const modeId = `control-mode-${item.id}`;
+		const modeCol = element("div", "flex-grow-1");
+		const modeLabel = element(
+			"label",
+			"form-label small fw-semibold mb-0",
+			"Operational Mode",
+		);
+		modeLabel.htmlFor = modeId;
+		const mode = element(
+			"input",
+			"form-control form-control-sm font-monospace",
+		);
+		mode.id = modeId;
+		mode.value = item.mode;
+		mode.spellcheck = false;
+		mode.placeholder = "boost";
+		mode.title =
+			"The operational mode the switch enables and disables. Without one, the switch handles no instructions.";
+		mode.addEventListener("input", () => update({ mode: mode.value }));
+		modeCol.append(modeLabel, mode);
+		kindRow.append(kindCol, modeCol);
+		const kindDesc = element("div", "form-text mt-1");
+
 		const row = element("div", "d-flex gap-2 mt-2");
 		const typeId = `control-type-${item.id}`;
 		const typeCol = element("div", "sim-control-type");
@@ -1014,21 +1085,52 @@ export class InputPanel {
 		publishRow.append(publishCol, persistCheck);
 
 		const publishDesc = element("div", "form-text mt-1");
+		const isSwitch = () => kind.value === "OperationalModeSwitch";
 		const showPublish = () => {
 			const mode = publish.value as ControlPublishMode;
 			publishDesc.textContent =
-				PUBLISH_MODES.find((m) => m.mode === mode)?.desc ?? "";
+				(isSwitch() ? SWITCH_PUBLISH_DESCS[mode] : undefined) ??
+				PUBLISH_MODES.find((m) => m.mode === mode)?.desc ??
+				"";
 			persistCheck.hidden = mode === "Never";
 		};
 		publish.addEventListener("change", () => {
 			showPublish();
 			update({ publish: publish.value as ControlPublishMode });
 		});
-		showPublish();
+		const showKind = () => {
+			const sw = isSwitch();
+			modeCol.hidden = !sw;
+			row.hidden = sw;
+			valueFeedback.hidden = sw;
+			propRow.hidden = sw;
+			kindDesc.textContent = sw
+				? (CONTROL_KINDS.find((k) => k.kind === kind.value)?.desc ?? "")
+				: "";
+			kindDesc.hidden = !sw;
+			// a switch posts only changes, so On update is the same as On change
+			for (const option of publish.options) {
+				option.hidden = sw && option.value === "Update";
+			}
+			if (sw && publish.value === "Update") {
+				publish.value = "Change";
+			}
+			showPublish();
+		};
+		kind.addEventListener("change", () => {
+			showKind();
+			update({
+				kind: kind.value as ControlInput["kind"],
+				publish: publish.value as ControlPublishMode,
+			});
+		});
+		showKind();
 
 		card.append(
 			head,
 			idFeedback,
+			kindRow,
+			kindDesc,
 			row,
 			valueFeedback,
 			propRow,

@@ -5,6 +5,7 @@
 
 import type {
 	ControlConductorConfig,
+	ControlKind,
 	ControlPublishMode,
 	NodeControlConfig,
 	NodeControlPropertyType,
@@ -82,6 +83,13 @@ export interface ControlInput {
 	propertyName: string;
 	/** The datum property type of the value, or `""` for `Status`. */
 	propertyType: "" | "Instantaneous" | "Accumulating";
+	/**
+	 * The kind of control. An Operational Mode Switch's value follows its
+	 * mode, so its type, value, and property are not used.
+	 */
+	kind: ControlKind;
+	/** An Operational Mode Switch's operational mode. */
+	mode: string;
 }
 
 /** A task of a simulated Control Conductor, as entered. */
@@ -701,9 +709,11 @@ export class RunInputs extends EventTarget {
 			state.controls = [];
 		}
 		for (const c of state.controls) {
-			// saved before controls had a datum property
+			// saved before controls had a datum property, or a kind
 			c.propertyName ??= "";
 			c.propertyType ??= "";
+			c.kind ??= "Mock";
+			c.mode ??= "";
 		}
 		if (!Array.isArray(state.conductors)) {
 			state.conductors = [];
@@ -935,6 +945,8 @@ export class RunInputs extends EventTarget {
 			persist: false,
 			propertyName: "",
 			propertyType: "",
+			kind: "Mock",
+			mode: "",
 		};
 		this.#update((s) => {
 			s.controls.push(item);
@@ -1127,6 +1139,8 @@ export class RunInputs extends EventTarget {
 				c.propertyType === "Accumulating"
 					? c.propertyType
 					: "",
+			kind: c.kind ?? "Mock",
+			mode: c.mode ?? "",
 		}));
 		const newConductors = (conductors ?? []).map((c) =>
 			this.#conductorInput(c.settings ?? {}),
@@ -1328,6 +1342,15 @@ export class RunInputs extends EventTarget {
 			const idProblem = controlIdProblem(s.controls, c);
 			if (idProblem) {
 				throw new InputError(idProblem, "controls", c.id);
+			}
+			if (c.kind === "OperationalModeSwitch") {
+				return {
+					controlId: c.controlId.trim(),
+					kind: c.kind,
+					mode: c.mode.trim() || null,
+					publish: c.publish,
+					persist: c.publish !== "Never" && c.persist ? true : null,
+				};
 			}
 			const valueProblem = controlValueProblem(c.type, c.value);
 			if (valueProblem) {

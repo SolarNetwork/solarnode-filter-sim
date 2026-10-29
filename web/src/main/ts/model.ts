@@ -326,6 +326,12 @@ export const NODE_CONTROL_TYPES: readonly NodeControlPropertyType[] = [
  */
 export type ControlPublishMode = "Never" | "Change" | "Update";
 
+/**
+ * The kind of simulated control: a Mock control, or an Operational Mode Switch,
+ * a `Boolean` control whose value is whether its operational mode is active.
+ */
+export type ControlKind = "Mock" | "OperationalModeSwitch";
+
 /** A simulated SolarNode control. */
 export interface NodeControlConfig {
 	controlId?: string | null;
@@ -344,6 +350,10 @@ export interface NodeControlConfig {
 	propertyName?: string | null;
 	/** The datum property type of the value, or `null` for `Status`. */
 	propertyType?: ControlPropertyType | null;
+	/** The kind of control, or `null` for `Mock`. */
+	kind?: ControlKind | null;
+	/** An Operational Mode Switch's operational mode. */
+	mode?: string | null;
 }
 
 /** A datum property type a control's value can have. */
@@ -494,14 +504,19 @@ export interface LocalStateChange {
 
 /** The kinds of simulated component that handle instructions. */
 export type InstructionHandlerType =
-	"Reactor" | "OperationalModes" | "Metadata" | "Control" | "Conductor";
+	| "Reactor"
+	| "OperationalModes"
+	| "Metadata"
+	| "Control"
+	| "OperationalModeSwitch"
+	| "Conductor";
 
 /** The simulated component that gave an instruction its status. */
 export interface InstructionHandlerInfo {
 	type: InstructionHandlerType;
 	/**
-	 * The control ID of a control, or the Service Name of a Control Conductor
-	 * or metadata service.
+	 * The control ID of a control or Operational Mode Switch, or the Service
+	 * Name of a Control Conductor or metadata service.
 	 */
 	name?: string;
 }
@@ -576,7 +591,10 @@ export interface MetricInfo {
 	value: number;
 }
 
-/** A successful set of a simulated control's value. */
+/**
+ * A successful set of a simulated control's value, or a change of an
+ * Operational Mode Switch's value without a set.
+ */
 export interface ControlUpdate {
 	controlId: string;
 	type: NodeControlPropertyType;
@@ -586,6 +604,11 @@ export interface ControlUpdate {
 	value: string;
 	/** `true` if the control published a datum of the value. */
 	published: boolean;
+	/**
+	 * For an Operational Mode Switch whose value changed without a set,
+	 * because its mode changed some other way, the mode.
+	 */
+	mode?: string;
 }
 
 /** The state of a simulated control. */
@@ -600,6 +623,10 @@ export interface ControlInfo {
 	modified?: string;
 	/** How many times the value was set. */
 	updates: number;
+	/** The kind of control, or missing for `Mock`. */
+	kind?: ControlKind;
+	/** An Operational Mode Switch's operational mode. */
+	mode?: string;
 }
 
 /** An external command a filter asked to run. */

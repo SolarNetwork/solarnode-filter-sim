@@ -24,7 +24,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * A successful set of a simulated control's value, which might not change the
- * value.
+ * value, or a change of an Operational Mode Switch's value without a set.
  *
  * @param controlId
  *        the control ID
@@ -36,11 +36,34 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the value the set gave the control, normalized for its type
  * @param published
  *        {@code true} if the control published a datum of the value
+ * @param mode
+ *        for an Operational Mode Switch whose value changed without a set,
+ *        because its operational mode was enabled, disabled, or expired some
+ *        other way, the mode; else {@code null}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ControlUpdate(String controlId, String type, @Nullable String previousValue, String value,
-		boolean published) {
+		boolean published, @Nullable String mode) {
+
+	/**
+	 * Constructor, for a set.
+	 *
+	 * @param controlId
+	 *        the control ID
+	 * @param type
+	 *        the control type name
+	 * @param previousValue
+	 *        the value before the set
+	 * @param value
+	 *        the value the set gave the control
+	 * @param published
+	 *        {@code true} if the control published a datum of the value
+	 */
+	public ControlUpdate(String controlId, String type, @Nullable String previousValue, String value,
+			boolean published) {
+		this(controlId, type, previousValue, value, published, null);
+	}
 
 }

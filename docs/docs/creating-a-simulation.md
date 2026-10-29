@@ -44,6 +44,8 @@ export, **except** for some controls and Control Conductors, which the Simulator
   `false`, which publishes a datum every time it is set, with its datum property name and type. Input controls are not supported.
 - Each Mock Control becomes a control with its type and initial value, which publishes a datum when
   its value changes.
+- Each [Operational Mode Switch][opmode-switch] becomes an Operational Mode Switch control of its
+  mode, which publishes a datum when its value changes.
 - Any [Control Datum Sources][control-ds] are used to decide whether each control publishes at all,
   and whether its datum are persisted. A file without Control Datum Sources publishes every
   control's datum, without persisting them, like a Control Datum Source with its default settings.
@@ -76,6 +78,7 @@ You can use ++ctrl+z++ or ++cmd+z++ to undo your changes as you go.
 [canvas]: ./getting-your-bearings.md#canvas
 [control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
 [control-ds]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/control/
+[opmode-switch]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.control.opmode#operational-mode-switch
 [control-pane]: ./getting-your-bearings.md#control-pane
 [downsample]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/downsample/
 [filter-palette]: ./getting-your-bearings.md#filter-palette

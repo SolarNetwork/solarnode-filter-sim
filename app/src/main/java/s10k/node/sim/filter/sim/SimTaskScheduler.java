@@ -49,8 +49,13 @@ import org.springframework.scheduling.Trigger;
  * Trigger-based scheduling is not supported, as no supported filter uses it.
  * </p>
  *
+ * <p>
+ * A node service's tasks, such as the operational modes service's auto-expire
+ * task, are background tasks: they never end, so they are not pending work.
+ * </p>
+ *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 public final class SimTaskScheduler implements TaskScheduler {
 
@@ -61,18 +66,20 @@ public final class SimTaskScheduler implements TaskScheduler {
 		private final Runnable runnable;
 		private final @Nullable Duration period;
 		private final @Nullable String owner;
+		private final boolean background;
 		private Instant due;
 		private boolean cancelled;
 		private boolean done;
 
 		private Task(long seq, Runnable runnable, Instant due, @Nullable Duration period,
-				@Nullable String owner) {
+				@Nullable String owner, boolean background) {
 			super();
 			this.seq = seq;
 			this.runnable = runnable;
 			this.due = due;
 			this.period = period;
 			this.owner = owner;
+			this.background = background;
 		}
 
 		/**
@@ -91,6 +98,16 @@ public final class SimTaskScheduler implements TaskScheduler {
 		 */
 		public @Nullable String owner() {
 			return owner;
+		}
+
+		/**
+		 * Test if this is a background task, of a node service.
+		 *
+		 * @return {@code true} if the task was scheduled with
+		 *         {@link SimTaskScheduler#background(Runnable)}
+		 */
+		public boolean background() {
+			return background;
 		}
 
 		@Override
@@ -145,6 +162,7 @@ public final class SimTaskScheduler implements TaskScheduler {
 	private final PriorityQueue<Task> tasks = new PriorityQueue<>();
 	private long nextSeq;
 	private @Nullable Task running;
+	private int background;
 
 	/**
 	 * Constructor.
@@ -213,10 +231,31 @@ public final class SimTaskScheduler implements TaskScheduler {
 
 	private Task add(Runnable runnable, Instant due, @Nullable Duration period) {
 		final Task current = running;
+		final boolean bg = (current != null ? current.background : background > 0);
 		final Task task = new Task(nextSeq++, runnable, due, period,
-				current != null ? current.owner : owner.get());
+				bg ? null : current != null ? current.owner : owner.get(), bg);
 		tasks.add(task);
 		return task;
+	}
+
+	/**
+	 * Run something that schedules background tasks, such as starting a node
+	 * service.
+	 *
+	 * <p>
+	 * The tasks it schedules, and the tasks they schedule, have no owner.
+	 * </p>
+	 *
+	 * @param task
+	 *        the task to run
+	 */
+	public void background(Runnable task) {
+		background++;
+		try {
+			task.run();
+		} finally {
+			background--;
+		}
 	}
 
 	/**

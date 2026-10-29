@@ -1244,6 +1244,42 @@ public class SettingsCsvServiceTests {
 	}
 
 	@Test
+	public void importModeSwitches() {
+		// GIVEN
+		String csv = csv("net.solarnetwork.node.control.opmode.switch.FACTORY,1,1",
+				"net.solarnetwork.node.control.opmode.switch.1,controlId,/switch/boost",
+				"net.solarnetwork.node.control.opmode.switch.1,mode,boost",
+				"net.solarnetwork.node.control.opmode.switch.FACTORY,2,2",
+				"net.solarnetwork.node.control.opmode.switch.2,controlId,/switch/other",
+				"net.solarnetwork.node.datum.control.FACTORY,1,1",
+				"net.solarnetwork.node.datum.control.1,controlIdRegexValue,^/switch/boost",
+				"net.solarnetwork.node.datum.control.1,persistModeValue,PollAndEvent");
+
+		// WHEN
+		SettingsImport result = service.importCsv(csv);
+
+		// THEN
+		// @formatter:off
+		then(result.controls())
+			.as("Switches publish on change, as the Control Datum Sources allow")
+			.containsExactly(
+					NodeControlConfig.modeSwitch("/switch/boost", "boost", ControlPublishMode.Change, true),
+					NodeControlConfig.modeSwitch("/switch/other", null, ControlPublishMode.Never, false))
+			;
+		then(result.ignored())
+			.as("The switches are not ignored")
+			.isEmpty()
+			;
+		then(result.messages())
+			.as("No Control Datum Source publishes the second switch")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(tuple(SimulationMessage.CODE_CONTROL_SETTINGS,
+					"No Control Datum Source publishes the change events of /switch/other, so it never publishes datum."))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void exportLeavesOutControls() {
 		// GIVEN
 		SettingsImport imported = service.importCsv(resource("control-settings.csv"));

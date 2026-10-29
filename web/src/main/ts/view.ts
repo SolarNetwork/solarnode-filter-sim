@@ -382,9 +382,21 @@ export function controlsTable(
 				),
 			);
 		}
+		const type = element("td", "text-body-secondary");
+		if (c.kind === "OperationalModeSwitch") {
+			type.append("switch of ");
+			type.append(
+				c.mode
+					? element("span", "font-monospace", c.mode)
+					: element("span", "fst-italic", "no mode"),
+			);
+			type.title = `An Operational Mode Switch: a ${c.type} control of whether its operational mode is active`;
+		} else {
+			type.append(c.type);
+		}
 		row.append(
 			element("td", "font-monospace", c.controlId),
-			element("td", "text-body-secondary", c.type),
+			type,
 			value,
 			element(
 				"td",
@@ -433,6 +445,8 @@ export function handlerLabel(handler: InstructionHandlerInfo): string {
 			return `the metadata service ${quoted(handler.name ?? "")}`;
 		case "Control":
 			return `control ${handler.name ?? ""}`;
+		case "OperationalModeSwitch":
+			return `the Operational Mode Switch ${handler.name ?? ""}`;
 		case "Conductor":
 			return `the Control Conductor ${quoted(handler.name ?? "")}`;
 	}
@@ -449,6 +463,18 @@ export function opModesText(change: OpModeChange): string {
 		...(change.enabled ?? []).map((m) => `+${m}`),
 		...(change.disabled ?? []).map((m) => `−${m}`),
 	].join(" ");
+}
+
+/**
+ * Describe where a datum published during a scheduled task of no filter came
+ * from: an Operational Mode Switch whose mode the operational modes service's
+ * auto-expire task found expired.
+ *
+ * @param controlId the control ID
+ * @returns the description, starting with a capital letter
+ */
+export function expiredModeOriginText(controlId: string): string {
+	return `Published by control ${controlId}, when the operational modes service found its mode expired`;
 }
 
 /**

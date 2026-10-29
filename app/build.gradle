@@ -120,6 +120,7 @@ dependencies {
 	implementation(libs.sn.common.expr.spel, snExcludes)
 	implementation(libs.sn.node, snExcludes)
 	implementation(libs.sn.node.control.conductor, snExcludes)
+	implementation(libs.sn.node.control.opmode, snExcludes)
 	implementation(libs.sn.node.datum.filter.standard, snExcludes)
 	implementation(libs.sn.node.datum.filter.tariff, snExcludes)
 	implementation(libs.sn.node.datum.filter.pvlib, snExcludes)

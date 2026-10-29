@@ -50,15 +50,65 @@ import org.jspecify.annotations.Nullable;
  *        {@code Status}), like the GPIO control's Property Type setting, or
  *        {@code null} for {@code Status}; a value that is not a number stays a
  *        {@code Status} property
+ * @param kind
+ *        the kind of control, or {@code null} for {@link ControlKind#Mock}
+ * @param mode
+ *        for an {@link ControlKind#OperationalModeSwitch}, its operational
+ *        mode; its type, value, and property are not used, as it is a
+ *        {@code Boolean} control whose value is whether the mode is active
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public record NodeControlConfig(@Nullable String controlId, @Nullable String type,
 		@Nullable String value, @Nullable ControlPublishMode publish, @Nullable Boolean persist,
-		@Nullable String propertyName, @Nullable String propertyType) {
+		@Nullable String propertyName, @Nullable String propertyType, @Nullable ControlKind kind,
+		@Nullable String mode) {
 
 	/**
-	 * Constructor, with the default datum property.
+	 * Constructor, for a Mock control.
+	 *
+	 * @param controlId
+	 *        the control ID
+	 * @param type
+	 *        the control type
+	 * @param value
+	 *        the starting value
+	 * @param publish
+	 *        when the control publishes a datum
+	 * @param persist
+	 *        {@code true} to persist the datum the control publishes
+	 * @param propertyName
+	 *        the datum property name of the value
+	 * @param propertyType
+	 *        the datum property type of the value
+	 */
+	public NodeControlConfig(@Nullable String controlId, @Nullable String type, @Nullable String value,
+			@Nullable ControlPublishMode publish, @Nullable Boolean persist,
+			@Nullable String propertyName, @Nullable String propertyType) {
+		this(controlId, type, value, publish, persist, propertyName, propertyType, null, null);
+	}
+
+	/**
+	 * Create an Operational Mode Switch.
+	 *
+	 * @param controlId
+	 *        the control ID
+	 * @param mode
+	 *        the operational mode
+	 * @param publish
+	 *        when the control publishes a datum
+	 * @param persist
+	 *        {@code true} to persist the datum the control publishes
+	 * @return the configuration
+	 */
+	public static NodeControlConfig modeSwitch(@Nullable String controlId, @Nullable String mode,
+			@Nullable ControlPublishMode publish, @Nullable Boolean persist) {
+		return new NodeControlConfig(controlId, null, null, publish, persist, null, null,
+				ControlKind.OperationalModeSwitch, mode);
+	}
+
+	/**
+	 * Constructor, for a Mock control with the default datum property.
 	 *
 	 * @param controlId
 	 *        the control ID
@@ -86,6 +136,15 @@ public record NodeControlConfig(@Nullable String controlId, @Nullable String typ
 	 */
 	public ControlPublishMode publishValue() {
 		return (publish != null ? publish : DEFAULT_PUBLISH);
+	}
+
+	/**
+	 * Get the kind of control.
+	 *
+	 * @return the kind, never {@code null}
+	 */
+	public ControlKind kindValue() {
+		return (kind != null ? kind : ControlKind.Mock);
 	}
 
 	/**
