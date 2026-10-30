@@ -390,6 +390,10 @@ export class Canvas extends EventTarget {
 	#selection: Set<number> | null = null;
 	/** The datum whose route the pointer is over. */
 	#routeHover: number | null = null;
+	/** The datum source node the pointer is over, by key. */
+	#sourceHover: string | null = null;
+	/** The datum whose drawn routes start at each datum source node, by key. */
+	#sourceRouteSeqs = new Map<string, number[]>();
 	#drop: Drop | null = null;
 	#drag: { key: string; start: Point } | null = null;
 	#changes = 0;
@@ -612,6 +616,7 @@ export class Canvas extends EventTarget {
 		const datum = run?.datum ?? [];
 		this.#visibleSeqs = this.#startRoutes();
 		this.#routeHover = null;
+		this.#sourceHover = null;
 		this.#sourceColors.clear();
 		this.#addSourceColors(datum);
 		this.#el.classList.remove("is-stale");
@@ -886,6 +891,15 @@ export class Canvas extends EventTarget {
 					trace.seq !== path.seq,
 			};
 		});
+		this.#sourceRouteSeqs.clear();
+		for (const line of lines) {
+			const key = line.route.source ? line.route.keys[0] : undefined;
+			if (key) {
+				const seqs = this.#sourceRouteSeqs.get(key) ?? [];
+				seqs.push(line.route.seq);
+				this.#sourceRouteSeqs.set(key, seqs);
+			}
+		}
 		drawRoutes(this.#routeLayers, lines, {
 			...this.#routeGeometry,
 			sources: this.#sourceNodes.size > 0,
@@ -1041,23 +1055,46 @@ export class Canvas extends EventTarget {
 		}
 	}
 
+	/**
+	 * Emphasize the routes that start at a datum source node, such as while
+	 * the pointer is over it.
+	 *
+	 * @param key the node's key, or `null` for none
+	 */
+	#setSourceHover(key: string | null): void {
+		if (key !== this.#sourceHover) {
+			this.#sourceHover = key;
+			this.#applyRouteHover();
+		}
+	}
+
 	#applyRouteHover(): void {
+		const sourceSeqs =
+			this.#sourceHover !== null
+				? this.#sourceRouteSeqs.get(this.#sourceHover)
+				: undefined;
 		const seq = this.#routeHover;
+		const seqs: ReadonlySet<number> | null =
+			sourceSeqs !== undefined
+				? new Set(sourceSeqs)
+				: seq !== null
+					? new Set([seq])
+					: null;
 		for (const layer of [
 			this.#routeLayers.lines,
 			this.#routeLayers.badges,
 		]) {
-			layer.classList.toggle("is-hovering", seq !== null);
+			layer.classList.toggle("is-hovering", seqs !== null);
 			layer
 				.querySelectorAll<SVGElement>("[data-seq]")
 				.forEach((el) =>
 					el.classList.toggle(
 						"is-hover",
-						el.dataset.seq === String(seq),
+						seqs?.has(Number(el.dataset.seq)) ?? false,
 					),
 				);
 		}
-		this.#legend?.setHover(seq);
+		this.#legend?.setHover(seqs);
 	}
 
 	/** Handle the pointer on routes and their badges. */
@@ -1681,6 +1718,14 @@ export class Canvas extends EventTarget {
 				this.select(String(view.model.id));
 			}
 		});
+		// a datum source node emphasizes the routes that start at it
+		paper.on("element:mouseenter", (view: dia.ElementView) => {
+			const key = String(view.model.id);
+			if (this.#sourceNodes.has(key)) {
+				this.#setSourceHover(key);
+			}
+		});
+		paper.on("element:mouseleave", () => this.#setSourceHover(null));
 		paper.on("blank:pointerclick", () => {
 			this.select(null);
 			this.dispatchEvent(new Event("blankclick"));

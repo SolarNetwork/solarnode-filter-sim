@@ -56,7 +56,7 @@ export interface DatumSourceSummary {
 	name?: string;
 	/** The Source ID, if it has one. */
 	sourceId?: string;
-	/** The schedule, as text, like `every 30 s`. */
+	/** The schedule, as text, like `every 30s`. */
 	schedule?: string;
 	/** A problem with its settings, if it has one. */
 	problem?: string;

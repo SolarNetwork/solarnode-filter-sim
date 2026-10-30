@@ -48,7 +48,9 @@ Main chain. Its tooltip gives its type, Source ID, and schedule, and clicking it
 In the Execution Flow, a polled datum reads like `Polled from "Meter" (Mock Energy Meter)`, or
 `Polled from datum source 2 (Mock Energy Meter)` for a datum source without a Service Name, and its
 route on the Canvas starts at its datum source. After a run, each datum source's card and node show
-how many datum it polled, and clicking a message about a datum source shows its card.
+how many datum it polled, and clicking a message about a datum source shows its card. While routes
+are shown, pointing at a datum source's node (or at the **Static** node of the Datum input)
+highlights the routes of the datum that started there, and dims the others.
 
 ## Mock Battery controls
 

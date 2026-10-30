@@ -430,18 +430,19 @@ export function drawRoutes(
 		const endKey = route.keys[route.keys.length - 1];
 		const end = route.end ? geo.box(endKey) : undefined;
 		if (end) {
-			// right of the end connector, or else above the line out of the
-			// filter, clear of its label and run badge
+			// right of the end connector, with more rows above it, clear of
+			// its label below; or else above the line out of the filter,
+			// clear of its label and run badge
 			const output = route.end === "output";
 			chip(`end:${endKey}`, {
 				origin: {
 					x: end.x + end.width + CHIP_GAP + (output ? 3 : 1),
 					y: output
-						? end.y + end.height / 2 - CHIP_HEIGHT / 2
+						? end.y + end.height / 2 + CHIP_HEIGHT / 2
 						: end.y + end.height / 2 - bandHalf - CHIP_GAP,
 				},
 				left: false,
-				up: !output,
+				up: true,
 				perRow: 4,
 			}).chips.push(item);
 		}

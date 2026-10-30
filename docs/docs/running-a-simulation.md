@@ -48,7 +48,8 @@ Click a datum to see its card below the list, with how it went through the filte
 
 When a result has more than 20 datum, the Canvas shows the routes of only the datum you select.
 Click a datum (its card header, or its row in the list) to select it, and click it again to
-unselect it. You can select any number of datum, and they stay selected when you filter the
+unselect it. Selecting a datum opens its card; hold **Alt** (**Option** on a Mac) as you click
+its header to select or unselect it and leave the card as it is. You can select any number of datum, and they stay selected when you filter the
 Execution Flow. In the list, the arrow keys show the route of each datum they reach, without
 selecting it, and **Space** selects it. The datum bar shows how many datum are selected, and
 **Clear selection** unselects them all, even those the filters hide.

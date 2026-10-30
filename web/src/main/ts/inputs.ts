@@ -572,13 +572,13 @@ export function scheduleProblem(schedule: string | undefined): string | null {
  * Describe a datum source's schedule.
  *
  * @param schedule the schedule
- * @returns the description, like `every 60 s` or the cron expression
+ * @returns the description, like `every 60s` or the cron expression
  */
 export function scheduleText(schedule: string): string {
 	const expr = schedule.trim();
 	if (/^\+?\d+$/.test(expr)) {
 		const ms = Number(expr);
-		return ms % 1000 === 0 ? `every ${ms / 1000} s` : `every ${ms} ms`;
+		return ms % 1000 === 0 ? `every ${ms / 1000}s` : `every ${ms}ms`;
 	}
 	return expr;
 }

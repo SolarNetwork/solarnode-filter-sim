@@ -335,6 +335,7 @@ class App {
 		});
 		inputs.addEventListener("change", () => {
 			this.#refreshCanvasSources();
+			this.#refreshControls();
 			this.#changed();
 		});
 		this.#refreshCanvasSources();
@@ -1277,7 +1278,9 @@ class App {
 	#refreshControls(): void {
 		$<HTMLButtonElement>("#undo-button").disabled = !this.#ws.canUndo;
 		$<HTMLButtonElement>("#redo-button").disabled = !this.#ws.canRedo;
-		$("#empty-state").hidden = !this.#ws.isEmpty;
+		// only a new simulation offers the upload: any input, filter, or run
+		// (which needs an input) hides it
+		$("#empty-state").hidden = !(this.#ws.isEmpty && this.#inputs.isEmpty);
 	}
 }
 

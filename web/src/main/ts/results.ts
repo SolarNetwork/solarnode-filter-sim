@@ -1001,14 +1001,19 @@ export class ResultsPanel extends EventTarget {
 	 * @param seq the datum sequence number
 	 * @param trace the datum's trace, if it is loaded, to highlight the
 	 *     filters it went through once it is selected
+	 * @param expand `false` to leave the datum's card collapsed
 	 */
-	#toggleSelected(seq: number, trace: DatumTrace | undefined): void {
+	#toggleSelected(
+		seq: number,
+		trace: DatumTrace | undefined,
+		expand = true,
+	): void {
 		const select = !this.#selected.has(seq);
 		if (select) {
 			this.#selected.add(seq);
-			const section = this.#el.querySelector<HTMLElement>(
-				`#sim-datum-${seq}`,
-			);
+			const section = expand
+				? this.#el.querySelector<HTMLElement>(`#sim-datum-${seq}`)
+				: null;
 			if (section) {
 				this.#setCollapsed(section, false);
 			}
@@ -1780,8 +1785,8 @@ export class ResultsPanel extends EventTarget {
 		header.setAttribute("role", "button");
 		header.setAttribute("aria-pressed", "false");
 		header.title = this.#selecting
-			? "Select this datum to show its route on the canvas, or unselect it"
-			: "Highlight the filters this datum went through";
+			? "Select this datum to show its route on the canvas, or unselect it (Alt or Option-click to keep it collapsed)"
+			: "Highlight the filters this datum went through (Alt or Option-click to keep it collapsed)";
 		const origin = element("span", "small text-body-secondary");
 		origin.append(this.#originText(trace.origin));
 		if (trace.origin.type === "Instruction") {
@@ -1844,7 +1849,8 @@ export class ResultsPanel extends EventTarget {
 			origin,
 			result,
 		);
-		const toggle = () => {
+		// Alt (Option) keeps the datum collapsed or expanded as it is
+		const toggle = (expand = true) => {
 			const large = this.#large;
 			if (this.#ldebug && large) {
 				const index = large.positions.get(trace.seq);
@@ -1861,14 +1867,14 @@ export class ResultsPanel extends EventTarget {
 					this.#moveTo(first);
 				}
 			} else {
-				this.#selectDatum(trace, section, header);
+				this.#selectDatum(trace, section, header, expand);
 			}
 		};
-		header.addEventListener("click", toggle);
+		header.addEventListener("click", (e) => toggle(!e.altKey));
 		header.addEventListener("keydown", (e) => {
 			if (e.key === "Enter" || e.key === " ") {
 				e.preventDefault();
-				toggle();
+				toggle(!e.altKey);
 			}
 		});
 
@@ -1942,9 +1948,10 @@ export class ResultsPanel extends EventTarget {
 		trace: DatumTrace,
 		section: HTMLElement,
 		header: HTMLElement,
+		expand = true,
 	): void {
 		if (this.#selecting) {
-			this.#toggleSelected(trace.seq, trace);
+			this.#toggleSelected(trace.seq, trace, expand);
 			return;
 		}
 		const select = this.#selectedSeq !== trace.seq;
@@ -1956,7 +1963,7 @@ export class ResultsPanel extends EventTarget {
 			.forEach((el) => el.setAttribute("aria-pressed", "false"));
 		this.#selectedSeq = select ? trace.seq : null;
 		section.classList.toggle("is-selected", select);
-		if (select) {
+		if (select && expand) {
 			this.#setCollapsed(section, false);
 		}
 		header.setAttribute("aria-pressed", String(select));
