@@ -140,6 +140,9 @@ public class SmokeFixtureTests {
 		for ( String key : List.of("processed", "generated", "output", "discarded") ) {
 			stats.set(key, result.path("stats").path(key));
 		}
+		if ( result.path("stats").path("polled").asInt() > 0 ) {
+			stats.set("polled", result.path("stats").path("polled"));
+		}
 		ArrayNode datum = summary.putArray("datum");
 		for ( JsonNode trace : result.path("datum") ) {
 			ObjectNode d = datum.addObject();
@@ -292,6 +295,50 @@ public class SmokeFixtureTests {
 	}
 
 	@Test
+	public void modeSwitch() throws IOException {
+		// GIVEN
+		final String name = "mode-switch";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("No messages")
+			.isEmpty()
+			;
+		then(expected.path("datum").valueStream().map(d -> d.path("sourceId").asString()))
+			.as("The switches publish their changes")
+			.contains("/switch/boost", "/switch/eco")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void opModeInvoker() throws IOException {
+		// GIVEN
+		final String name = "opmode-invoker";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("No messages")
+			.isEmpty()
+			;
+		then(expected.path("datum").valueStream().map(d -> d.path("sourceId").asString()))
+			.as("The invoker polls the datum sources while the mode is active")
+			.contains("/meter/mock", "/site")
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void pvlibAndMetrics() throws IOException {
 		// GIVEN
 		final String name = "pvlib-and-metrics";
@@ -309,6 +356,24 @@ public class SmokeFixtureTests {
 		then(expected.path("metrics").size())
 			.as("Two metrics for each datum")
 			.isEqualTo(4)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void datumSources() throws IOException {
+		// GIVEN
+		final String name = "datum-sources";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("Only the TOU time zone limitation")
+			.containsExactly("FilterLimitation")
 			;
 		// @formatter:on
 	}

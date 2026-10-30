@@ -7,10 +7,19 @@ import {
 	UNASSIGNED_UID,
 	type FilterConfig,
 	type SettingField,
-	type SettingProblem,
 	type SettingsForm,
 } from "./model.ts";
 import { bundleLabel, externalFilesText, quoted } from "./view.ts";
+import {
+	element,
+	iconButton,
+	newId,
+	SettingsFormRenderer,
+	textRows,
+	toolButton,
+	type Choices,
+	type SettingsFormHost,
+} from "./settingsForm.ts";
 import type { ChainSlot, SettingChanges, Workspace } from "./workspace.ts";
 
 /** What the inspector's buttons do. */
@@ -86,97 +95,6 @@ const ORCHESTRATE_CONTROLS_TOPIC = "OrchestrateControls";
 const INSTRUCTION_PARAM_SETTING =
 	/^(instructorConfigs\[\d+\]\.instructions\[\d+\])\.(parameters\[\d+\])\.expression$/;
 
-/** A rendered setting, for showing its problems. */
-interface Control {
-	/** The element marked invalid. */
-	control: HTMLElement;
-	feedback: HTMLElement;
-}
-
-/** The names a Choose menu offers. */
-interface Choices {
-	/** Get the names. */
-	names: () => string[];
-	/** The text shown when there are none. */
-	none: string;
-	/** The button's tooltip. */
-	title: string;
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-	tag: K,
-	className?: string,
-	text?: string,
-): HTMLElementTagNameMap[K] {
-	const el = document.createElement(tag);
-	if (className) {
-		el.className = className;
-	}
-	if (text !== undefined) {
-		el.textContent = text;
-	}
-	return el;
-}
-
-function iconButton(
-	label: string,
-	icon: string,
-	className: string,
-	onClick: () => void,
-): HTMLButtonElement {
-	const button = element("button", `btn btn-sm ${className}`);
-	button.type = "button";
-	const glyph = element("i", `bi bi-${icon}`);
-	glyph.setAttribute("aria-hidden", "true");
-	button.append(glyph);
-	if (label) {
-		button.append(` ${label}`);
-	}
-	button.addEventListener("click", onClick);
-	return button;
-}
-
-/**
- * A small icon-only button for a setting's tools. Like SolarNode's help and
- * note buttons, it is left out of the tab order, so tabbing moves between
- * fields.
- */
-function toolButton(
-	title: string,
-	icon: string,
-	onClick: () => void,
-): HTMLButtonElement {
-	const button = iconButton("", icon, "btn-link sim-tool", onClick);
-	button.title = title;
-	button.setAttribute("aria-label", title);
-	button.tabIndex = -1;
-	return button;
-}
-
-/**
- * Get the name of one item of a list, like "Expression" for "Expressions".
- *
- * @param label the list label
- */
-function itemName(label: string | undefined): string {
-	return (label ?? "Item").replace(/(?<!s)s$/, "");
-}
-
-/**
- * Get a name with its indefinite article, like "an expression".
- *
- * @param name the name, in lower case
- */
-function withArticle(name: string): string {
-	return `${/^[aeiou]/.test(name) ? "an" : "a"} ${name}`;
-}
-
-/** The number of rows for a text area. */
-function textRows(value: string | undefined): number {
-	const lines = (value ?? "").split("\n").length;
-	return Math.min(12, Math.max(2, lines + 1));
-}
-
 /**
  * The panel that shows and edits the selected filter.
  *
@@ -193,9 +111,9 @@ export class Inspector {
 	#signature = "";
 	#selfEdit = false;
 	#token = 0;
-	#ids = 0;
 	#validateTimer?: number;
-	#controls = new Map<string, Control>();
+	/** The rendered settings form. */
+	#form?: SettingsFormRenderer;
 	#alerts?: HTMLElement;
 	#uidWarning?: HTMLElement;
 	/** The Remove Overrides button of an external filter. */
@@ -292,7 +210,7 @@ export class Inspector {
 			}
 		}
 
-		this.#controls.clear();
+		this.#form = undefined;
 		this.#uidWarning = undefined;
 		this.#overridesButton = undefined;
 		const parts: HTMLElement[] = [this.#header(node, filter)];
@@ -304,12 +222,8 @@ export class Inspector {
 		} else {
 			parts.push(this.#instanceIdField(filter));
 			if (form) {
-				for (const field of form.fields) {
-					const el = this.#field(field, filter);
-					if (el) {
-						parts.push(el);
-					}
-				}
+				this.#form = new SettingsFormRenderer(this.#formHost(filter));
+				parts.push(...this.#form.render(form.fields));
 				const other = this.#otherSettings(filter, form);
 				if (other) {
 					parts.push(other);
@@ -327,7 +241,7 @@ export class Inspector {
 		this.#el.scrollTop = scroll;
 		this.#shownFilterId = filter.id;
 		if (form) {
-			this.#showProblems(form.problems);
+			this.#form?.showProblems(form.problems);
 		}
 	}
 
@@ -745,7 +659,7 @@ export class Inspector {
 
 	#instanceIdField(filter: FilterConfig): HTMLElement {
 		const ws = this.#ws;
-		const id = this.#newId();
+		const id = newId();
 		const wrapper = element("div", "mb-3");
 		const label = element(
 			"label",
@@ -793,527 +707,134 @@ export class Inspector {
 		return wrapper;
 	}
 
-	#field(
-		field: SettingField,
-		filter: FilterConfig,
-		itemLabel?: string,
-	): HTMLElement | null {
-		switch (field.type) {
-			case "Group":
-				return this.#group(field, filter, itemLabel);
-			case "Title":
-				return this.#title(field);
-			case "Toggle":
-				return this.#toggle(field, filter);
-			case "Select":
-				return this.#select(field, filter);
-			case "Radio":
-				return this.#radio(field, filter);
-			case "Slider":
-				return this.#slider(field, filter);
-			case "TextArea":
-				return this.#text(field, filter, true);
-			default:
-				return this.#text(field, filter, false);
-		}
+	/** What a filter's settings form edits. */
+	#formHost(filter: FilterConfig): SettingsFormHost {
+		const ws = this.#ws;
+		return {
+			settings: () => ws.filter(filter.id)?.settings ?? {},
+			edit: (changes, mergeKey, rerender) =>
+				this.#edit(
+					filter.id,
+					changes,
+					mergeKey ? `${filter.id}:${mergeKey}` : undefined,
+					rerender,
+				),
+			notes: () => filter.notes ?? undefined,
+			setNote: (key, note) =>
+				this.#change(() =>
+					ws.setNote(
+						filter.id,
+						key,
+						note,
+						`${filter.id}:note:${key}`,
+					),
+				),
+			choices: (field, multiline) =>
+				this.#choices(field, filter, multiline),
+			relatedServices: (serviceFilter) =>
+				this.#actions.relatedServices(serviceFilter),
+			decorate: (field, wrapper) => {
+				if (field.key === UID_SETTING) {
+					this.#uidWarning = element(
+						"div",
+						"form-text text-warning-emphasis",
+					);
+					wrapper.append(this.#uidWarning);
+					this.#updateUidWarning(filter.id);
+				}
+			},
+			valueEdited: (key) => {
+				if (key === UID_SETTING) {
+					this.#updateUidWarning(filter.id);
+				}
+			},
+			refreshSource: (key, container) =>
+				this.#refreshSource(filter.id, key, container),
+			readOnlyGroup: (field) => this.#chainFilters(filter, field),
+		};
 	}
 
 	/**
-	 * Wrap a setting's control with its label, tools, help, problem feedback,
-	 * and note.
+	 * Get the Choose menu of a setting that names a Control Conductor or a
+	 * control.
 	 */
-	#setting(
-		field: SettingField,
-		filter: FilterConfig,
-		control: HTMLElement,
-		controlId: string,
-		marked: HTMLElement = control,
-	): HTMLElement {
-		const key = field.key!;
-		const wrapper = element("div", "mb-3 sim-setting");
-		const head = element("div", "d-flex align-items-center gap-1 mb-1");
-		const label = element(
-			"label",
-			"form-label mb-0 me-auto small fw-semibold",
-			field.label ?? key,
-		);
-		label.htmlFor = controlId;
-		head.append(label);
-		if (field.transient) {
-			const badge = element(
-				"span",
-				"badge text-bg-light border",
-				"not saved",
-			);
-			badge.title =
-				"SolarNode does not save this setting, so exports leave it out. The simulator applies it when a simulation starts.";
-			head.append(badge);
-		}
-		const extPill = element(
-			"span",
-			"badge rounded-pill text-bg-info sim-ext-pill",
-			"Ext",
-		);
-		head.append(extPill);
-
-		const help = element("div", "form-text sim-help");
-		help.hidden = true;
-		if (field.description) {
-			help.append(safeHtml(field.description));
-			const toggle = toolButton("Help", "question-circle", () => {
-				help.hidden = !help.hidden;
-				toggle.setAttribute("aria-expanded", String(!help.hidden));
-			});
-			toggle.setAttribute("aria-expanded", "false");
-			head.append(toggle);
-		}
-
-		const note = filter.notes?.[key] ?? "";
-		const noteRow = element("div", "mt-1");
-		noteRow.hidden = !note;
-		const noteInput = element(
-			"input",
-			"form-control form-control-sm sim-note",
-		);
-		noteInput.value = note;
-		noteInput.placeholder =
-			"A note about this setting, kept in the CSV note column";
-		noteInput.setAttribute("aria-label", `Note for ${field.label ?? key}`);
-		noteRow.append(noteInput);
-		if (!field.readOnly) {
-			const noteButton = toolButton(
-				"Note",
-				note ? "sticky-fill" : "sticky",
-				() => {
-					noteRow.hidden = !noteRow.hidden;
-					if (!noteRow.hidden) {
-						noteInput.focus();
-					}
-				},
-			);
-			noteInput.addEventListener("input", () => {
-				this.#change(() =>
-					this.#ws.setNote(
-						filter.id,
-						key,
-						noteInput.value,
-						`${filter.id}:note:${key}`,
-					),
-				);
-				noteButton.querySelector("i")!.className =
-					`bi bi-${noteInput.value.trim() ? "sticky-fill" : "sticky"}`;
-			});
-			head.append(noteButton);
-
-			const reset = toolButton(
-				field.defaultValue
-					? `Use the default value: ${field.defaultValue}`
-					: "Use the default value",
-				"arrow-counterclockwise",
-				() => this.#edit(filter.id, { [key]: null }, undefined, true),
-			);
-			reset.classList.add("sim-reset");
-			head.append(reset);
-		}
-		this.#refreshSource(filter.id, key, head);
-
-		const feedback = element("div", "invalid-feedback");
-		wrapper.append(head, control, feedback, help, noteRow);
-		this.#controls.set(key, { control: marked, feedback });
-		return wrapper;
-	}
-
-	#text(
+	#choices(
 		field: SettingField,
 		filter: FilterConfig,
 		multiline: boolean,
-	): HTMLElement {
-		const id = this.#newId();
-		const input = multiline
-			? element("textarea", "form-control form-control-sm font-monospace")
-			: element("input", "form-control form-control-sm");
-		if (input instanceof HTMLInputElement) {
-			input.type = field.secure ? "password" : "text";
-			if (field.type === "Cron") {
-				input.classList.add("font-monospace");
-			}
-		} else {
-			input.rows = textRows(field.value);
-		}
-		input.id = id;
-		input.value = field.value ?? "";
-		input.placeholder = field.defaultValue ?? "";
-		input.readOnly = field.readOnly;
-		input.spellcheck = false;
-		input.addEventListener("input", () =>
-			this.#editValue(filter, field.key!, input.value),
-		);
+	): Choices | undefined {
 		// a service parameter's value is a text area, like every Instructor
 		// parameter's
-		const choices: Choices | undefined = field.readOnly
-			? undefined
-			: this.#isConductorServiceField(field, filter)
-				? {
-						names: () => this.#actions.conductorUids(),
-						none: "No Control Conductors: add them on the Controls tab",
-						title: "Choose from the simulated Control Conductors",
-					}
-				: multiline
-					? undefined
-					: field.relatedServiceFilter
-						? {
-								names: () =>
-									this.#actions.relatedServices(
-										field.relatedServiceFilter!,
-									),
-								none: "No matching services",
-								title: "Choose from the simulated services",
-							}
-						: this.#isControlIdField(field, filter)
-							? {
-									names: () => this.#actions.controlIds(),
-									none: "No controls: add them on the Controls tab",
-									title: "Choose from the simulated controls",
-								}
-							: undefined;
-		const wrapper = choices
-			? this.#setting(
-					field,
-					filter,
-					this.#chooser(field, filter, input, choices),
-					id,
-					input,
-				)
-			: this.#setting(field, filter, input, id);
-		if (field.key === UID_SETTING) {
-			this.#uidWarning = element(
-				"div",
-				"form-text text-warning-emphasis",
-			);
-			wrapper.append(this.#uidWarning);
-			this.#updateUidWarning(filter.id);
+		if (this.#isConductorServiceField(field, filter)) {
+			return {
+				names: () => this.#actions.conductorUids(),
+				none: "No Control Conductors: add them on the Controls tab",
+				title: "Choose from the simulated Control Conductors",
+			};
 		}
-		if (field.type === "Cron") {
-			wrapper.append(
-				element(
-					"div",
-					"form-text",
-					"A cron expression, or a number of milliseconds between runs.",
-				),
-			);
+		if (!multiline && this.#isControlIdField(field, filter)) {
+			return {
+				names: () => this.#actions.controlIds(),
+				none: "No controls: add them on the Controls tab",
+				title: "Choose from the simulated controls",
+			};
 		}
-		return wrapper;
+		return undefined;
 	}
 
-	/**
-	 * Add a Choose menu to a text input, which lists names such as the
-	 * simulated services that match the setting's related service filter, like
-	 * SolarNode's settings page.
-	 */
-	#chooser(
-		field: SettingField,
-		filter: FilterConfig,
-		input: HTMLInputElement | HTMLTextAreaElement,
-		choices: Choices,
-	): HTMLElement {
-		const group = element("div", "input-group input-group-sm");
-		const button = element(
-			"button",
-			"btn btn-outline-secondary dropdown-toggle",
-			"Choose",
-		);
-		button.type = "button";
-		button.setAttribute("data-bs-toggle", "dropdown");
-		button.setAttribute("aria-expanded", "false");
-		button.title = choices.title;
-		const menu = element("ul", "dropdown-menu dropdown-menu-end");
-		button.addEventListener("show.bs.dropdown", () => {
-			const names = choices.names();
-			menu.replaceChildren(
-				...(names.length ? names : [null]).map((name) => {
-					const item = element("li");
-					const choice = element(
-						"button",
-						"dropdown-item",
-						name ?? choices.none,
-					);
-					choice.type = "button";
-					if (name === null) {
-						choice.disabled = true;
-					} else {
-						choice.classList.toggle("active", input.value === name);
-						choice.addEventListener("click", () => {
-							input.value = name;
-							this.#editValue(filter, field.key!, name);
-						});
-					}
-					item.append(choice);
-					return item;
-				}),
-			);
-		});
-		group.append(input, button, menu);
-		return group;
-	}
-
-	#toggle(field: SettingField, filter: FilterConfig): HTMLElement {
-		const id = this.#newId();
-		const control = element("div", "form-check form-switch");
-		const input = element("input", "form-check-input");
-		input.type = "checkbox";
-		input.setAttribute("role", "switch");
-		input.id = id;
-		input.checked = field.value === field.trueValue;
-		input.disabled = field.readOnly;
-		const state = element(
-			"label",
-			"form-check-label small text-body-secondary",
-			input.checked ? "On" : "Off",
-		);
-		state.htmlFor = id;
-		input.addEventListener("change", () => {
-			state.textContent = input.checked ? "On" : "Off";
-			this.#editValue(
-				filter,
-				field.key!,
-				(input.checked ? field.trueValue : field.falseValue) ??
-					String(input.checked),
-			);
-		});
-		control.append(input, state);
-		return this.#setting(field, filter, control, id);
-	}
-
-	#select(field: SettingField, filter: FilterConfig): HTMLElement {
-		const id = this.#newId();
-		const select = element("select", "form-select form-select-sm");
-		select.id = id;
-		select.disabled = field.readOnly;
-		const value = field.value ?? "";
-		const options = [...(field.options ?? [])];
-		if (!options.some((o) => o.value === value)) {
-			// keep a value that is not one of the choices
-			options.push({ value, label: value });
-		}
-		for (const o of options) {
-			const option = element("option", undefined, o.label || "(none)");
-			option.value = o.value;
-			option.selected = o.value === value;
-			select.append(option);
-		}
-		select.addEventListener("change", () =>
-			this.#editValue(filter, field.key!, select.value),
-		);
-		return this.#setting(field, filter, select, id);
-	}
-
-	#radio(field: SettingField, filter: FilterConfig): HTMLElement {
-		const name = this.#newId();
-		const control = element("div");
-		let firstId = name;
-		(field.options ?? []).forEach((o, i) => {
-			const id = `${name}-${i}`;
-			if (i === 0) {
-				firstId = id;
-			}
-			const check = element("div", "form-check");
-			const input = element("input", "form-check-input");
-			input.type = "radio";
-			input.name = name;
-			input.id = id;
-			input.value = o.value;
-			input.checked = o.value === field.value;
-			input.disabled = field.readOnly;
-			input.addEventListener("change", () => {
-				if (input.checked) {
-					this.#editValue(filter, field.key!, o.value);
-				}
-			});
-			const label = element("label", "form-check-label small", o.label);
-			label.htmlFor = id;
-			check.append(input, label);
-			if (o.description) {
-				const about = element("div", "form-text mt-0");
-				about.append(safeHtml(o.description));
-				check.append(about);
-			}
-			control.append(check);
-		});
-		return this.#setting(field, filter, control, firstId);
-	}
-
-	#slider(field: SettingField, filter: FilterConfig): HTMLElement {
-		const id = this.#newId();
-		const control = element("div", "d-flex align-items-center gap-2");
-		const input = element("input", "form-range");
-		input.type = "range";
-		input.id = id;
-		input.min = String(field.min ?? 0);
-		input.max = String(field.max ?? 100);
-		input.step = String(field.step ?? 1);
-		input.value = field.value ?? "";
-		input.disabled = field.readOnly;
-		const output = element("output", "small font-monospace", input.value);
-		input.addEventListener("input", () => {
-			output.textContent = input.value;
-			this.#editValue(filter, field.key!, input.value);
-		});
-		control.append(input, output);
-		return this.#setting(field, filter, control, id, input);
-	}
-
-	#title(field: SettingField): HTMLElement {
-		const wrapper = element("div", "mb-3");
-		wrapper.append(
-			element("div", "small fw-semibold mb-1", field.label ?? field.key),
-		);
-		const value = element("div", "small");
-		if (field.markup) {
-			value.append(safeHtml(field.value ?? ""));
-		} else {
-			value.textContent = field.value ?? "";
-		}
-		wrapper.append(value);
-		return wrapper;
-	}
-
-	#group(
-		field: SettingField,
-		filter: FilterConfig,
-		itemLabel?: string,
-	): HTMLElement {
+	/** A chain's filters, which the canvas manages. */
+	#chainFilters(filter: FilterConfig, field: SettingField): HTMLElement[] {
 		const children = field.fields ?? [];
-		if (!field.key) {
-			// a group without a key, such as one item of a list
-			const set = element("fieldset", "sim-item mb-3");
-			if (itemLabel) {
-				set.append(element("legend", "sim-item-legend", itemLabel));
-			}
-			for (const child of children) {
-				const el = this.#field(child, filter);
-				if (el) {
-					set.append(el);
-				}
-			}
-			return set;
-		}
-
-		const set = element("fieldset", "sim-group mb-3");
-		const head = element("div", "d-flex align-items-center gap-1 mb-1");
-		head.append(
-			element("legend", "h6 mb-0 me-auto", field.label ?? field.key),
-		);
-		const help = element("div", "form-text sim-help mb-2");
-		help.hidden = true;
-		if (field.description) {
-			help.append(safeHtml(field.description));
-			head.append(
-				toolButton("Help", "question-circle", () => {
-					help.hidden = !help.hidden;
-				}),
-			);
-		}
-		if (field.dynamic && !field.readOnly && field.countKey) {
-			const buttons = element("div", "btn-group btn-group-sm");
-			const remove = iconButton(
-				"",
-				"dash-lg",
-				"btn-outline-secondary",
-				() => this.#removeItem(filter, field),
-			);
-			remove.title = `Remove the last ${itemName(field.label).toLowerCase()}`;
-			remove.disabled = children.length === 0;
-			const add = iconButton("", "plus-lg", "btn-outline-secondary", () =>
-				this.#addItem(filter, field),
-			);
-			add.title = `Add ${withArticle(itemName(field.label).toLowerCase())}`;
-			buttons.append(remove, add);
-			head.append(buttons);
-		}
-		set.append(head, help);
-
-		if (field.readOnly) {
-			// a chain's filters, which the canvas manages
-			if (children.length > 0) {
-				// each filter's transformUids index, and the file it comes from
-				const members = this.#ws.members(filter.id);
-				const files = this.#ws.memberFiles(filter.id);
-				const list = element(
-					"ul",
-					"list-unstyled small mb-1 sim-members",
-				);
-				children.forEach((child, i) => {
-					const item = element(
-						"li",
-						"d-flex align-items-baseline gap-2",
-					);
-					const index = element(
-						"code",
-						"sim-member-index",
-						String(i),
-					);
-					index.title = `transformUids[${i}]`;
-					item.append(
-						index,
-						element(
-							"span",
-							members[i] === null
-								? "text-body-secondary fst-italic"
-								: undefined,
-							child.value ?? "",
-						),
-					);
-					const file = files[i];
-					if (file) {
-						const pill = element(
-							"span",
-							"badge rounded-pill text-bg-info",
-							"Ext",
-						);
-						pill.title = `From the External Settings file ${file}.`;
-						item.append(pill);
-					}
-					list.append(item);
-				});
-				set.append(list);
-			} else {
-				set.append(
+		const result: HTMLElement[] = [];
+		if (children.length > 0) {
+			// each filter's transformUids index, and the file it comes from
+			const members = this.#ws.members(filter.id);
+			const files = this.#ws.memberFiles(filter.id);
+			const list = element("ul", "list-unstyled small mb-1 sim-members");
+			children.forEach((child, i) => {
+				const item = element("li", "d-flex align-items-baseline gap-2");
+				const index = element("code", "sim-member-index", String(i));
+				index.title = `transformUids[${i}]`;
+				item.append(
+					index,
 					element(
-						"p",
-						"small text-body-secondary mb-1",
-						"No filters yet.",
+						"span",
+						members[i] === null
+							? "text-body-secondary fst-italic"
+							: undefined,
+						child.value ?? "",
 					),
 				);
-			}
-			set.append(
-				element(
-					"div",
-					"form-text",
-					"Drag filters onto the chain's links on the canvas to add them.",
-				),
-			);
-			return set;
-		}
-
-		children.forEach((child, i) => {
-			const label = field.dynamic
-				? `${itemName(field.label)} ${i + 1}`
-				: undefined;
-			const el = this.#field(child, filter, label);
-			if (el) {
-				set.append(el);
-			}
-		});
-		if (field.dynamic && children.length === 0) {
-			set.append(
+				const file = files[i];
+				if (file) {
+					const pill = element(
+						"span",
+						"badge rounded-pill text-bg-info",
+						"Ext",
+					);
+					pill.title = `From the External Settings file ${file}.`;
+					item.append(pill);
+				}
+				list.append(item);
+			});
+			result.push(list);
+		} else {
+			result.push(
 				element(
 					"p",
-					"small text-body-secondary mb-0",
-					"None yet: use + to add one.",
+					"small text-body-secondary mb-1",
+					"No filters yet.",
 				),
 			);
 		}
-		return set;
+		result.push(
+			element(
+				"div",
+				"form-text",
+				"Drag filters onto the chain's links on the canvas to add them.",
+			),
+		);
+		return result;
 	}
 
 	/** Settings the form does not show, such as settings the filter does not have. */
@@ -1411,7 +932,7 @@ export class Inspector {
 
 	/** An unknown filter's only setting: its Service Name. */
 	#unknownSettings(filter: FilterConfig): HTMLElement {
-		const id = this.#newId();
+		const id = newId();
 		const wrapper = element("div", "mb-3");
 		const label = element(
 			"label",
@@ -1522,10 +1043,6 @@ export class Inspector {
 			: "Remove the simulation's changes to this filter, so it has only its external settings. The External Settings would add the filter back on a node if it were deleted, so it cannot be deleted.";
 	}
 
-	#newId(): string {
-		return `sim-field-${++this.#ids}`;
-	}
-
 	/* === Editing === */
 
 	/**
@@ -1576,12 +1093,6 @@ export class Inspector {
 		if (key === UID_SETTING) {
 			this.#updateUidWarning(filter.id);
 		}
-		const setting = this.#controls
-			.get(key)
-			?.control.closest<HTMLElement>(".sim-setting");
-		if (setting) {
-			this.#refreshSource(filter.id, key, setting);
-		}
 	}
 
 	/**
@@ -1614,34 +1125,6 @@ export class Inspector {
 				reset.setAttribute("aria-label", reset.title);
 			}
 		}
-	}
-
-	#addItem(filter: FilterConfig, list: SettingField): void {
-		const count = list.fields?.length ?? 0;
-		this.#edit(
-			filter.id,
-			{ [list.countKey!]: String(count + 1) },
-			undefined,
-			true,
-		);
-	}
-
-	#removeItem(filter: FilterConfig, list: SettingField): void {
-		const count = list.fields?.length ?? 0;
-		if (count === 0) {
-			return;
-		}
-		// like SolarNode, remove the last item's settings along with it
-		const prefix = `${list.key}[${count - 1}]`;
-		const changes: SettingChanges = { [list.countKey!]: String(count - 1) };
-		for (const key of Object.keys(
-			this.#ws.filter(filter.id)?.settings ?? {},
-		)) {
-			if (key.startsWith(prefix)) {
-				changes[key] = null;
-			}
-		}
-		this.#edit(filter.id, changes, undefined, true);
 	}
 
 	#updateUidWarning(filterId: string): void {
@@ -1685,17 +1168,6 @@ export class Inspector {
 		this.#alerts.replaceChildren(
 			...this.#alertsContent(node, form, undefined),
 		);
-		this.#showProblems(form.problems);
-	}
-
-	#showProblems(problems: SettingProblem[]): void {
-		const byKey = new Map(problems.map((p) => [p.key, p.message]));
-		for (const [key, control] of this.#controls) {
-			const message = byKey.get(key);
-			control.control.classList.toggle("is-invalid", !!message);
-			control.feedback.textContent = message ?? "";
-			// show feedback for controls wrapped in another element too
-			control.feedback.classList.toggle("d-block", !!message);
-		}
+		this.#form?.showProblems(form.problems);
 	}
 }

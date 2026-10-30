@@ -61,6 +61,7 @@ import s10k.node.sim.filter.domain.IgnoredComponent;
 import s10k.node.sim.filter.domain.SettingsImport;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationMessage;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
@@ -99,7 +100,9 @@ import s10k.node.sim.filter.sim.SimulationException;
  * <p>
  * The Mock, Modbus, and BACnet controls, Control Datum Sources, and Control
  * Conductors become simulated controls and Control Conductors for the
- * simulation's environment ({@link ControlSettings}), except in external
+ * simulation's environment ({@link ControlSettings}), and the supported datum
+ * sources and Operational Mode Datum Source Invokers become simulated datum
+ * sources and invokers ({@link DatumSourceSettings}), except in external
  * settings, which ignore them. They are imported even without their
  * {@code .FACTORY} rows, with a warning.
  * </p>
@@ -125,7 +128,7 @@ import s10k.node.sim.filter.sim.SimulationException;
  * </p>
  *
  * @author matt
- * @version 1.1
+ * @version 1.3
  */
 final class SettingsCsvImporter {
 
@@ -135,6 +138,7 @@ final class SettingsCsvImporter {
 	private static final String CHAIN_FILTERS_COUNT = CHAIN_FILTERS + SettingsApplier.COUNT_SUFFIX;
 
 	private final FilterTypeRegistry registry;
+	private final DatumSourceSettings datumSourceSettings;
 	private final List<SimulationMessage> messages = new ArrayList<>(8);
 	private final List<SimulationMessage> errors = new ArrayList<>(2);
 	private final List<Line> lines = new ArrayList<>(64);
@@ -175,7 +179,10 @@ final class SettingsCsvImporter {
 	/** The filter instances the file being applied has rows for. */
 	private final Set<Component> fileComponents = new LinkedHashSet<>(8);
 
-	/** The control component instances, for the simulation's environment. */
+	/**
+	 * The control and datum source component instances, for the simulation's
+	 * environment.
+	 */
 	private final Map<Component, ControlInstance> controlInstances = new LinkedHashMap<>(4);
 
 	/** A control component instance. */
@@ -318,8 +325,21 @@ final class SettingsCsvImporter {
 	 *        the filter type registry
 	 */
 	SettingsCsvImporter(FilterTypeRegistry registry) {
+		this(registry, DatumSourceTypeRegistry.standard());
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
+	 */
+	SettingsCsvImporter(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes) {
 		super();
 		this.registry = registry;
+		this.datumSourceSettings = new DatumSourceSettings(datumSourceTypes);
 	}
 
 	/**
@@ -791,8 +811,8 @@ final class SettingsCsvImporter {
 	}
 
 	/**
-	 * Test if a component is a control component, for the simulation's
-	 * environment.
+	 * Test if a component is a control or datum source component, for the
+	 * simulation's environment.
 	 *
 	 * <p>
 	 * Only a file imported on its own or added to a configuration has them, not
@@ -801,15 +821,16 @@ final class SettingsCsvImporter {
 	 *
 	 * @param factoryUid
 	 *        the factory UID
-	 * @return {@code true} if it is a control component
+	 * @return {@code true} if it is a control or datum source component
 	 */
 	private boolean isControlType(String factoryUid) {
-		return (!addOnly && ControlSettings.FACTORY_UIDS.contains(factoryUid));
+		return (!addOnly && (ControlSettings.FACTORY_UIDS.contains(factoryUid)
+				|| datumSourceSettings.isFactoryUid(factoryUid)));
 	}
 
 	/**
-	 * Make a key of a control component without a {@code .FACTORY} row an
-	 * instance of it.
+	 * Make a key of a control or datum source component without a
+	 * {@code .FACTORY} row an instance of it.
 	 *
 	 * @param c
 	 *        the component
@@ -819,7 +840,10 @@ final class SettingsCsvImporter {
 		if ( c.instanceKey() != null || addOnly ) {
 			return c;
 		}
-		final String factoryUid = ControlSettings.factoryUid(c.key());
+		String factoryUid = ControlSettings.factoryUid(c.key());
+		if ( factoryUid == null ) {
+			factoryUid = datumSourceSettings.factoryUid(c.key());
+		}
 		return (factoryUid != null
 				? new Component(factoryUid, c.key().substring(factoryUid.length() + 1))
 				: c);
@@ -1076,21 +1100,31 @@ final class SettingsCsvImporter {
 		}
 		final List<ControlSettings.Instance> controlComponents = new ArrayList<>(
 				controlInstances.size());
+		final List<ControlSettings.Instance> datumSourceComponents = new ArrayList<>(2);
 		for ( Map.Entry<Component, ControlInstance> e : controlInstances.entrySet() ) {
 			final String instanceKey = e.getKey().instanceKey();
-			controlComponents.add(new ControlSettings.Instance(e.getKey().key(),
+			final ControlSettings.Instance instance = new ControlSettings.Instance(e.getKey().key(),
 					instanceKey != null ? instanceKey : "", e.getValue().settings,
-					e.getValue().factoryRow));
+					e.getValue().factoryRow);
+			if ( datumSourceSettings.isFactoryUid(instance.factoryUid()) ) {
+				datumSourceComponents.add(instance);
+			} else {
+				controlComponents.add(instance);
+			}
 		}
 		final ControlSettings.Result controls = ControlSettings.of(controlComponents);
 		messages.addAll(controls.messages());
+		final DatumSourceSettings.Result datumSources = datumSourceSettings.of(datumSourceComponents);
+		messages.addAll(datumSources.messages());
 
 		final String dqComment = comment(datumQueueComment);
 		return new SettingsImport(
 				new SimConfig(filters, mainChainId,
 						dqComment != null ? dqComment : baseDatumQueueComment),
 				messages, ignoredComponents, controls.controls().isEmpty() ? null : controls.controls(),
-				controls.conductors().isEmpty() ? null : controls.conductors());
+				controls.conductors().isEmpty() ? null : controls.conductors(),
+				datumSources.datumSources().isEmpty() ? null : datumSources.datumSources(),
+				datumSources.invokers().isEmpty() ? null : datumSources.invokers());
 	}
 
 	private void instanceMessages(Instance instance) {

@@ -30,8 +30,10 @@ import org.junit.jupiter.api.io.TempDir;
 import s10k.node.sim.filter.custom.CustomFilterLoader;
 import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.custom.CustomFilters;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
 
@@ -41,12 +43,13 @@ import net.solarnetwork.common.expr.spel.SpelExpressionService;
  * {@code testFilterBundle} source set.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class CustomFilterServiceTests {
 
 	private static final String SCALE = "com.example.solarnode.filter.scale";
 	private static final String IDENTITY = "com.example.solarnode.filter.identity";
+	private static final String COUNTER = "com.example.solarnode.datum.counter";
 
 	/** A resource that only the bundle has. */
 	private static final String BUNDLE_RESOURCE = "com/example/solarnode/filter/ScaleDatumFilterService.properties";
@@ -72,6 +75,9 @@ public class CustomFilterServiceTests {
 		Path jar = Files.copy(bundleJar(), dir.resolve("example.jar"));
 		try (CustomFilterService service = new CustomFilterService(loader, List.of(dir.toString()))) {
 			FilterTypeRegistry registry = service.registry();
+			DatumSourceTypeRegistry sources = service.datumSourceRegistry();
+			then(sources.definition(COUNTER)).as("The custom datum source type is registered")
+					.isNotNull();
 			ClassLoader before = registry.definition(SCALE).classLoader();
 			then(before.getResource(BUNDLE_RESOURCE)).as("The class loader finds the bundle's resources")
 					.isNotNull();
@@ -98,6 +104,14 @@ public class CustomFilterServiceTests {
 				.as("The registry still has the standard filter types")
 				.isNotNull()
 				;
+			then(sources.definition(COUNTER))
+				.as("The datum source registry no longer has the custom datum source type")
+				.isNull()
+				;
+			then(sources.definition(StandardDatumSourceTypes.FIXED))
+				.as("The datum source registry still has the standard datum source types")
+				.isNotNull()
+				;
 			then(before.getResource(BUNDLE_RESOURCE))
 				.as("The previous class loader is closed")
 				.isNull()
@@ -115,6 +129,10 @@ public class CustomFilterServiceTests {
 				.isNotNull()
 				.extracting(FilterTypeDefinition::classLoader)
 				.isNotSameAs(before)
+				;
+			then(sources.definition(COUNTER))
+				.as("The datum source registry has the custom datum source type again")
+				.isNotNull()
 				;
 			then(service.current().definitions())
 				.as("The service has the new custom filters")

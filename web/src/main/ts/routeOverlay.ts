@@ -67,6 +67,11 @@ export interface RouteGeometry {
 	linkPoints(key: string): Point[] | undefined;
 	/** Get the bounds of a node, or `undefined` if it is not drawn. */
 	box(key: string): Box | undefined;
+	/**
+	 * `true` if datum source lines come into the left of the entry node, so
+	 * the input datum badges go above their lines, clear of them.
+	 */
+	sources?: boolean;
 }
 
 /** The layers to draw routes in. */
@@ -187,7 +192,8 @@ function textColor(hex: string): string {
 /**
  * Get the points of a route: in from the left of its entry node, or for a
  * generated datum from the filter that made it, up to the queue lane, and
- * down into the entry node; then along the links it travelled.
+ * down into the entry node, or for a polled datum out of its datum source;
+ * then along the links it travelled.
  *
  * @returns the points, and how many lead the line back through the queue
  */
@@ -217,6 +223,9 @@ function routePoints(
 			center,
 		];
 		queued = 4;
+	} else if (line.route.source) {
+		// out of the datum source, from under it
+		points = [center];
 	} else {
 		points = [{ x: entry.x - LEAD_IN, y: center.y }, center];
 	}
@@ -388,6 +397,25 @@ export function drawRoutes(
 				up: true,
 				perRow: 3,
 			}).chips.push(item);
+		} else if (entry && route.source) {
+			// left of the datum source, down from its top
+			chip(`in:${route.keys[0]}`, {
+				origin: { x: entry.x - CHIP_GAP, y: entry.y },
+				left: true,
+				up: false,
+				perRow: 4,
+			}).chips.push(item);
+		} else if (entry && geo.sources) {
+			// above the line in, clear of the datum sources' lines below it
+			chip(`in:${route.keys[0]}`, {
+				origin: {
+					x: entry.x - LEAD_IN - CHIP_GAP,
+					y: entry.y + entry.height / 2 - bandHalf - CHIP_GAP,
+				},
+				left: true,
+				up: true,
+				perRow: 2,
+			}).chips.push(item);
 		} else if (entry) {
 			chip(`in:${route.keys[0]}`, {
 				origin: {
@@ -402,18 +430,19 @@ export function drawRoutes(
 		const endKey = route.keys[route.keys.length - 1];
 		const end = route.end ? geo.box(endKey) : undefined;
 		if (end) {
-			// right of the end connector, or else above the line out of the
-			// filter, clear of its label and run badge
+			// right of the end connector, with more rows above it, clear of
+			// its label below; or else above the line out of the filter,
+			// clear of its label and run badge
 			const output = route.end === "output";
 			chip(`end:${endKey}`, {
 				origin: {
 					x: end.x + end.width + CHIP_GAP + (output ? 3 : 1),
 					y: output
-						? end.y + end.height / 2 - CHIP_HEIGHT / 2
+						? end.y + end.height / 2 + CHIP_HEIGHT / 2
 						: end.y + end.height / 2 - bandHalf - CHIP_GAP,
 				},
 				left: false,
-				up: !output,
+				up: true,
 				perRow: 4,
 			}).chips.push(item);
 		}

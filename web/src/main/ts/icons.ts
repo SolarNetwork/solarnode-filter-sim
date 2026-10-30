@@ -30,6 +30,29 @@ const FILTER_ICONS: Record<string, string> = {
 	[UNKNOWN_FACTORY_UID]: "question-circle",
 };
 
+/** The icon of each datum source type, by factory UID. */
+const DATUM_SOURCE_ICONS: Record<string, string> = {
+	"net.solarnetwork.node.datum.fixed": "pin-angle",
+	"net.solarnetwork.node.datum.battery.mock": "battery-half",
+	"net.solarnetwork.node.datum.energymeter.mock": "lightning-charge",
+	"net.solarnetwork.node.datum.tou": "calendar-week",
+	// the Operational Mode Invoker, listed with the datum sources
+	"net.solarnetwork.node.datum.opmode.invoker": "toggles",
+};
+
+/** The icon of a datum source type with no icon of its own. */
+const DEFAULT_DATUM_SOURCE_ICON = "broadcast";
+
+/**
+ * Get the icon of a datum source type.
+ *
+ * @param factoryUid the factory UID
+ * @returns the icon name
+ */
+export function datumSourceIcon(factoryUid: string): string {
+	return DATUM_SOURCE_ICONS[factoryUid] ?? DEFAULT_DATUM_SOURCE_ICON;
+}
+
 /** The icon of a filter type the simulator does not support. */
 export const UNSUPPORTED_ICON = "question-square";
 
@@ -81,4 +104,57 @@ export function iconGlyph(icon: string): string {
 	glyph = /^".+"$/.test(content) ? content.slice(1, -1) : "";
 	glyphs.set(icon, glyph);
 	return glyph;
+}
+
+const glyphShifts = new Map<string, string>();
+let measure: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * Get the SVG transform that centres an icon font glyph's ink on its text
+ * position, for text drawn with JointJS's `middle` anchors. Those centre the
+ * glyph's advance and put its baseline 0.3em below the position, while each
+ * glyph's ink sits differently around them.
+ *
+ * @param glyph the glyph, from {@link iconGlyph}
+ * @param size the font size, in pixels
+ * @returns the transform, or an empty string until the icon font has loaded
+ */
+export function glyphCenterTransform(glyph: string, size: number): string {
+	const font = `${size}px bootstrap-icons`;
+	if (!glyph || !document.fonts.check(font, glyph)) {
+		return "";
+	}
+	const cacheKey = `${size}:${glyph}`;
+	let transform = glyphShifts.get(cacheKey);
+	if (transform !== undefined) {
+		return transform;
+	}
+	if (measure === undefined) {
+		measure = document.createElement("canvas").getContext("2d");
+	}
+	if (!measure) {
+		return "";
+	}
+	measure.font = font;
+	measure.textAlign = "center";
+	measure.textBaseline = "alphabetic";
+	const m = measure.measureText(glyph);
+	// the ink's centre, from the advance's centre and the baseline
+	const x = (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
+	const y = (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2;
+	const round = (n: number) => Math.round(n * 100) / 100;
+	transform = `translate(${round(-x)},${round(-(0.3 * size + y))})`;
+	glyphShifts.set(cacheKey, transform);
+	return transform;
+}
+
+/**
+ * Wait for the icon font, so {@link glyphCenterTransform} can measure its
+ * glyphs.
+ *
+ * @param size the font size, in pixels
+ * @returns a promise that resolves once the font has loaded, or failed to
+ */
+export function iconFontLoaded(size: number): Promise<unknown> {
+	return document.fonts.load(`${size}px bootstrap-icons`).catch(() => []);
 }

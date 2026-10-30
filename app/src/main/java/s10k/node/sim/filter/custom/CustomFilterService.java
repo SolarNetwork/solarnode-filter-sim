@@ -24,14 +24,17 @@ import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
 
 /**
- * The custom filters, and the registry of all the filter types, which reloading
- * the custom filters updates.
+ * The custom filters, and the registries of all the filter types and datum
+ * source types, which reloading the custom filters updates.
  *
  * <p>
  * A reload loads the custom filters path again, with a new class loader, so a
@@ -41,7 +44,7 @@ import s10k.node.sim.filter.registry.UnavailableFilterType;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class CustomFilterService implements AutoCloseable {
 
@@ -50,6 +53,7 @@ public class CustomFilterService implements AutoCloseable {
 	private final CustomFilterLoader loader;
 	private final List<String> path;
 	private final FilterTypeRegistry registry;
+	private final DatumSourceTypeRegistry datumSourceRegistry;
 	private volatile CustomFilters current;
 
 	/**
@@ -70,6 +74,14 @@ public class CustomFilterService implements AutoCloseable {
 		this.path = path.stream().map(String::strip).filter(s -> !s.isEmpty()).toList();
 		this.current = loader.load(this.path);
 		this.registry = new FilterTypeRegistry(definitions(current), unavailable(current));
+		this.datumSourceRegistry = new DatumSourceTypeRegistry(datumSources(current));
+	}
+
+	private static List<DatumSourceTypeDefinition> datumSources(CustomFilters custom) {
+		final List<DatumSourceTypeDefinition> result = new ArrayList<>(
+				StandardDatumSourceTypes.definitions());
+		result.addAll(custom.datumSources());
+		return result;
 	}
 
 	private static List<FilterTypeDefinition> definitions(CustomFilters custom) {
@@ -104,6 +116,16 @@ public class CustomFilterService implements AutoCloseable {
 	}
 
 	/**
+	 * Get the registry of all the datum source types: the standard ones, plus
+	 * the custom ones.
+	 *
+	 * @return the registry
+	 */
+	public DatumSourceTypeRegistry datumSourceRegistry() {
+		return datumSourceRegistry;
+	}
+
+	/**
 	 * Get the custom filters.
 	 *
 	 * @return the custom filters
@@ -113,7 +135,7 @@ public class CustomFilterService implements AutoCloseable {
 	}
 
 	/**
-	 * Load the custom filters again, and update the registry.
+	 * Load the custom filters again, and update the registries.
 	 *
 	 * @return the new custom filters
 	 * @throws IllegalStateException
@@ -127,6 +149,7 @@ public class CustomFilterService implements AutoCloseable {
 		final CustomFilters previous = current;
 		final CustomFilters next = loader.load(path);
 		registry.replace(definitions(next), unavailable(next));
+		datumSourceRegistry.replace(datumSources(next));
 		current = next;
 		close(previous);
 		return next;

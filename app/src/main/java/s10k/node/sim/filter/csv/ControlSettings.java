@@ -54,7 +54,9 @@ import s10k.node.sim.filter.domain.SimulationMessage;
  * ({@code net.solarnetwork.node.control.gpiod}) is a {@code Boolean} control
  * starting at {@code false}, which also publishes after every successful set.
  * Its Input items are left out, as they decline every set, and change only with
- * their hardware input.
+ * their hardware input. An Operational Mode Switch
+ * ({@code net.solarnetwork.node.control.opmode.switch}) is a switch control of
+ * its operational mode, which publishes when its value changes.
  * </p>
  *
  * <p>
@@ -73,7 +75,7 @@ import s10k.node.sim.filter.domain.SimulationMessage;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class ControlSettings {
 
@@ -89,6 +91,9 @@ final class ControlSettings {
 	/** The GPIO control factory UID. */
 	static final String GPIO = "net.solarnetwork.node.control.gpiod";
 
+	/** The Operational Mode Switch factory UID. */
+	static final String SWITCH = "net.solarnetwork.node.control.opmode.switch";
+
 	/** The Control Datum Source factory UID. */
 	static final String DATUM_SOURCE = "net.solarnetwork.node.datum.control";
 
@@ -96,7 +101,7 @@ final class ControlSettings {
 	static final String CONDUCTOR = "net.solarnetwork.node.control.conductor";
 
 	/** The factory UIDs of the components this class reads. */
-	static final List<String> FACTORY_UIDS = List.of(MOCK, MODBUS, BACNET, GPIO, DATUM_SOURCE,
+	static final List<String> FACTORY_UIDS = List.of(MOCK, MODBUS, BACNET, GPIO, SWITCH, DATUM_SOURCE,
 			CONDUCTOR);
 
 	private static final Pattern PROP_CONFIG_INDEX = Pattern.compile("^propConfigs\\[(\\d+)\\]\\.");
@@ -127,6 +132,7 @@ final class ControlSettings {
 				case MODBUS -> "Modbus Control";
 				case BACNET -> "BACnet Control";
 				case GPIO -> "GPIO Control";
+				case SWITCH -> "Operational Mode Switch";
 				case DATUM_SOURCE -> "Control Datum Source";
 				default -> "Control Conductor";
 			};
@@ -162,7 +168,8 @@ final class ControlSettings {
 
 	/** A control, before the Control Datum Sources decide how it publishes. */
 	private record Control(String controlId, String type, @Nullable String value,
-			ControlPublishMode publish, @Nullable String propertyName, @Nullable String propertyType) {
+			ControlPublishMode publish, @Nullable String propertyName, @Nullable String propertyType,
+			@Nullable String mode) {
 
 	}
 
@@ -263,6 +270,13 @@ final class ControlSettings {
 								null));
 					}
 				}
+				case SWITCH -> {
+					final Map<String, String> s = instance.settings();
+					final String mode = s.get("mode");
+					add(controls, messages, instance, s.get("controlId"),
+							NodeControlPropertyType.Boolean.name(), null, ControlPublishMode.Change,
+							null, null, mode != null && !mode.isBlank() ? mode : "");
+				}
 				case DATUM_SOURCE -> sources.add(datumSource(instance, messages));
 				case CONDUCTOR -> conductors.add(new ControlConductorConfig(instance.settings()));
 				default -> {
@@ -289,8 +303,11 @@ final class ControlSettings {
 					silent.add(c.controlId());
 				}
 			}
-			result.add(new NodeControlConfig(c.controlId(), c.type(), c.value(), publish, persist,
-					c.propertyName(), c.propertyType()));
+			result.add(c.mode() != null
+					? NodeControlConfig.modeSwitch(c.controlId(), c.mode().isEmpty() ? null : c.mode(),
+							publish, persist)
+					: new NodeControlConfig(c.controlId(), c.type(), c.value(), publish, persist,
+							c.propertyName(), c.propertyType()));
 		}
 
 		if ( !result.isEmpty() && sources.isEmpty() ) {
@@ -311,6 +328,21 @@ final class ControlSettings {
 	private static void add(Map<String, Control> controls, List<SimulationMessage> messages,
 			Instance instance, @Nullable String controlId, String type, @Nullable String value,
 			ControlPublishMode publish, @Nullable String propertyName, @Nullable String propertyType) {
+		add(controls, messages, instance, controlId, type, value, publish, propertyName, propertyType,
+				null);
+	}
+
+	/**
+	 * Add a control.
+	 *
+	 * @param mode
+	 *        for an Operational Mode Switch, its mode, or empty for none; else
+	 *        {@code null}
+	 */
+	private static void add(Map<String, Control> controls, List<SimulationMessage> messages,
+			Instance instance, @Nullable String controlId, String type, @Nullable String value,
+			ControlPublishMode publish, @Nullable String propertyName, @Nullable String propertyType,
+			@Nullable String mode) {
 		if ( controlId == null || controlId.isBlank() ) {
 			messages.add(info(SimulationMessage.CODE_INVALID_CONTROL,
 					"The %s has a control without a Control ID, so it was left out."
@@ -325,8 +357,10 @@ final class ControlSettings {
 					null, null));
 			return;
 		}
-		controls.put(controlId, new Control(controlId, type, value, publish,
-				propertyName != null && !propertyName.isBlank() ? propertyName : null, propertyType));
+		controls.put(controlId,
+				new Control(controlId, type, value, publish,
+						propertyName != null && !propertyName.isBlank() ? propertyName : null,
+						propertyType, mode));
 	}
 
 	/**

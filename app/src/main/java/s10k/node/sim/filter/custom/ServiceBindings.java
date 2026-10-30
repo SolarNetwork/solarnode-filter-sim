@@ -23,26 +23,30 @@ import java.util.List;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import s10k.node.sim.filter.blueprint.ServiceKey;
+import s10k.node.sim.filter.registry.DatumSourceContext;
 import s10k.node.sim.filter.registry.FilterContext;
 import s10k.node.sim.filter.sim.SimServiceTracker;
+import net.solarnetwork.domain.tariff.TemporalRangesTariffEvaluator;
 import net.solarnetwork.domain.tariff.TemporalTariffEvaluator;
 import net.solarnetwork.node.service.MetadataService;
 import net.solarnetwork.node.service.TariffScheduleProvider;
 import net.solarnetwork.service.OptionalService;
 
 /**
- * The simulated services a custom filter's blueprint can refer to.
+ * The simulated services a custom filter's or datum source's blueprint can
+ * refer to.
  *
  * <p>
  * A blueprint gets a service in one of three ways (see
  * {@link ServiceKey.Source}): a {@code <reference>} is the service itself, a
  * {@code <reference-list>} is a list of services, and a
  * {@code DynamicServiceTracker} is an optional service. Only the services that
- * {@link FilterContext} has are available.
+ * {@link FilterContext} has are available to filters, and those that
+ * {@link DatumSourceContext} has to datum sources.
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class ServiceBindings {
 
@@ -78,6 +82,8 @@ public final class ServiceBindings {
 					FilterContext::reactorService);
 			case "org.springframework.scheduling.TaskScheduler" -> instance(key,
 					FilterContext::taskScheduler);
+			case "java.util.concurrent.Executor", "org.springframework.core.task.TaskExecutor" -> instance(
+					key, FilterContext::executor);
 			case "net.solarnetwork.node.dao.TransientSettingDao" -> instance(key,
 					FilterContext::transientSettingDao);
 			case "net.solarnetwork.node.metrics.dao.MetricDao" -> instance(key,
@@ -87,10 +93,40 @@ public final class ServiceBindings {
 			case "net.solarnetwork.node.service.MetadataService" -> metadataService(key);
 			case "net.solarnetwork.domain.tariff.TemporalTariffEvaluator" -> tracked(key,
 					TemporalTariffEvaluator.class);
+			case "net.solarnetwork.domain.tariff.TemporalRangesTariffEvaluator" -> tracked(key,
+					TemporalRangesTariffEvaluator.class);
 			case "net.solarnetwork.node.service.TariffScheduleProvider" -> tracked(key,
 					TariffScheduleProvider.class);
 			default -> null;
 		};
+	}
+
+	/**
+	 * Get how to get a service from the simulated services, for a datum source:
+	 * the services of {@link #service(ServiceKey)}, plus those that
+	 * {@link DatumSourceContext} adds.
+	 *
+	 * @param key
+	 *        the service
+	 * @return a function that gets the service, or {@code null} if the
+	 *         simulator does not provide it
+	 */
+	public static @Nullable Function<FilterContext, @Nullable Object> datumSourceService(
+			ServiceKey key) {
+		final Function<DatumSourceContext, @Nullable Object> provider = switch (key.serviceClassName()) {
+			case "net.solarnetwork.node.service.PlaceholderService" -> DatumSourceContext::placeholderService;
+			case "org.osgi.service.event.EventAdmin" -> DatumSourceContext::eventAdmin;
+			case "net.solarnetwork.node.service.LocationService" -> DatumSourceContext::locationService;
+			case "net.solarnetwork.node.dao.LocalStateDao" -> DatumSourceContext::localStateDao;
+			case "net.solarnetwork.node.service.OperationalModesService" -> DatumSourceContext::opModesService;
+			case "net.solarnetwork.node.service.DatumService" -> DatumSourceContext::datumService;
+			case "net.solarnetwork.service.ExpressionService" -> DatumSourceContext::expressionService;
+			default -> null;
+		};
+		if ( provider == null ) {
+			return service(key);
+		}
+		return instance(key, ctx -> (ctx instanceof DatumSourceContext d ? provider.apply(d) : null));
 	}
 
 	/**

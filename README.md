@@ -9,6 +9,8 @@ The SolarNode Filter Simulator is a web application for designing and testing So
  * simulate the node's controls and Control Conductors, which filters like the Control Updater
    and Instructor use
  * run sample datum through the chain, and see how each filter transformed them
+ * poll simulated datum sources, like a Mock Energy Meter or Mock Battery, on their schedules,
+   and while an operational mode is active with Operational Mode Invokers
  * record the datum a real SolarNode captures, as they arrive, to use as sample datum
  * see the route each datum took through the filters, drawn on the canvas
  * download the execution flow as a stand-alone HTML report
@@ -66,6 +68,13 @@ when its full path is in the **Allowed Commands** list, on the Environment tab o
 Allow only programs you trust, as they run on the computer running the simulator. A list of
 commands to allow in every simulation can also be set when starting the simulator, with
 `--sim.commands.allowed=/path/to/command,/another/command`.
+
+## Long runs
+
+A run processes up to its **Maximum Datum** (on the Environment tab, 1,000 when blank), and its
+time limit grows with it: 10 seconds per 1,000 datum. A result over 200 datum shows as a list you
+can filter, and the Execution Flow's download menu saves the output or input datum as JSON. The simulator allows at most 100,000 datum and 10 minutes per run;
+change these when starting it with `--sim.max-datum` and `--sim.max-run-time` (such as `30m`).
 
 ## Custom filters
 
@@ -143,5 +152,34 @@ arguments and properties, then its settings, then its init method. It does not c
   settings.
 - **Settings:** the settings form comes from the filter's `getSettingSpecifiers()` and the
   message source of its `SettingSpecifierProviderFactory` service, as on a node.
+
+### Custom datum sources
+
+The bundles can also have datum sources: a managed service factory of a `SimpleManagedJob` that
+polls the datum source with a `DatumDataSourcePollManagedJob`, as the SolarNode datum source
+bundles have. They appear under **Custom** in the Datum Sources tab's **Add a datum source**
+menu, and a settings CSV import adds their instances to that tab. The simulator wraps each in
+its own poll and managed jobs, so its schedule, settings form, and polling work like the
+standard datum sources'.
+
+- **Time and randomness:** like a filter, a datum source class with a constructor that takes a
+  `Clock` or `InstantSource` before the blueprint's arguments gets the simulated clock. A
+  constructor that takes a `Clock` or `InstantSource`, then a `RandomGenerator`, is used first,
+  with a random generator seeded for each datum source, so random datum repeat from run to run.
+- **Services:** the filter services, plus `PlaceholderService`, `EventAdmin`,
+  `LocationService`, `LocalStateDao`, `OperationalModesService`, `DatumService`,
+  `ExpressionService`, and `TemporalRangesTariffEvaluator` (trackers only, which never find
+  one). A datum source that needs any other service, such as a Modbus network or serial port,
+  is not available.
+- **Multi datum sources:** a `MultiDatumDataSource` (the poll job's `multiDatumDataSource`
+  property) works too. Each poll offers every datum it returns, its settings keys start with
+  `jobService.multiDatumDataSource.`, and Operational Mode Invokers match it like a node's.
+  Without a `sourceId` property, it gets no "no Source ID" warning.
+- **Published services:** the `DatumDataSource`, `MultiDatumDataSource`, `NodeControlProvider`,
+  `InstructionHandler`, and `TariffScheduleProvider` interfaces of the managed job's
+  `serviceProviderConfigurations` are what the simulation registers it as, so a
+  `NodeControlProvider`'s controls work like the Mock Battery's.
+- **Lifecycle:** the simulator does not call the datum source's `destroy-method`; the managed
+  job's `serviceDidShutdown()` runs at the end of each run.
 
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/

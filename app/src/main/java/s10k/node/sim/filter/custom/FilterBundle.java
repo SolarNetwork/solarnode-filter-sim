@@ -35,6 +35,9 @@ import org.jspecify.annotations.Nullable;
  *        the jar
  * @param factoryUids
  *        the factory UIDs of the available filter types the bundle provides
+ * @param datumSourceUids
+ *        the factory UIDs of the available datum source types the bundle
+ *        provides
  * @param blueprint
  *        {@code true} if the bundle has blueprint XML; a jar without it is a
  *        library for other bundles
@@ -42,10 +45,10 @@ import org.jspecify.annotations.Nullable;
  *        problems with the bundle's manifest that might stop its filters from
  *        working, such as packages it imports that are missing
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public record FilterBundle(String name, @Nullable String version, Path file, List<String> factoryUids,
-		boolean blueprint, List<String> warnings) {
+		List<String> datumSourceUids, boolean blueprint, List<String> warnings) {
 
 	/**
 	 * Get the bundle name and version, for messages.

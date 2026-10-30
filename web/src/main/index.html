@@ -126,6 +126,26 @@
 							<li class="nav-item" role="presentation">
 								<button
 									class="nav-link"
+									id="tab-sources-button"
+									data-input-tab="sources"
+									data-bs-toggle="pill"
+									data-bs-target="#tab-sources"
+									type="button"
+									role="tab"
+									aria-controls="tab-sources"
+									aria-selected="false"
+								>
+									Datum Sources
+									<span
+										class="sim-tab-error"
+										title="This tab has a problem"
+										hidden
+									></span>
+								</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button
+									class="nav-link"
 									id="tab-history-button"
 									data-input-tab="history"
 									data-bs-toggle="pill"
@@ -246,6 +266,45 @@
 							</div>
 							<div
 								class="tab-pane fade"
+								id="tab-sources"
+								role="tabpanel"
+								aria-labelledby="tab-sources-button"
+								tabindex="0"
+							>
+								<p class="form-text mt-0">
+									Datum sources are the node's simulated datum
+									sources, which the simulation polls on their
+									schedules, from the first datum, or else the
+									Environment tab's Start Date, until it ends.
+									The Datum Queue processes the datum they
+									return, like the input datum. Operational
+									Mode Invokers poll them on schedules of
+									their own while their modes are active.
+								</p>
+								<div id="datum-source-list"></div>
+								<div class="dropdown">
+									<button
+										type="button"
+										class="btn btn-sm btn-outline-secondary dropdown-toggle"
+										id="add-datum-source"
+										data-bs-toggle="dropdown"
+										aria-expanded="false"
+									>
+										<i
+											class="bi bi-plus-lg"
+											aria-hidden="true"
+										></i>
+										Add a datum source
+									</button>
+									<ul
+										class="dropdown-menu"
+										id="datum-source-types"
+										aria-labelledby="add-datum-source"
+									></ul>
+								</div>
+							</div>
+							<div
+								class="tab-pane fade"
 								id="tab-history"
 								role="tabpanel"
 								aria-labelledby="tab-history-button"
@@ -326,19 +385,105 @@
 								tabindex="0"
 							>
 								<label
-									for="input-opmodes"
+									for="input-time-zone"
 									class="form-label small fw-semibold mb-1"
-									>Starting Operational Modes</label
+									>Time Zone</label
 								>
 								<input
-									id="input-opmodes"
+									id="input-time-zone"
 									class="form-control form-control-sm"
+									type="text"
 									spellcheck="false"
-									placeholder="mode-a, mode-b"
+									autocomplete="off"
+									list="time-zone-choices"
 								/>
+								<datalist id="time-zone-choices"></datalist>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="timeZone"
+								></div>
 								<div class="form-text">
-									The modes active when the run starts,
-									separated by commas.
+									The time zone the Execution Flow shows dates
+									in, and of the Start Date. Blank for the
+									simulator's time zone,
+									<span class="sim-server-time-zone">UTC</span
+									>. The simulation itself runs in the
+									simulator's time zone: cron schedules,
+									tariff schedules, and expression date
+									functions like <code>today()</code> use it.
+								</div>
+								<label
+									for="input-start-date"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Start Date</label
+								>
+								<input
+									id="input-start-date"
+									class="form-control form-control-sm"
+									type="datetime-local"
+									step="1"
+								/>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="startDate"
+								></div>
+								<div class="form-text">
+									The date of the first datum without a
+									<code>created</code> date, and the start of
+									a run without datum, which only polls the
+									datum sources, in the Time Zone. Blank for
+									now.
+								</div>
+								<label
+									for="input-runafter"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Keep Running After the Last Datum</label
+								>
+								<input
+									id="input-runafter"
+									class="form-control form-control-sm"
+									type="text"
+									spellcheck="false"
+									placeholder="0"
+								/>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="runAfter"
+								></div>
+								<div class="form-text">
+									How long the simulated clock keeps running
+									after the last datum, so scheduled tasks,
+									like the Timeout filter's, can run, and the
+									datum sources are polled. Without datum,
+									this is the length of the run. Seconds, like
+									<code>90</code>, or a duration, like
+									<code>15m</code>, <code>24h</code>,
+									<code>7d</code>, or <code>PT24H</code>.
+								</div>
+								<label
+									for="input-max-datum"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Maximum Datum</label
+								>
+								<input
+									id="input-max-datum"
+									class="form-control form-control-sm"
+									type="text"
+									inputmode="numeric"
+									spellcheck="false"
+									placeholder="1000"
+								/>
+								<div
+									class="invalid-feedback"
+									data-feedback-for="maxDatum"
+								></div>
+								<div class="form-text">
+									The most datum a run processes, including
+									the datum the filters generate and the datum
+									sources' polls. Raise it for long runs, like
+									a day of polls; the simulator allows up to
+									100,000 by default. A run with more than 200
+									datum shows them as a list.
 								</div>
 								<label
 									for="input-placeholders"
@@ -363,6 +508,21 @@
 									use them like
 									<code>/meter/{siteName}</code>, and
 									expressions as parameters.
+								</div>
+								<label
+									for="input-opmodes"
+									class="form-label small fw-semibold mb-1 mt-3"
+									>Starting Operational Modes</label
+								>
+								<input
+									id="input-opmodes"
+									class="form-control form-control-sm"
+									spellcheck="false"
+									placeholder="mode-a, mode-b"
+								/>
+								<div class="form-text">
+									The modes active when the run starts,
+									separated by commas.
 								</div>
 								<fieldset class="mt-3">
 									<legend
@@ -442,33 +602,6 @@
 									<code>Created</code> and
 									<code>Modified</code> dates default to the
 									first datum's date.
-								</div>
-								<label
-									for="input-runafter"
-									class="form-label small fw-semibold mb-1 mt-3"
-									>Keep Running After the Last Datum</label
-								>
-								<div class="input-group input-group-sm">
-									<input
-										id="input-runafter"
-										class="form-control"
-										type="number"
-										min="0"
-										step="1"
-										placeholder="0"
-									/>
-									<span class="input-group-text"
-										>seconds</span
-									>
-								</div>
-								<div
-									class="invalid-feedback"
-									data-feedback-for="runAfter"
-								></div>
-								<div class="form-text">
-									How long the simulated clock keeps running
-									after the last datum, so scheduled tasks,
-									like the Timeout filter's, can run.
 								</div>
 								<label
 									for="input-instruction-job-seconds"
@@ -917,7 +1050,7 @@
 							type="button"
 							class="btn btn-light"
 							id="routes-button"
-							title="Datum routes: show the way every datum went after a run, not only the selected datum's"
+							title="Datum routes: show the way every datum went after a run, not only the selected datum's. Over 20 datum, the selected datum's routes show, and this shows their legend."
 							aria-pressed="false"
 						>
 							<i class="bi bi-bezier2" aria-hidden="true"></i>

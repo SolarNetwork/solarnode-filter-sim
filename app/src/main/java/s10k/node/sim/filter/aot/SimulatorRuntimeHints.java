@@ -61,9 +61,13 @@ import org.springframework.aot.hint.TypeReference;
 import org.springframework.beans.BeanUtils;
 import s10k.node.sim.filter.domain.CaptureInfo;
 import s10k.node.sim.filter.domain.CustomFiltersReload;
+import s10k.node.sim.filter.domain.DatumSourceTypeInfo;
 import s10k.node.sim.filter.domain.ExternalSettings;
 import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
+import s10k.node.sim.filter.domain.RunInfo;
+import s10k.node.sim.filter.domain.RunProgress;
+import s10k.node.sim.filter.domain.RunResult;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
 import s10k.node.sim.filter.domain.SettingsForm;
@@ -74,7 +78,10 @@ import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.domain.UnavailableFilterTypeInfo;
+import s10k.node.sim.filter.run.DownloadDatum;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.web.InfoController;
 import net.solarnetwork.domain.datum.Datum;
@@ -96,6 +103,8 @@ import net.solarnetwork.domain.tariff.Tariff;
 import net.solarnetwork.domain.tariff.TariffSchedule;
 import net.solarnetwork.domain.tariff.TemporalRangeSetsTariff;
 import net.solarnetwork.domain.tariff.TemporalTariff;
+import net.solarnetwork.domain.BasicDeviceInfo;
+import net.solarnetwork.domain.DeviceInfo;
 import net.solarnetwork.node.control.conductor.ControlConductor;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterExpressionRoot;
 import net.solarnetwork.node.datum.filter.virt.VirtualMeterExpressionRootImpl;
@@ -106,22 +115,34 @@ import net.solarnetwork.node.reactor.InstructionStatus;
 import net.solarnetwork.node.domain.ExpressionRoot;
 import net.solarnetwork.node.domain.LocalStateOperations;
 import net.solarnetwork.node.domain.TariffScheduleProvidersOperations;
+import net.solarnetwork.node.domain.datum.SimpleAcEnergyDatum;
 import net.solarnetwork.node.domain.datum.SimpleDatum;
+import net.solarnetwork.node.domain.datum.SimpleEnergyStorageDatum;
+import net.solarnetwork.node.domain.datum.SimpleNodeControlInfoDatum;
+import net.solarnetwork.node.datum.opmode.DatumDataSourceOpModeInvoker;
+import net.solarnetwork.node.domain.datum.AcEnergyDatum;
+import net.solarnetwork.node.domain.datum.NodeDatum;
+import net.solarnetwork.node.domain.datum.EnergyStorageDatum;
+import net.solarnetwork.node.job.DatumDataSourcePollManagedJob;
+import net.solarnetwork.node.job.SimpleManagedJob;
+import tools.jackson.databind.util.RawValue;
 
 /**
  * Native image runtime hints for the SolarNode filters.
  *
  * <ul>
- * <li>Filters, Control Conductors, and their nested configuration classes are
- * configured through a Spring {@code BeanWrapper}, which uses reflection on
- * their bean properties.</li>
+ * <li>Filters, Control Conductors, datum sources with their jobs, and their
+ * nested configuration classes are configured through a Spring
+ * {@code BeanWrapper}, which uses reflection on their bean properties.</li>
  * <li>Filter message sources load {@code .properties} resources.</li>
+ * <li>A datum source's poll job serializes its device info with Jackson, which
+ * uses reflection on its getters.</li>
  * <li>Expressions call methods on their root objects, and on common JDK types,
  * through reflection.</li>
  * </ul>
  *
  * @author matt
- * @version 1.2
+ * @version 1.4
  */
 public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 
@@ -139,7 +160,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 	 */
 	public static final List<Class<?>> EXPRESSION_TYPES = List.of(ExpressionRoot.class,
 			DatumSamplesExpressionRoot.class, DatumExpressionRoot.class, Datum.class, GeneralDatum.class,
-			SimpleDatum.class, DatumSamples.class, DatumSamplesOperations.class,
+			SimpleDatum.class, SimpleEnergyStorageDatum.class, SimpleAcEnergyDatum.class,
+			SimpleNodeControlInfoDatum.class, DatumSamples.class, DatumSamplesOperations.class,
 			DatumMathFunctions.class, DatumDateFunctions.class, DatumStringFunctions.class,
 			DatumMetadataOperations.class, GeneralDatumMetadata.class, LocalStateOperations.class,
 			TariffScheduleProvidersOperations.class, TariffSchedule.class,
@@ -168,7 +190,8 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 			SimulationResult.class, SettingsFormRequest.class, SettingsForm.class, SettingsImport.class,
 			SettingsExportRequest.class, SettingsExport.class, SettingsMergeRequest.class,
 			ExternalSettingsRequest.class, ExternalSettings.class, InfoController.AppInfo.class,
-			CustomFiltersReload.class, CaptureInfo.class);
+			CustomFiltersReload.class, CaptureInfo.class, RunInfo.class, RunProgress.class,
+			RunResult.class, DownloadDatum.class);
 
 	/**
 	 * The JDK collection implementation types, which are not public, that
@@ -209,6 +232,12 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 			"java.time.ZoneRegion");
 	// @formatter:on
 
+	/**
+	 * The datum types of the datum sources, from their {@code getDatumType()}.
+	 */
+	private static final List<Class<?>> INVOKER_DATUM_TYPES = List.of(NodeDatum.class,
+			EnergyStorageDatum.class, AcEnergyDatum.class);
+
 	@Override
 	public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
 		hints.resources().registerPattern("net/solarnetwork/**/*.properties");
@@ -219,6 +248,25 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		}
 		// Control Conductors are configured with settings too
 		registerBeanType(hints, ControlConductor.class, registered);
+		// datum sources are configured through their jobs, whose properties are
+		// interfaces, so each class is registered
+		registerBeanType(hints, SimpleManagedJob.class, registered);
+		registerBeanType(hints, DatumDataSourcePollManagedJob.class, registered);
+		for ( DatumSourceTypeDefinition def : StandardDatumSourceTypes.definitions() ) {
+			registerBeanType(hints, def.sourceClass(), registered);
+		}
+		registerBeanType(hints, DatumDataSourceOpModeInvoker.class, registered);
+		// an invoker's Datum Type loads the class it names, to match the datum
+		// sources' datum types and the types they extend
+		final Set<Class<?>> datumTypes = new HashSet<>(16);
+		for ( Class<?> type : INVOKER_DATUM_TYPES ) {
+			registerTypeHierarchy(hints, type, datumTypes);
+		}
+
+		// the poll job publishes device info as metadata, serialized by Jackson
+		hints.reflection().registerType(BasicDeviceInfo.class, MemberCategory.INVOKE_PUBLIC_CONSTRUCTORS,
+				MemberCategory.INVOKE_PUBLIC_METHODS);
+		hints.reflection().registerType(DeviceInfo.class, MemberCategory.INVOKE_PUBLIC_METHODS);
 
 		for ( Class<?> type : EXPRESSION_TYPES ) {
 			hints.reflection().registerType(type, MemberCategory.INVOKE_PUBLIC_METHODS);
@@ -232,11 +280,15 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		for ( Class<?> type : API_TYPES ) {
 			registerElementArrayTypes(hints, type, false, walked);
 		}
-		// GET /api/filter-types and /api/filter-types/unavailable return lists,
-		// and a 400 problem detail can have a list of messages
+		// GET /api/filter-types, /api/filter-types/unavailable, and
+		// /api/datum-source-types return lists, and a 400 problem detail can
+		// have a list of messages
 		registerElementArrayTypes(hints, FilterTypeInfo.class, true, walked);
+		registerElementArrayTypes(hints, DatumSourceTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, UnavailableFilterTypeInfo.class, true, walked);
 		registerElementArrayTypes(hints, SimulationMessage.class, true, walked);
+		// GET /api/runs/{id}/datum returns a list of traces
+		registerElementArrayTypes(hints, RawValue.class, true, walked);
 	}
 
 	/**
@@ -290,6 +342,18 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 	 * @param registered
 	 *        the types already registered
 	 */
+	private static void registerTypeHierarchy(RuntimeHints hints, @Nullable Class<?> type,
+			Set<Class<?>> registered) {
+		if ( type == null || type == Object.class || !registered.add(type) ) {
+			return;
+		}
+		hints.reflection().registerType(type);
+		registerTypeHierarchy(hints, type.getSuperclass(), registered);
+		for ( Class<?> iface : type.getInterfaces() ) {
+			registerTypeHierarchy(hints, iface, registered);
+		}
+	}
+
 	private static void registerBeanType(RuntimeHints hints, Class<?> type, Set<Class<?>> registered) {
 		if ( !registered.add(type) ) {
 			return;

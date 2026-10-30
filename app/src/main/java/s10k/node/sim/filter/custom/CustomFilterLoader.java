@@ -42,16 +42,18 @@ import org.springframework.core.NativeDetector;
 import org.springframework.util.StringUtils;
 import s10k.node.sim.filter.blueprint.Blueprint;
 import s10k.node.sim.filter.blueprint.BlueprintReader;
+import s10k.node.sim.filter.blueprint.DatumSourceTypeDescriptor;
 import s10k.node.sim.filter.blueprint.FilterBlueprintInterpreter;
 import s10k.node.sim.filter.blueprint.FilterBlueprintInterpreter.Interpretation;
 import s10k.node.sim.filter.blueprint.FilterTypeDescriptor;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeOrigin;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
 import net.solarnetwork.service.ExpressionService;
 
 /**
- * Load custom filter types from SolarNode bundle jars.
+ * Load custom filter and datum source types from SolarNode bundle jars.
  *
  * <p>
  * The path lists jars, and directories of jars. All the jars share one class
@@ -72,12 +74,19 @@ import net.solarnetwork.service.ExpressionService;
  * </p>
  *
  * <p>
+ * The blueprint's user datum filters become filter types (see
+ * {@link BlueprintFilterTypes}), and its datum sources, the managed jobs that
+ * poll a datum source, datum source types (see
+ * {@link BlueprintDatumSourceTypes}).
+ * </p>
+ *
+ * <p>
  * The native executable cannot load classes, so it refuses a custom filters
  * path.
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class CustomFilterLoader {
 
@@ -101,6 +110,7 @@ public final class CustomFilterLoader {
 
 	private final ExpressionService expressionService;
 	private final Set<String> reservedFactoryUids;
+	private final Set<String> reservedDatumSourceUids;
 	private final BlueprintReader reader = new BlueprintReader();
 
 	/** A jar read from the path. */
@@ -125,9 +135,29 @@ public final class CustomFilterLoader {
 	 */
 	public CustomFilterLoader(ExpressionService expressionService,
 			Collection<String> reservedFactoryUids) {
+		this(expressionService, reservedFactoryUids, List.of());
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param expressionService
+	 *        the expression service, for the simulated services filters and
+	 *        datum sources are checked with
+	 * @param reservedFactoryUids
+	 *        the factory UIDs of the standard filter types, which custom filter
+	 *        types cannot use
+	 * @param reservedDatumSourceUids
+	 *        the factory UIDs of the standard datum source types (and of the
+	 *        other components the simulator has), which custom datum source
+	 *        types cannot use
+	 */
+	public CustomFilterLoader(ExpressionService expressionService,
+			Collection<String> reservedFactoryUids, Collection<String> reservedDatumSourceUids) {
 		super();
 		this.expressionService = expressionService;
 		this.reservedFactoryUids = Set.copyOf(reservedFactoryUids);
+		this.reservedDatumSourceUids = Set.copyOf(reservedDatumSourceUids);
 	}
 
 	/**
@@ -166,18 +196,23 @@ public final class CustomFilterLoader {
 		}
 		if ( jars.isEmpty() ) {
 			temp.delete();
-			return new CustomFilters(List.of(), List.of(), List.of(), List.copyOf(problems), null);
+			return new CustomFilters(List.of(), List.of(), List.of(), List.of(), List.of(),
+					List.copyOf(problems), null);
 		}
 
 		final URLClassLoader classLoader = new URLClassLoader("sim-custom-filters", urls(jars, problems),
 				CustomFilterLoader.class.getClassLoader());
 		final List<FilterTypeDefinition> definitions = new ArrayList<>(8);
 		final List<UnavailableFilterType> unavailable = new ArrayList<>(2);
+		final List<DatumSourceTypeDefinition> datumSources = new ArrayList<>(2);
+		final List<UnavailableFilterType> unavailableDatumSources = new ArrayList<>(2);
 		final List<FilterBundle> bundles = new ArrayList<>(jars.size());
 		final Set<String> factoryUids = new HashSet<>(8);
+		final Set<String> datumSourceUids = new HashSet<>(4);
 		final ImportCheck imports = new ImportCheck(classLoader);
 		for ( BundleJar jar : jars ) {
 			final List<String> available = new ArrayList<>(4);
+			final List<String> availableSources = new ArrayList<>(2);
 			if ( !jar.blueprints().isEmpty() ) {
 				final Interpretation interpretation = FilterBlueprintInterpreter
 						.interpret(Blueprint.merge(jar.blueprints()));
@@ -214,12 +249,44 @@ public final class CustomFilterLoader {
 						}
 					}
 				}
+				for ( DatumSourceTypeDescriptor descriptor : interpretation.datumSourceTypes() ) {
+					final String uid = descriptor.factoryUid();
+					if ( reservedDatumSourceUids.contains(uid) ) {
+						unavailableDatumSources.add(
+								new UnavailableFilterType(uid, descriptor.displayName(), origin.info(),
+										"It has the factory UID of a standard datum source type."));
+						continue;
+					}
+					if ( !datumSourceUids.add(uid) ) {
+						unavailableDatumSources.add(
+								new UnavailableFilterType(uid, descriptor.displayName(), origin.info(),
+										"Another jar earlier in the path has the same factory UID."));
+						continue;
+					}
+					switch (BlueprintDatumSourceTypes.define(descriptor, classLoader, origin,
+							expressionService)) {
+						case BlueprintDatumSourceTypes.Defined(var def, var warnings) -> {
+							datumSources.add(def);
+							availableSources.add(uid);
+							for ( String w : warnings ) {
+								problems.add("%s: %s".formatted(jar.label(), w));
+							}
+						}
+						case BlueprintDatumSourceTypes.Unavailable(var u, var name, var reason) -> {
+							datumSourceUids.remove(u);
+							unavailableDatumSources
+									.add(new UnavailableFilterType(u, name, origin.info(), reason));
+						}
+					}
+				}
 			}
 			bundles.add(new FilterBundle(jar.name(), jar.version(), jar.file(), List.copyOf(available),
-					!jar.blueprints().isEmpty(), imports.check(jar.importPackage())));
+					List.copyOf(availableSources), !jar.blueprints().isEmpty(),
+					imports.check(jar.importPackage())));
 		}
 		return new CustomFilters(List.copyOf(definitions), List.copyOf(unavailable),
-				List.copyOf(bundles), List.copyOf(problems), () -> {
+				List.copyOf(datumSources), List.copyOf(unavailableDatumSources), List.copyOf(bundles),
+				List.copyOf(problems), () -> {
 					try {
 						classLoader.close();
 					} finally {

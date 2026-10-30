@@ -5,16 +5,20 @@
 
 import type {
 	ControlConductorConfig,
+	ControlKind,
 	ControlPublishMode,
+	DatumSourceConfig,
 	NodeControlConfig,
 	NodeControlPropertyType,
 	NodeLocation,
+	OpModeInvokerConfig,
 	SimulationEnvironment,
 	SimulationHistory,
 	SimulationOptions,
 	UserMetadataConfig,
 } from "./model.ts";
 import { jsonLanguage } from "@codemirror/lang-json";
+import { canonicalTimeZone, parseLocalDate } from "./dates.ts";
 import { formatJson } from "./jsonFormat.ts";
 import { quoted } from "./view.ts";
 
@@ -39,7 +43,13 @@ export const DEFAULT_INSTRUCTION_JOB_SECONDS = 10;
 
 /** The input tabs. */
 export type InputTab =
-	"datum" | "history" | "environment" | "metadata" | "controls";
+	"datum" | "sources" | "history" | "environment" | "metadata" | "controls";
+
+/** The setting key of a datum source's schedule. */
+export const SCHEDULE_KEY = "schedule";
+
+/** The factory UID of the Mock Battery datum source. */
+export const MOCK_BATTERY_UID = "net.solarnetwork.node.datum.battery.mock";
 
 /** A simulated User Metadata Service, as entered. */
 export interface UserMetadataInput {
@@ -82,6 +92,13 @@ export interface ControlInput {
 	propertyName: string;
 	/** The datum property type of the value, or `""` for `Status`. */
 	propertyType: "" | "Instantaneous" | "Accumulating";
+	/**
+	 * The kind of control. An Operational Mode Switch's value follows its
+	 * mode, so its type, value, and property are not used.
+	 */
+	kind: ControlKind;
+	/** An Operational Mode Switch's operational mode. */
+	mode: string;
 }
 
 /** A task of a simulated Control Conductor, as entered. */
@@ -115,6 +132,73 @@ export interface ConductorInput {
 	tasks: ConductorTaskInput[];
 }
 
+/** The factory UID of the Operational Mode Datum Source Invoker. */
+export const INVOKER_FACTORY_UID = "net.solarnetwork.node.datum.opmode.invoker";
+
+/** The name of the Operational Mode Datum Source Invoker. */
+export const INVOKER_NAME = "Operational Mode Invoker";
+
+/**
+ * Test if a datum source input is an Operational Mode Invoker, which the
+ * Datum Sources tab lists with the datum sources.
+ *
+ * @param d the input
+ * @returns `true` if it is an invoker
+ */
+export function isInvoker(d: { factoryUid: string }): boolean {
+	return d.factoryUid === INVOKER_FACTORY_UID;
+}
+
+/**
+ * A simulated datum source, or an Operational Mode Invoker (`isInvoker()`), as
+ * entered.
+ */
+export interface DatumSourceInput {
+	/** A unique id, for the UI, and the datum source's id in requests. */
+	id: string;
+	/** The datum source type. */
+	factoryUid: string;
+	/** The SolarNode instance ID, or `""` for none. */
+	instanceKey: string;
+	/**
+	 * The settings of the datum source's job, like `schedule` and
+	 * `jobService.datumDataSource.sourceId`, or an invoker's settings.
+	 */
+	settings: Record<string, string>;
+	/**
+	 * When its controls publish a datum: `Never`, or `Change`, as datum
+	 * sources post only changes.
+	 */
+	publish: ControlPublishMode;
+	/** `true` to persist the datum its controls publish. */
+	persist: boolean;
+	/**
+	 * The control IDs it provides, from its last settings form, with
+	 * placeholders resolved.
+	 */
+	controlIds: string[];
+}
+
+/**
+ * Describe a list of datum sources and invokers, like `2 datum sources and 1
+ * Operational Mode Invoker`.
+ *
+ * @param list the datum sources and invokers
+ * @returns the description
+ */
+export function sourcesText(list: readonly { factoryUid: string }[]): string {
+	const invokers = list.filter(isInvoker).length;
+	const sources = list.length - invokers;
+	const parts = [];
+	if (sources || !invokers) {
+		parts.push(`${sources} datum source${sources === 1 ? "" : "s"}`);
+	}
+	if (invokers) {
+		parts.push(`${invokers} ${INVOKER_NAME}${invokers === 1 ? "" : "s"}`);
+	}
+	return parts.join(" and ");
+}
+
 /** The inputs, as entered, which are saved in the browser. */
 export interface InputsState {
 	version: 1;
@@ -127,8 +211,24 @@ export interface InputsState {
 	opModes: string;
 	/** Local State CSV. */
 	localState: string;
-	/** The seconds to keep running after the last datum. */
+	/**
+	 * The time zone the results show dates in, and of the Start Date, or `""`
+	 * for the simulator's time zone.
+	 */
+	timeZone: string;
+	/**
+	 * The date of the first datum without one, and the start of a run without
+	 * input datum, as a `datetime-local` value in the time zone, or `""` for
+	 * now.
+	 */
+	startDate: string;
+	/**
+	 * How long to keep running after the last datum: seconds, a duration like
+	 * `15m`, or an ISO 8601 duration.
+	 */
 	runAfter: string;
+	/** The most datum to process, or `""` for the default. */
+	maxDatum: string;
 	/** The Instruction Execution Job seconds, or `""` for the default. */
 	instructionJobSeconds: string;
 	/** Placeholders, as `name = value` lines. */
@@ -149,6 +249,11 @@ export interface InputsState {
 	controls: ControlInput[];
 	/** The simulated Control Conductors. */
 	conductors: ConductorInput[];
+	/**
+	 * The simulated datum sources, which the simulation polls, and the
+	 * Operational Mode Invokers, which poll them while their modes are active.
+	 */
+	datumSources: DatumSourceInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
 	entryPoint: string;
 }
@@ -162,11 +267,14 @@ export type InputField = Exclude<
 	| "datumMetadata"
 	| "controls"
 	| "conductors"
+	| "datumSources"
 >;
 
 /** The parts of a simulation request that come from the inputs. */
 export interface RequestInputs {
 	datum: unknown[];
+	datumSources: DatumSourceConfig[] | null;
+	invokers: OpModeInvokerConfig[] | null;
 	history: SimulationHistory | null;
 	environment: SimulationEnvironment;
 	options: SimulationOptions;
@@ -205,7 +313,10 @@ function emptyState(): InputsState {
 		unfilteredSameAsHistory: true,
 		opModes: "",
 		localState: "",
+		timeZone: "",
+		startDate: "",
 		runAfter: "",
+		maxDatum: "",
 		instructionJobSeconds: "",
 		placeholders: "",
 		datumMetadata: [],
@@ -217,6 +328,7 @@ function emptyState(): InputsState {
 		userMetadata: [],
 		controls: [],
 		conductors: [],
+		datumSources: [],
 		entryPoint: "",
 	};
 }
@@ -281,22 +393,203 @@ export function parseMetadata(text: string, label: string): unknown {
 	return value;
 }
 
+/** The seconds of each duration unit. */
+const DURATION_UNITS: Record<string, number> = {
+	s: 1,
+	m: 60,
+	h: 3600,
+	d: 86_400,
+	w: 604_800,
+};
+
 /**
- * Parse the seconds to keep running after the last datum.
+ * Parse an ISO 8601 duration, like `PT24H` or `P1DT12H`, as seconds.
  *
- * @param text the seconds
+ * @param text the duration
+ * @returns the seconds, or `null` if the text is not an ISO 8601 duration
+ */
+function parseIsoDuration(text: string): number | null {
+	const m =
+		/^P(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i.exec(
+			text,
+		);
+	if (!m || text.toUpperCase().endsWith("T") || !m.slice(1).some((p) => p)) {
+		return null;
+	}
+	const [w, d, h, min, sec] = m.slice(1).map((p) => Number(p ?? 0));
+	return w * 604_800 + d * 86_400 + h * 3600 + min * 60 + sec;
+}
+
+/**
+ * Parse how long to keep running after the last datum: a number of seconds,
+ * like `90`; numbers with units, like `15m`, `24h`, `7d`, or `1h30m` (`s`,
+ * `m`, `h`, `d`, and `w`); or an ISO 8601 duration, like `PT24H`.
+ *
+ * @param text the duration
  * @returns the seconds, or 0 if the text is blank
- * @throws Error if the text is not a number of seconds
+ * @throws Error if the text is not a duration
  */
 export function parseRunAfter(text: string): number {
-	if (!text.trim()) {
+	const t = text.trim();
+	if (!t) {
 		return 0;
 	}
-	const seconds = Number(text);
-	if (!Number.isFinite(seconds) || seconds < 0) {
-		throw new Error("Enter a number of seconds, like 300 for 5 minutes.");
+	let seconds: number | null = null;
+	if (/^\d+(\.\d+)?$/.test(t)) {
+		seconds = Number(t);
+	} else if (/^(\d+(\.\d+)?\s*[smhdw]\s*)+$/i.test(t)) {
+		seconds = 0;
+		for (const m of t.matchAll(/(\d+(?:\.\d+)?)\s*([smhdw])/gi)) {
+			seconds += Number(m[1]) * DURATION_UNITS[m[2].toLowerCase()];
+		}
+	} else if (/^P/i.test(t)) {
+		seconds = parseIsoDuration(t);
+	}
+	if (seconds === null || !Number.isFinite(seconds)) {
+		throw new Error(
+			"Enter a number of seconds, like 90, or a duration, like 15m, 24h, 7d, or PT24H.",
+		);
 	}
 	return seconds;
+}
+
+/**
+ * Parse the Maximum Datum.
+ *
+ * @param text the number
+ * @returns the number, or `null` if the text is blank
+ * @throws Error if the text is not a whole number of at least 1
+ */
+export function parseMaxDatum(text: string): number | null {
+	const t = text.trim().replaceAll(/[,_ ]/g, "");
+	if (!t) {
+		return null;
+	}
+	const n = Number(t);
+	if (!Number.isInteger(n) || n < 1) {
+		throw new Error("Enter a whole number of datum, like 10000.");
+	}
+	return n;
+}
+
+/** The time zone of the simulator, the Time Zone's default. */
+let serverTimeZone = "UTC";
+
+/**
+ * Set the time zone of the simulator, which is the Time Zone's default.
+ *
+ * @param zone the time zone
+ */
+export function setServerTimeZone(zone: string): void {
+	serverTimeZone = canonicalTimeZone(zone) ?? "UTC";
+}
+
+/**
+ * Get the time zone of the simulator, which is the Time Zone's default.
+ *
+ * @returns the time zone
+ */
+export function getServerTimeZone(): string {
+	return serverTimeZone;
+}
+
+/**
+ * Parse the Time Zone.
+ *
+ * @param text the time zone name
+ * @returns the canonical time zone name, or `null` if the text is blank
+ * @throws Error if the time zone is not known
+ */
+export function parseTimeZone(text: string): string | null {
+	if (!text.trim()) {
+		return null;
+	}
+	const zone = canonicalTimeZone(text);
+	if (!zone) {
+		throw new Error(
+			"Enter a time zone name, like Pacific/Auckland, America/New_York, or UTC.",
+		);
+	}
+	return zone;
+}
+
+/**
+ * Parse the Start Date.
+ *
+ * @param text the date, as a `datetime-local` value
+ * @param zone the time zone of the date
+ * @returns the date as an ISO 8601 instant, or `null` if the text is blank
+ * @throws Error if the text is not a date
+ */
+export function parseStartDate(text: string, zone: string): string | null {
+	let ms: number | null;
+	try {
+		ms = parseLocalDate(text, zone, false);
+	} catch {
+		ms = NaN;
+	}
+	if (ms === null) {
+		return null;
+	}
+	if (Number.isNaN(ms)) {
+		throw new Error("Enter a date and time, like 2026-01-01 00:00:00.");
+	}
+	return new Date(ms).toISOString();
+}
+
+/**
+ * Get the problem with a datum source's Schedule, like the simulator finds.
+ * Spring's cron expressions, which a node uses, have 6 fields.
+ *
+ * @param schedule the schedule, or `undefined` for the default
+ * @returns the problem, or `null` if there is none
+ */
+export function scheduleProblem(schedule: string | undefined): string | null {
+	if (schedule === undefined) {
+		return null;
+	}
+	const expr = schedule.trim();
+	if (!expr) {
+		return "Enter a schedule, like 60000 for every minute, or 0 * * * * ? for the start of every minute.";
+	}
+	if (/^[-+]?\d+$/.test(expr)) {
+		const ms = Number(expr);
+		if (ms < 0) {
+			return "Enter a positive number of milliseconds, like 60000 for every minute.";
+		}
+		if (ms === 0) {
+			return "A node runs a datum source with the Schedule 0 without a pause, so the simulator does not poll it. Enter a number of milliseconds, like 60000 for every minute.";
+		}
+		return null;
+	}
+	if (expr.split(/\s+/).length !== 6) {
+		return "Enter a number of milliseconds, like 60000 for every minute, or a cron expression of 6 fields (seconds, minutes, hours, day of month, month, and day of week), like 0 * * * * ?.";
+	}
+	return null;
+}
+
+/**
+ * Describe a datum source's schedule.
+ *
+ * @param schedule the schedule
+ * @returns the description, like `every 60s` or the cron expression
+ */
+export function scheduleText(schedule: string): string {
+	const expr = schedule.trim();
+	if (/^\+?\d+$/.test(expr)) {
+		const ms = Number(expr);
+		return ms % 1000 === 0 ? `every ${ms / 1000}s` : `every ${ms}ms`;
+	}
+	return expr;
+}
+
+/**
+ * Get the input field of a datum source's schedule.
+ *
+ * @param id the datum source's id
+ */
+export function scheduleField(id: string): string {
+	return `${id}.${SCHEDULE_KEY}`;
 }
 
 /**
@@ -701,12 +994,26 @@ export class RunInputs extends EventTarget {
 			state.controls = [];
 		}
 		for (const c of state.controls) {
-			// saved before controls had a datum property
+			// saved before controls had a datum property, or a kind
 			c.propertyName ??= "";
 			c.propertyType ??= "";
+			c.kind ??= "Mock";
+			c.mode ??= "";
 		}
 		if (!Array.isArray(state.conductors)) {
 			state.conductors = [];
+		}
+		if (!Array.isArray(state.datumSources)) {
+			state.datumSources = [];
+		}
+		for (const d of state.datumSources) {
+			d.settings ??= {};
+			d.instanceKey ??= "";
+			d.publish ??= "Change";
+			d.persist ??= false;
+			if (!Array.isArray(d.controlIds)) {
+				d.controlIds = [];
+			}
 		}
 		for (const c of state.conductors) {
 			if (!Array.isArray(c.tasks)) {
@@ -734,6 +1041,18 @@ export class RunInputs extends EventTarget {
 		return JSON.stringify(this.#state) === JSON.stringify(emptyState());
 	}
 
+	/**
+	 * The time zone the results show dates in: the Time Zone, or else the
+	 * simulator's.
+	 */
+	get timeZone(): string {
+		try {
+			return parseTimeZone(this.#state.timeZone) ?? serverTimeZone;
+		} catch {
+			return serverTimeZone;
+		}
+	}
+
 	/** The paths of the external commands filters may run. */
 	get allowedCommands(): string[] {
 		return parseAllowedCommands(this.#state.allowedCommands);
@@ -753,11 +1072,21 @@ export class RunInputs extends EventTarget {
 		this.set("allowedCommands", text ? `${text}\n${cmd}` : cmd);
 	}
 
-	/** The IDs of the controls. */
+	/** The IDs of the controls, then those of the datum sources' controls. */
 	get controlIds(): string[] {
-		return this.#state.controls
+		const ids = this.#state.controls
 			.map((c) => c.controlId.trim())
 			.filter((id) => id.length > 0);
+		const all = new Set(ids);
+		for (const d of this.#state.datumSources) {
+			for (const id of d.controlIds) {
+				if (!all.has(id)) {
+					all.add(id);
+					ids.push(id);
+				}
+			}
+		}
+		return ids;
 	}
 
 	/** The Service Names of the Control Conductors. */
@@ -935,6 +1264,8 @@ export class RunInputs extends EventTarget {
 			persist: false,
 			propertyName: "",
 			propertyType: "",
+			kind: "Mock",
+			mode: "",
 		};
 		this.#update((s) => {
 			s.controls.push(item);
@@ -1096,24 +1427,31 @@ export class RunInputs extends EventTarget {
 	}
 
 	/**
-	 * Use the controls and Control Conductors of an imported settings CSV file.
+	 * Use the controls, Control Conductors, and datum sources of an imported
+	 * settings CSV file.
 	 *
 	 * Replacing the simulation's settings replaces the controls when the file
-	 * has controls, and the conductors when it has conductors. Adding the
-	 * settings replaces the controls with the same control ID, and the
-	 * conductors with the same Service Name (ignoring case), and adds the
-	 * others.
+	 * has controls, the conductors when it has conductors, and the datum
+	 * sources when it has datum sources. Adding the settings replaces the
+	 * controls with the same control ID, the conductors with the same Service
+	 * Name (ignoring case), and the datum sources with the same type and
+	 * instance ID, and adds the others.
 	 *
-	 * @param controls the file's controls
-	 * @param conductors the file's conductors
+	 * @param imported the file's controls, conductors, datum sources, and
+	 *     invokers
 	 * @param replace `true` to replace, `false` to add
 	 * @returns notes about the changes, or an empty list if there are none
 	 */
 	importEnvironment(
-		controls: NodeControlConfig[] | null | undefined,
-		conductors: ControlConductorConfig[] | null | undefined,
+		imported: {
+			controls?: NodeControlConfig[] | null;
+			conductors?: ControlConductorConfig[] | null;
+			datumSources?: DatumSourceConfig[] | null;
+			invokers?: OpModeInvokerConfig[] | null;
+		},
 		replace: boolean,
 	): string[] {
+		const { controls, conductors } = imported;
 		const newControls = (controls ?? []).map((c): ControlInput => ({
 			id: `ctl-${Date.now().toString(36)}-${++this.#ids}`,
 			controlId: c.controlId ?? "",
@@ -1127,11 +1465,39 @@ export class RunInputs extends EventTarget {
 				c.propertyType === "Accumulating"
 					? c.propertyType
 					: "",
+			kind: c.kind ?? "Mock",
+			mode: c.mode ?? "",
 		}));
 		const newConductors = (conductors ?? []).map((c) =>
 			this.#conductorInput(c.settings ?? {}),
 		);
-		if (!newControls.length && !newConductors.length) {
+		const newSources = (imported.datumSources ?? []).map(
+			(d): DatumSourceInput => ({
+				id: `ds-${Date.now().toString(36)}-${++this.#ids}`,
+				factoryUid: d.factoryUid,
+				instanceKey: d.instanceKey ?? "",
+				settings: { ...(d.settings ?? {}) },
+				publish: d.publish ?? "Change",
+				persist: d.persist ?? false,
+				controlIds: [],
+			}),
+		);
+		for (const v of imported.invokers ?? []) {
+			newSources.push({
+				id: `ds-${Date.now().toString(36)}-${++this.#ids}`,
+				factoryUid: INVOKER_FACTORY_UID,
+				instanceKey: v.instanceKey ?? "",
+				settings: { ...(v.settings ?? {}) },
+				publish: "Change",
+				persist: false,
+				controlIds: [],
+			});
+		}
+		if (
+			!newControls.length &&
+			!newConductors.length &&
+			!newSources.length
+		) {
 			return [];
 		}
 		const notes: string[] = [];
@@ -1193,6 +1559,40 @@ export class RunInputs extends EventTarget {
 					);
 				}
 			}
+			if (newSources.length) {
+				const what = sourcesText(newSources);
+				if (replace) {
+					s.datumSources = newSources;
+					notes.push(
+						`The Datum Sources tab now has the file's ${what}.`,
+					);
+				} else {
+					let replaced = 0;
+					for (const d of newSources) {
+						const i = s.datumSources.findIndex(
+							(e) =>
+								e.factoryUid === d.factoryUid &&
+								e.instanceKey === d.instanceKey,
+						);
+						if (i < 0) {
+							s.datumSources.push(d);
+						} else {
+							// keep the card's id, for its collapsed state
+							s.datumSources[i] = {
+								...d,
+								id: s.datumSources[i].id,
+							};
+							replaced++;
+						}
+					}
+					notes.push(
+						`Added the file's ${what} to the Datum Sources tab` +
+							(replaced
+								? `, replacing ${replaced} with the same type and instance ID.`
+								: "."),
+					);
+				}
+			}
 		});
 		return notes;
 	}
@@ -1236,6 +1636,82 @@ export class RunInputs extends EventTarget {
 	}
 
 	/**
+	 * Add a datum source.
+	 *
+	 * @param factoryUid the datum source type
+	 * @returns the new datum source
+	 */
+	addDatumSource(factoryUid: string): DatumSourceInput {
+		const item: DatumSourceInput = {
+			id: `ds-${Date.now().toString(36)}-${++this.#ids}`,
+			factoryUid,
+			instanceKey: "",
+			settings: {},
+			publish: "Change",
+			persist: false,
+			controlIds: [],
+		};
+		this.#update((s) => {
+			s.datumSources.push(item);
+		});
+		return item;
+	}
+
+	/**
+	 * Change a datum source.
+	 *
+	 * @param id the datum source's id
+	 * @param changes the changes
+	 */
+	updateDatumSource(
+		id: string,
+		changes: Partial<Omit<DatumSourceInput, "id" | "settings">>,
+	): void {
+		this.#update((s) => {
+			const item = s.datumSources.find((d) => d.id === id);
+			if (item) {
+				Object.assign(item, changes);
+			}
+		});
+	}
+
+	/**
+	 * Change the settings of a datum source.
+	 *
+	 * @param id the datum source's id
+	 * @param changes the changes, with `null` to remove a setting
+	 */
+	editDatumSourceSettings(
+		id: string,
+		changes: Record<string, string | null>,
+	): void {
+		this.#update((s) => {
+			const item = s.datumSources.find((d) => d.id === id);
+			if (!item) {
+				return;
+			}
+			for (const [key, value] of Object.entries(changes)) {
+				if (value === null) {
+					delete item.settings[key];
+				} else {
+					item.settings[key] = value;
+				}
+			}
+		});
+	}
+
+	/**
+	 * Remove a datum source.
+	 *
+	 * @param id the datum source's id
+	 */
+	removeDatumSource(id: string): void {
+		this.#update((s) => {
+			s.datumSources = s.datumSources.filter((d) => d.id !== id);
+		});
+	}
+
+	/**
 	 * Get the parts of a simulation request that come from the inputs.
 	 *
 	 * @returns the request parts
@@ -1257,13 +1733,40 @@ export class RunInputs extends EventTarget {
 		const datum = parse("datum", "datum", () =>
 			parseDatumList(s.datum, "Datum"),
 		);
-		if (datum.length === 0) {
+		if (datum.length === 0 && !s.datumSources.some((d) => !isInvoker(d))) {
 			throw new InputError(
-				"Enter the datum to run through the filters, as a JSON object or array of objects.",
+				"Enter the datum to run through the filters, as a JSON object or array of objects, or add a datum source to poll.",
 				"datum",
 				"datum",
 			);
 		}
+		const invokers: OpModeInvokerConfig[] = s.datumSources
+			.filter(isInvoker)
+			.map((d) => ({
+				id: d.id,
+				instanceKey: d.instanceKey.trim() || null,
+				settings: d.settings,
+			}));
+		const datumSources: DatumSourceConfig[] = s.datumSources
+			.filter((d) => !isInvoker(d))
+			.map((d) => {
+				const problem = scheduleProblem(d.settings[SCHEDULE_KEY]);
+				if (problem) {
+					throw new InputError(
+						problem,
+						"sources",
+						scheduleField(d.id),
+					);
+				}
+				return {
+					id: d.id,
+					factoryUid: d.factoryUid,
+					instanceKey: d.instanceKey.trim() || null,
+					settings: d.settings,
+					publish: d.publish,
+					persist: d.publish !== "Never" && d.persist ? true : null,
+				};
+			});
 		const filtered = parse("history", "history", () =>
 			parseDatumList(s.history, "History datum"),
 		);
@@ -1291,6 +1794,19 @@ export class RunInputs extends EventTarget {
 		);
 		const runAfter = parse("environment", "runAfter", () =>
 			parseRunAfter(s.runAfter),
+		);
+		if (datum.length === 0 && runAfter <= 0) {
+			throw new InputError(
+				"Enter how long to keep running, which is the length of a run without input datum, to poll the datum sources.",
+				"environment",
+				"runAfter",
+			);
+		}
+		const timeZone = parse("environment", "timeZone", () =>
+			parseTimeZone(s.timeZone),
+		);
+		const startDate = parse("environment", "startDate", () =>
+			parseStartDate(s.startDate, timeZone ?? serverTimeZone),
 		);
 		const placeholders = parse("environment", "placeholders", () =>
 			parsePlaceholders(s.placeholders),
@@ -1328,6 +1844,15 @@ export class RunInputs extends EventTarget {
 			const idProblem = controlIdProblem(s.controls, c);
 			if (idProblem) {
 				throw new InputError(idProblem, "controls", c.id);
+			}
+			if (c.kind === "OperationalModeSwitch") {
+				return {
+					controlId: c.controlId.trim(),
+					kind: c.kind,
+					mode: c.mode.trim() || null,
+					publish: c.publish,
+					persist: c.publish !== "Never" && c.persist ? true : null,
+				};
 			}
 			const valueProblem = controlValueProblem(c.type, c.value);
 			if (valueProblem) {
@@ -1392,11 +1917,18 @@ export class RunInputs extends EventTarget {
 			"instructionJobSeconds",
 			() => parseInstructionJobSeconds(s.instructionJobSeconds),
 		);
+		const maxDatum = parse("environment", "maxDatum", () =>
+			parseMaxDatum(s.maxDatum),
+		);
 		const allowedCommands = this.allowedCommands;
 		return {
 			datum,
+			datumSources: datumSources.length ? datumSources : null,
+			invokers: invokers.length ? invokers : null,
 			options: {
+				startDate,
 				runAfter: runAfter > 0 ? `PT${runAfter}S` : null,
+				maxDatum,
 				allowedCommands: allowedCommands.length
 					? allowedCommands
 					: null,

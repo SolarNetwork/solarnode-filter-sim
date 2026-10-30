@@ -6,6 +6,15 @@ export const MAIN_KEY = "main";
 /** The key prefix of filters that are not in a chain. */
 export const ROOT_PREFIX = "root:";
 
+/** The key prefix of datum sources. */
+export const SOURCE_PREFIX = "source:";
+
+/**
+ * The datum source id of the static datum, the Datum tab's input datum, drawn
+ * as the first datum source.
+ */
+export const STATIC_SOURCE_ID = "static";
+
 /** The size of a filter node. */
 export const NODE_SIZE = 64;
 
@@ -49,6 +58,21 @@ const END_COLUMN = 80;
 
 /** The position of the Main chain. */
 const ORIGIN: Point = { x: 40, y: 40 };
+
+/**
+ * How far left of the Main chain the datum sources are: far enough that the
+ * datum routes beside their lines clear the sources.
+ */
+const SOURCE_COLUMN = 170;
+
+/**
+ * How far below the Main chain the first datum source is: its line runs below
+ * the Main chain's label, clear of the input datum leading into the chain.
+ */
+const SOURCE_TOP = 120;
+
+/** The vertical distance between datum sources. */
+const SOURCE_ROW = 120;
 
 /** A reference to a node port. */
 export interface PortRef {
@@ -107,6 +131,24 @@ export interface FlowLink {
 	vertices?: Point[];
 }
 
+/** A datum source, which offers the datum it polls to the Main chain. */
+export interface SourceNode {
+	kind: "source";
+	key: string;
+	/** The datum source id. */
+	datumSourceId: string;
+	position: Point;
+}
+
+/** A line from a datum source to the Main chain. */
+export interface SourceLink {
+	kind: "source";
+	key: string;
+	source: PortRef;
+	target: PortRef;
+	vertices: Point[];
+}
+
 /** A line from a nested chain to the filter after it in its parent chain. */
 export interface ContinuationLink {
 	kind: "continuation";
@@ -119,7 +161,9 @@ export interface ContinuationLink {
 export interface Drawing {
 	nodes: FilterNode[];
 	ends: EndNode[];
-	links: (FlowLink | ContinuationLink)[];
+	/** The datum sources, left of the Main chain. */
+	sources: SourceNode[];
+	links: (FlowLink | ContinuationLink | SourceLink)[];
 }
 
 /**
@@ -132,12 +176,18 @@ export interface Drawing {
  * later nested chains nearer the parent, so the lines never cross. Filters
  * that are not in a chain are drawn at their saved position, or else in a row
  * below everything else. A filter in several chains is drawn once for each.
+ * Datum sources form a column below and left of the Main chain, their lines
+ * joining to go into its left side.
  *
  * @param ws the workspace
+ * @param sourceIds the ids of the datum sources
  * @returns the drawing
  */
-export function layout(ws: Workspace): Drawing {
-	const drawing: Drawing = { nodes: [], ends: [], links: [] };
+export function layout(
+	ws: Workspace,
+	sourceIds: readonly string[] = [],
+): Drawing {
+	const drawing: Drawing = { nodes: [], ends: [], sources: [], links: [] };
 	const drawn = new Set<string>();
 	let bottom = ORIGIN.y;
 
@@ -394,6 +444,31 @@ export function layout(ws: Workspace): Drawing {
 		ORIGIN.y,
 		[mainId],
 	);
+
+	// the datum sources, their lines joining just before the Main chain
+	const sourceX = ORIGIN.x - SOURCE_COLUMN;
+	const joinX = ORIGIN.x - APPROACH;
+	const mainY = ORIGIN.y + NODE_SIZE / 2;
+	sourceIds.forEach((id, i) => {
+		const key = `${SOURCE_PREFIX}${id}`;
+		const y = ORIGIN.y + SOURCE_TOP + i * SOURCE_ROW;
+		drawing.sources.push({
+			kind: "source",
+			key,
+			datumSourceId: id,
+			position: { x: sourceX, y },
+		});
+		drawing.links.push({
+			kind: "source",
+			key: `${key}>${MAIN_KEY}`,
+			source: { key, port: "out" },
+			target: { key: MAIN_KEY, port: "in" },
+			vertices: [
+				{ x: joinX, y: y + NODE_SIZE / 2 },
+				{ x: joinX, y: mainY },
+			],
+		});
+	});
 
 	// filters that are not in a chain: first those with saved positions, then
 	// the others in a row below everything else

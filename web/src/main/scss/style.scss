@@ -116,6 +116,33 @@ body {
 	flex: 0 0 7.5rem;
 }
 
+// a datum source card: its header shows and hides its settings form
+.sim-datum-source-item {
+	.card-header {
+		border-bottom: 0;
+	}
+
+	&:not(.is-collapsed) .card-header {
+		border-bottom: var(--bs-card-border-width) solid
+			var(--bs-card-border-color);
+	}
+
+	&.is-flashed {
+		animation: sim-flash 1.2s ease-out;
+	}
+}
+
+.sim-datum-source-titles {
+	min-width: 0;
+	cursor: pointer;
+	line-height: 1.3;
+}
+
+.sim-datum-source-icon {
+	font-size: 1.1rem;
+	color: var(--bs-secondary-color);
+}
+
 .sim-conductor-task {
 	border: var(--bs-border-width) solid var(--bs-border-color-translucent);
 	border-radius: var(--bs-border-radius);
@@ -357,6 +384,13 @@ body {
 		cursor: pointer;
 	}
 
+	// a datum source, which feeds the Main chain
+	&.is-source {
+		fill: var(--bs-info-bg-subtle);
+		stroke: var(--bs-info);
+		cursor: pointer;
+	}
+
 	&.is-unsupported,
 	&.is-unknown,
 	&.is-loop {
@@ -464,6 +498,10 @@ rect.sim-badge {
 
 	.is-main ~ & {
 		fill: var(--bs-primary);
+	}
+
+	.is-source ~ & {
+		fill: var(--bs-info-text-emphasis);
 	}
 
 	.is-root ~ &,
@@ -642,6 +680,114 @@ rect.sim-badge {
 	position: sticky;
 	top: 0;
 	z-index: 2;
+}
+
+// a run's progress (results.ts setProgress()), above the flow while it runs
+.sim-run-progress {
+	position: sticky;
+	top: 0;
+	z-index: 3;
+
+	.progress {
+		min-width: 6rem;
+		height: 0.5rem;
+	}
+}
+
+// the datum list of a result without every trace (datumList.ts): only the
+// visible rows are drawn, each ROW_HEIGHT (26px) high
+.sim-datum-list-scroller {
+	position: relative;
+	height: 16rem;
+	min-height: 6rem;
+	overflow: hidden auto;
+	resize: vertical;
+	font-size: 0.8rem;
+
+	&:focus-visible {
+		outline: 2px solid rgba(var(--bs-primary-rgb), 0.5);
+		outline-offset: 1px;
+	}
+}
+
+.sim-datum-list-rows {
+	position: relative;
+	min-height: 2rem;
+}
+
+.sim-datum-list-row {
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 26px;
+	padding: 0 0.5rem;
+	cursor: pointer;
+	border-bottom: 1px solid var(--bs-border-color-translucent);
+
+	&:hover {
+		background-color: var(--bs-secondary-bg);
+	}
+
+	// selected for its route
+	&.is-selected {
+		background-color: var(--bs-primary-bg-subtle);
+		box-shadow: inset 3px 0 0 var(--bs-primary);
+	}
+
+	// the row the arrow keys move, whose card shows
+	&.is-current {
+		outline: 1px solid var(--bs-primary);
+		outline-offset: -1px;
+	}
+}
+
+$sim-shrink: minmax(0, 1fr);
+
+.sim-datum-row {
+	display: grid;
+	// fixed columns, as each row is a grid of its own; the origin shrinks first
+	grid-template-columns: 3.5rem minmax(4rem, 12rem) 10rem $sim-shrink 8.5rem;
+	align-items: center;
+	gap: 0.5rem;
+	overflow: hidden;
+	white-space: nowrap;
+
+	&.is-run {
+		grid-template-columns: 3.5rem 10rem $sim-shrink 8.5rem;
+
+		> .bi {
+			justify-self: end;
+		}
+	}
+
+	.badge {
+		justify-self: end;
+		font-weight: 500;
+	}
+}
+
+.sim-datum-list-date {
+	width: 11.5rem;
+}
+
+.sim-datum-list-go {
+	width: 5rem;
+}
+
+.sim-datum-list-source .dropdown-toggle {
+	max-width: 16rem;
+}
+
+.sim-datum-list-sources {
+	max-height: 20rem;
+	min-width: 14rem;
+	max-width: 24rem;
+	overflow-y: auto;
+}
+
+.sim-download-menu .dropdown-item {
+	white-space: normal;
+	min-width: 18rem;
 }
 
 // the datum capture (capture.ts): a dense table that follows new datum, like

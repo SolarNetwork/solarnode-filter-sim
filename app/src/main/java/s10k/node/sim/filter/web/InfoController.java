@@ -19,6 +19,7 @@
 
 package s10k.node.sim.filter.web;
 
+import java.time.ZoneId;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.info.BuildProperties;
@@ -67,8 +68,11 @@ public class InfoController {
 	 * @param customFilters
 	 *        {@code true} if the simulator was started with a custom filters
 	 *        path, so the custom filters can be reloaded
+	 * @param timeZone
+	 *        the simulator's time zone, which simulations run in
 	 */
-	public record AppInfo(String name, @Nullable String version, boolean customFilters) {
+	public record AppInfo(String name, @Nullable String version, boolean customFilters,
+			String timeZone) {
 
 	}
 
@@ -80,12 +84,14 @@ public class InfoController {
 	@GetMapping("/info")
 	public AppInfo info() {
 		final BuildProperties props = this.buildProperties;
+		final String timeZone = ZoneId.systemDefault().getId();
 		if ( props == null ) {
-			return new AppInfo(FilterSimulatorApplication.DEFAULT_APP_NAME, null, customFilters);
+			return new AppInfo(FilterSimulatorApplication.DEFAULT_APP_NAME, null, customFilters,
+					timeZone);
 		}
 		final String name = props.getName();
 		return new AppInfo(name != null ? name : FilterSimulatorApplication.DEFAULT_APP_NAME,
-				props.getVersion(), customFilters);
+				props.getVersion(), customFilters, timeZone);
 	}
 
 }

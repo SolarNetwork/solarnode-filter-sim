@@ -63,13 +63,17 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param task
  *        for a Control Conductor task's {@code Signal} instruction, the task
  *        number, from {@code 1}, or {@code null}
+ * @param handler
+ *        the component that gave the instruction its status when it was
+ *        executed, or {@code null} if none did, as when no handler handled it
+ *        or the topic is one that completes without a handler
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record InstructionInfo(int number, @Nullable Long id, String topic,
 		Map<String, String> parameters, @Nullable String state, @Nullable Integer parent,
 		@Nullable Instant executeAt, @Nullable String message, @Nullable String code,
-		@Nullable String conductor, @Nullable Integer task) {
+		@Nullable String conductor, @Nullable Integer task, @Nullable InstructionHandlerInfo handler) {
 
 }

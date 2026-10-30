@@ -19,6 +19,8 @@
 
 package s10k.node.sim.filter.config;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -30,17 +32,24 @@ import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.custom.CustomFilterLoader;
 import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.form.SettingsFormService;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
+import s10k.node.sim.filter.run.RunService;
+import s10k.node.sim.filter.sim.SimOpModeInvokers;
 import s10k.node.sim.filter.sim.SimulationEngine;
+import s10k.node.sim.filter.sim.SimulationLimits;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Simulator configuration.
  *
  * @author matt
- * @version 1.0
+ * @version 1.2
  */
 @Configuration(proxyBeanMethods = false)
 @ImportRuntimeHints(SimulatorRuntimeHints.class)
@@ -63,7 +72,11 @@ public class SimulatorConfig {
 			SpelExpressionService expressionService) {
 		final List<String> standard = StandardFilterTypes.definitions().stream()
 				.map(FilterTypeDefinition::factoryUid).toList();
-		return new CustomFilterService(new CustomFilterLoader(expressionService, standard), path);
+		final List<String> standardSources = new ArrayList<>(StandardDatumSourceTypes.definitions()
+				.stream().map(DatumSourceTypeDefinition::factoryUid).toList());
+		standardSources.add(SimOpModeInvokers.FACTORY_UID);
+		return new CustomFilterService(
+				new CustomFilterLoader(expressionService, standard, standardSources), path);
 	}
 
 	/**
@@ -92,38 +105,80 @@ public class SimulatorConfig {
 	}
 
 	/**
+	 * The registry of supported datum source types: the standard ones, plus the
+	 * custom ones.
+	 *
+	 * @param customFilterService
+	 *        the custom filters service, which updates the registry when the
+	 *        custom filters are reloaded
+	 * @return the registry
+	 */
+	@Bean
+	public DatumSourceTypeRegistry datumSourceTypeRegistry(CustomFilterService customFilterService) {
+		return customFilterService.datumSourceRegistry();
+	}
+
+	/**
 	 * The simulation engine.
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
 	 * @param expressionService
 	 *        the expression service
 	 * @param allowedCommands
 	 *        the paths of the external commands filters may run in every
 	 *        simulation, from the {@code sim.commands.allowed} property, in
 	 *        addition to those each request allows
+	 * @param maxDatum
+	 *        the most datum a run may process, from the {@code sim.max-datum}
+	 *        property
+	 * @param maxRunTime
+	 *        the longest a run may take, from the {@code sim.max-run-time}
+	 *        property
 	 * @return the engine
 	 */
 	@Bean
 	public SimulationEngine simulationEngine(FilterTypeRegistry registry,
-			SpelExpressionService expressionService,
-			@Value("${sim.commands.allowed:}") List<String> allowedCommands) {
-		return new SimulationEngine(registry, expressionService, allowedCommands);
+			DatumSourceTypeRegistry datumSourceTypes, SpelExpressionService expressionService,
+			@Value("${sim.commands.allowed:}") List<String> allowedCommands,
+			@Value("${sim.max-datum:100000}") int maxDatum,
+			@Value("${sim.max-run-time:10m}") Duration maxRunTime) {
+		return new SimulationEngine(registry, datumSourceTypes, expressionService, allowedCommands,
+				new SimulationLimits(maxDatum, maxRunTime));
 	}
 
 	/**
-	 * The filter settings form service.
+	 * The run service, which runs simulations in the background and keeps their
+	 * results.
+	 *
+	 * @param engine
+	 *        the simulation engine
+	 * @param mapper
+	 *        the web API's JSON mapper
+	 * @return the service
+	 */
+	@Bean(destroyMethod = "close")
+	public RunService runService(SimulationEngine engine, JsonMapper mapper) {
+		return new RunService(engine, mapper);
+	}
+
+	/**
+	 * The filter and datum source settings form service.
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypeRegistry
+	 *        the datum source type registry
 	 * @param expressionService
 	 *        the expression service
 	 * @return the service
 	 */
 	@Bean
 	public SettingsFormService settingsFormService(FilterTypeRegistry registry,
-			SpelExpressionService expressionService) {
-		return new SettingsFormService(registry, expressionService);
+			DatumSourceTypeRegistry datumSourceTypeRegistry, SpelExpressionService expressionService) {
+		return new SettingsFormService(registry, datumSourceTypeRegistry, expressionService);
 	}
 
 	/**
@@ -131,14 +186,16 @@ public class SimulatorConfig {
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypeRegistry
+	 *        the datum source type registry
 	 * @param settingsFormService
 	 *        the settings form service
 	 * @return the service
 	 */
 	@Bean
 	public SettingsCsvService settingsCsvService(FilterTypeRegistry registry,
-			SettingsFormService settingsFormService) {
-		return new SettingsCsvService(registry, settingsFormService);
+			DatumSourceTypeRegistry datumSourceTypeRegistry, SettingsFormService settingsFormService) {
+		return new SettingsCsvService(registry, datumSourceTypeRegistry, settingsFormService);
 	}
 
 	/**

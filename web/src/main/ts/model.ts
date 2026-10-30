@@ -30,6 +30,8 @@ export interface AppInfo {
 	 * custom filters can be reloaded.
 	 */
 	customFilters?: boolean;
+	/** The simulator's time zone, which simulations run in. */
+	timeZone?: string;
 }
 
 /** The bundle a custom filter type comes from. */
@@ -51,14 +53,30 @@ export interface FilterTypeInfo {
 	bundle?: FilterBundleInfo;
 }
 
+/** A supported datum source type. */
+export interface DatumSourceTypeInfo {
+	factoryUid: string;
+	name: string;
+	/** The description, as HTML. */
+	description?: string;
+	/** The poll schedule of a new datum source. */
+	defaultSchedule: string;
+	/** `Controls`, `Instructions`, and `TariffSchedule`. */
+	capabilities?: string[];
+	/** The bundle of a custom datum source type, from the custom filters path. */
+	bundle?: FilterBundleInfo;
+}
+
 /** The result of reloading the custom filters. */
 export interface CustomFiltersReload {
 	filterTypes: FilterTypeInfo[];
 	unavailable: UnavailableFilterType[];
+	/** The datum source types, including the custom ones. */
+	datumSourceTypes: DatumSourceTypeInfo[];
 	/**
 	 * The description of the custom filters, like the startup message's: the
-	 * jars and their filter types, warnings, the types that are not available,
-	 * and problems.
+	 * jars and their filter and datum source types, warnings, the types that
+	 * are not available, and problems.
 	 */
 	messages: string[];
 }
@@ -116,6 +134,11 @@ export interface SimulationMessage {
 	message: string;
 	filterId?: string;
 	datumSeq?: number;
+	/**
+	 * The id of the datum source or Operational Mode Invoker the message is
+	 * about.
+	 */
+	datumSourceId?: string;
 }
 
 /** A component of a settings CSV file that is not a filter. */
@@ -134,6 +157,13 @@ export interface SettingsImport {
 	controls?: NodeControlConfig[] | null;
 	/** The file's Control Conductors, for the Controls tab. */
 	conductors?: ControlConductorConfig[] | null;
+	/**
+	 * The file's datum sources of the supported types, for the Datum Sources
+	 * tab, with the current setting keys.
+	 */
+	datumSources?: DatumSourceConfig[] | null;
+	/** The file's Operational Mode Invokers, for the Datum Sources tab. */
+	invokers?: OpModeInvokerConfig[] | null;
 }
 
 /** An External Settings file: a settings CSV file the simulation applies first. */
@@ -292,8 +322,13 @@ export interface SettingsForm {
 	factoryUid: string;
 	fields: SettingField[];
 	problems: SettingProblem[];
-	/** How the simulation of the filter differs from SolarNode. */
+	/** How the simulation of the filter or datum source differs from SolarNode. */
 	limitation?: string;
+	/**
+	 * For a datum source that provides controls, the control IDs it provides
+	 * with these settings, with placeholders resolved.
+	 */
+	controlIds?: string[];
 }
 
 /* === Simulation === */
@@ -326,6 +361,12 @@ export const NODE_CONTROL_TYPES: readonly NodeControlPropertyType[] = [
  */
 export type ControlPublishMode = "Never" | "Change" | "Update";
 
+/**
+ * The kind of simulated control: a Mock control, or an Operational Mode Switch,
+ * a `Boolean` control whose value is whether its operational mode is active.
+ */
+export type ControlKind = "Mock" | "OperationalModeSwitch";
+
 /** A simulated SolarNode control. */
 export interface NodeControlConfig {
 	controlId?: string | null;
@@ -344,6 +385,10 @@ export interface NodeControlConfig {
 	propertyName?: string | null;
 	/** The datum property type of the value, or `null` for `Status`. */
 	propertyType?: ControlPropertyType | null;
+	/** The kind of control, or `null` for `Mock`. */
+	kind?: ControlKind | null;
+	/** An Operational Mode Switch's operational mode. */
+	mode?: string | null;
 }
 
 /** A datum property type a control's value can have. */
@@ -406,6 +451,11 @@ export interface SimulationOptions {
 	timeoutMs?: number | null;
 	detail?: SimulationDetail | null;
 	/**
+	 * The date of the first input datum without one, and the start of a run
+	 * without input datum, as an ISO 8601 instant, or `null` for now.
+	 */
+	startDate?: string | null;
+	/**
 	 * How long the simulated clock keeps running after the last input datum,
 	 * as an ISO 8601 duration like `PT5M`, so scheduled tasks can run.
 	 */
@@ -419,6 +469,44 @@ export interface SimulationOptions {
 	instructionJobSeconds?: number | null;
 }
 
+/** A simulated SolarNode datum source, which the simulation polls. */
+export interface DatumSourceConfig {
+	/**
+	 * The id of the datum source, unique in the request; an imported datum
+	 * source has none.
+	 */
+	id?: string | null;
+	/** The factory UID of the datum source type. */
+	factoryUid: string;
+	/** The SolarNode instance ID, or `null`. */
+	instanceKey?: string | null;
+	/**
+	 * The settings of the datum source's job, like `schedule` and
+	 * `jobService.datumDataSource.sourceId`.
+	 */
+	settings?: Record<string, string> | null;
+	/**
+	 * When its controls publish a datum, or `null` for `Change`; as datum
+	 * sources post only changes, any mode but `Never` publishes each one.
+	 */
+	publish?: ControlPublishMode | null;
+	/** `true` to persist the datum its controls publish. */
+	persist?: boolean | null;
+}
+
+/** A simulated SolarNode Operational Mode Datum Source Invoker. */
+export interface OpModeInvokerConfig {
+	/**
+	 * The id of the invoker, unique among the request's invokers and datum
+	 * sources; an imported invoker has none.
+	 */
+	id?: string | null;
+	/** The SolarNode instance ID, or `null`. */
+	instanceKey?: string | null;
+	/** The settings, like `operationalMode` and `configurations[0].uid`. */
+	settings?: Record<string, string> | null;
+}
+
 /** A request to run a simulation. */
 export interface SimulationRequest {
 	config: SimConfig;
@@ -426,6 +514,13 @@ export interface SimulationRequest {
 	entryPoint?: string | null;
 	/** The input datum, as SolarNode datum JSON objects. */
 	datum?: unknown[] | null;
+	/** The datum sources the simulation polls for more input datum. */
+	datumSources?: DatumSourceConfig[] | null;
+	/**
+	 * The Operational Mode Invokers, which poll the datum sources while their
+	 * modes are active.
+	 */
+	invokers?: OpModeInvokerConfig[] | null;
 	history?: SimulationHistory | null;
 	environment?: SimulationEnvironment | null;
 	options?: SimulationOptions | null;
@@ -450,10 +545,11 @@ export interface DatumInfo {
 /** Where a processed datum came from. */
 export interface DatumOrigin {
 	/**
-	 * Input, Generated by a filter step, Scheduled by a filter's task, or
-	 * published while the Instruction Execution Job ran an Instruction.
+	 * Input, Generated by a filter step, Scheduled by a filter's task,
+	 * published while the Instruction Execution Job ran an Instruction, or
+	 * Polled from a datum source.
 	 */
-	type: "Input" | "Generated" | "Scheduled" | "Instruction";
+	type: "Input" | "Generated" | "Scheduled" | "Instruction" | "Polled";
 	/** For an input datum, its index in the request. */
 	index?: number;
 	/** For a generated datum, the datum being processed when it was generated. */
@@ -471,6 +567,10 @@ export interface DatumOrigin {
 	 * instruction, the instruction's `number`.
 	 */
 	instruction?: number;
+	/** For a polled datum, the id of its datum source. */
+	datumSourceId?: string;
+	/** For a datum an Operational Mode Invoker polled, the invoker's id. */
+	invokerId?: string;
 }
 
 /** The outcome of a filter step. */
@@ -490,6 +590,27 @@ export interface LocalStateChange {
 	type?: string;
 	value?: unknown;
 	previousValue?: unknown;
+}
+
+/** The kinds of simulated component that handle instructions. */
+export type InstructionHandlerType =
+	| "Reactor"
+	| "OperationalModes"
+	| "Metadata"
+	| "Control"
+	| "OperationalModeSwitch"
+	| "DatumSource"
+	| "Conductor";
+
+/** The simulated component that gave an instruction its status. */
+export interface InstructionHandlerInfo {
+	type: InstructionHandlerType;
+	/**
+	 * The control ID of a control or Operational Mode Switch, the Service
+	 * Name of a Control Conductor or metadata service, or the id of a datum
+	 * source.
+	 */
+	name?: string;
 }
 
 /** An instruction issued by a filter. */
@@ -520,6 +641,11 @@ export interface InstructionInfo {
 	conductor?: string;
 	/** For a Control Conductor task's `Signal`, the task number, from 1. */
 	task?: number;
+	/**
+	 * The component that gave the instruction its status when it was
+	 * executed, or missing if none did.
+	 */
+	handler?: InstructionHandlerInfo;
 }
 
 /** A stored instruction the simulated Instruction Execution Job ran. */
@@ -536,6 +662,8 @@ export interface InstructionRun {
 	controls?: ControlUpdate[];
 	/** The sequence numbers of the datum published while it ran. */
 	generated?: number[];
+	/** The change to the active operational modes while it ran. */
+	opModes?: OpModeChange;
 	/** The datum whose filter step issued the instruction. */
 	datumSeq?: number;
 	/** The ID of the filter step that issued the instruction. */
@@ -555,7 +683,10 @@ export interface MetricInfo {
 	value: number;
 }
 
-/** A successful set of a simulated control's value. */
+/**
+ * A successful set of a simulated control's value, or a change of an
+ * Operational Mode Switch's value without a set.
+ */
 export interface ControlUpdate {
 	controlId: string;
 	type: NodeControlPropertyType;
@@ -565,6 +696,18 @@ export interface ControlUpdate {
 	value: string;
 	/** `true` if the control published a datum of the value. */
 	published: boolean;
+	/**
+	 * For an Operational Mode Switch whose value changed without a set,
+	 * because its mode changed some other way, the mode.
+	 */
+	mode?: string;
+	/** For a control of a datum source, the id of the datum source. */
+	component?: string;
+	/**
+	 * The value asked for, when the control took a different number, like a
+	 * rate limited to the battery's maximum.
+	 */
+	requested?: string;
 }
 
 /** The state of a simulated control. */
@@ -579,6 +722,12 @@ export interface ControlInfo {
 	modified?: string;
 	/** How many times the value was set. */
 	updates: number;
+	/** The kind of control, or missing for `Mock`. */
+	kind?: ControlKind;
+	/** An Operational Mode Switch's operational mode. */
+	mode?: string;
+	/** For a control of a datum source, the id of the datum source. */
+	component?: string;
 }
 
 /** An external command a filter asked to run. */
@@ -689,6 +838,8 @@ export interface SimulationStats {
 	output: number;
 	discarded: number;
 	durationMs: number;
+	/** The number of datum polled from datum sources. */
+	polled?: number;
 }
 
 /** The result of a simulation. */
@@ -699,4 +850,65 @@ export interface SimulationResult {
 	messages: SimulationMessage[];
 	finalState: SimulationState;
 	stats: SimulationStats;
+}
+
+/** A simulation run kept on the server. */
+export interface RunInfo {
+	/** The run ID. */
+	id: string;
+}
+
+/** How a datum came out of the filters, in a run's datum index. */
+export type DatumOutcomeCode =
+	"Output" | "OutputNotPersisted" | "Discarded" | "Error";
+
+/** A datum in a run's datum index, for a result without every trace. */
+export interface DatumIndexEntry {
+	seq: number;
+	sourceId?: string | null;
+	/** The datum's date, as an ISO 8601 instant. */
+	created?: string | null;
+	origin: DatumOrigin;
+	outcome: DatumOutcomeCode;
+	/** `true` if a filter step failed. */
+	error: boolean;
+}
+
+/** The run statistics of one filter, from the server. */
+export interface FilterRunStatsInfo {
+	in: number;
+	out: number;
+	dropped: number;
+	changed: number;
+	skipped: number;
+	errors: number;
+}
+
+/**
+ * The result of a run kept on the server: with every trace while it has at
+ * most 200 datum, else the first traces, an index of every datum, and each
+ * filter's statistics.
+ */
+export interface RunResult extends SimulationResult {
+	/** The run ID. */
+	id: string;
+	/** Every datum, if the result does not have every trace. */
+	index?: DatumIndexEntry[] | null;
+	/** The statistics of each filter, by filter id, with the index. */
+	filterStats?: Record<string, FilterRunStatsInfo> | null;
+}
+
+/** The progress of a run. */
+export interface RunProgress {
+	state: "Running" | "Done" | "Failed";
+	/** The datum processed so far. */
+	processed: number;
+	/** The datum expected, or 0 if not known. */
+	expected: number;
+	/** The date of the last datum processed, as an ISO 8601 instant. */
+	date?: string | null;
+	/** A failed run's error. */
+	error?: string | null;
+	/** A failed run's problems. */
+	problems?: SimulationMessage[] | null;
 }

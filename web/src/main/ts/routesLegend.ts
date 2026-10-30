@@ -322,17 +322,18 @@ export class RoutesLegend extends EventTarget {
 	}
 
 	/**
-	 * Highlight a datum, such as one whose route the pointer is over.
+	 * Highlight datum, such as one whose route the pointer is over, or those
+	 * from the datum source the pointer is over.
 	 *
-	 * @param seq the datum sequence number, or `null` for none
+	 * @param seqs the datum sequence numbers, or `null` for none
 	 */
-	setHover(seq: number | null): void {
+	setHover(seqs: ReadonlySet<number> | null): void {
 		this.#body
 			.querySelectorAll<HTMLElement>(".sim-legend-item")
 			.forEach((row) =>
 				row.classList.toggle(
 					"is-hover",
-					row.dataset.seq === String(seq),
+					seqs?.has(Number(row.dataset.seq)) ?? false,
 				),
 			);
 	}

@@ -42,6 +42,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        the control values set while it ran
  * @param generated
  *        the sequence numbers of the datum published while it ran
+ * @param opModes
+ *        the change to the active operational modes while it ran, or
+ *        {@code null} if there was none
  * @param datumSeq
  *        the sequence number of the datum whose filter step issued the
  *        instruction (or the instruction it came from), or {@code null}
@@ -52,12 +55,12 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param error
  *        the error the instruction threw, or {@code null}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record InstructionRun(Instant date, @Nullable Integer afterSeq, InstructionInfo instruction,
 		List<InstructionInfo> instructions, List<ControlUpdate> controls, List<Integer> generated,
-		@Nullable Integer datumSeq, @Nullable Integer stepId, @Nullable String filterId,
-		@Nullable String error) {
+		@Nullable OpModeChange opModes, @Nullable Integer datumSeq, @Nullable Integer stepId,
+		@Nullable String filterId, @Nullable String error) {
 
 }

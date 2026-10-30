@@ -1,4 +1,7 @@
 import { Tab } from "bootstrap";
+import { getDatumSourceTypes, getSettingsForm } from "./api.ts";
+import { datumSourceIcon } from "./icons.ts";
+import { STATIC_SOURCE_ID } from "./layout.ts";
 import {
 	conductorTaskField,
 	conductorTaskProblems,
@@ -9,13 +12,24 @@ import {
 	datumMetadataSourceField,
 	datumMetadataSourceProblem,
 	EXPRESSION_LANGUAGES,
+	INVOKER_FACTORY_UID,
+	INVOKER_NAME,
+	isInvoker,
 	NODE_METADATA_SERVICE_UID,
 	parseInstructionJobSeconds,
 	parseDatumList,
 	parseMetadata,
+	parseMaxDatum,
 	parseRunAfter,
 	parsePlaceholders,
 	parseLocationNumber,
+	parseStartDate,
+	parseTimeZone,
+	SCHEDULE_KEY,
+	scheduleField,
+	scheduleProblem,
+	scheduleText,
+	type DatumSourceInput,
 	type InputError,
 	type InputField,
 	type ConductorInput,
@@ -32,8 +46,19 @@ import { jsonLint, type JsonSchema } from "./jsonLint.ts";
 import {
 	NODE_CONTROL_TYPES,
 	type ControlPublishMode,
+	type DatumSourceTypeInfo,
+	type FilterBundleInfo,
+	type SettingField,
+	type SettingsForm,
 	type SimulationState,
 } from "./model.ts";
+import { plainText } from "./palette.ts";
+import { SettingsFormRenderer, type SettingsFormHost } from "./settingsForm.ts";
+import {
+	bundleLabel,
+	type DatumSourceName,
+	type DatumSourceSummary,
+} from "./view.ts";
 import type { Workspace } from "./workspace.ts";
 
 /** How long after typing stops, in milliseconds, an input is checked. */
@@ -49,7 +74,10 @@ const TEXT_INPUTS: Record<Exclude<InputField, "entryPoint">, string> = {
 	unfilteredHistory: "#input-unfiltered",
 	opModes: "#input-opmodes",
 	localState: "#input-localstate",
+	timeZone: "#input-time-zone",
+	startDate: "#input-start-date",
 	runAfter: "#input-runafter",
+	maxDatum: "#input-max-datum",
 	instructionJobSeconds: "#input-instruction-job-seconds",
 	placeholders: "#input-placeholders",
 	nodeLatitude: "#input-node-latitude",
@@ -66,7 +94,10 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	unfilteredHistory: "history",
 	opModes: "environment",
 	localState: "environment",
+	timeZone: "environment",
+	startDate: "environment",
 	runAfter: "environment",
+	maxDatum: "environment",
 	instructionJobSeconds: "environment",
 	placeholders: "environment",
 	nodeLatitude: "environment",
@@ -93,7 +124,11 @@ const FIELD_CHECKS: Partial<
 	unfilteredHistory: (text) =>
 		parseDatumList(text, "Unfiltered History datum"),
 	nodeMetadata: (text) => parseMetadata(text, "Node metadata"),
+	timeZone: (text) => parseTimeZone(text),
+	// any zone checks the form of the date
+	startDate: (text) => parseStartDate(text, "UTC"),
 	runAfter: (text) => parseRunAfter(text),
+	maxDatum: (text) => parseMaxDatum(text),
 	instructionJobSeconds: (text) => parseInstructionJobSeconds(text),
 	placeholders: (text) => parsePlaceholders(text),
 	nodeLatitude: (text) => parseLocationNumber(text, "Latitude", -90, 90),
@@ -123,6 +158,132 @@ const PUBLISH_MODES: readonly {
 		desc: "Every set publishes a datum.",
 	},
 ];
+
+/** The Kind choices of a control, with their descriptions. */
+const CONTROL_KINDS: readonly {
+	kind: ControlInput["kind"];
+	label: string;
+	desc: string;
+}[] = [
+	{
+		kind: "Mock",
+		label: "Mock",
+		desc: "A control whose value instructions set, like a Mock control.",
+	},
+	{
+		kind: "OperationalModeSwitch",
+		label: "Operational Mode Switch",
+		desc: "A Boolean control whose value is whether its operational mode is active. Setting it enables or disables the mode, and the mode starting or stopping any other way changes it.",
+	},
+];
+
+/** The description of a switch's Publish choice, by publish mode. */
+const SWITCH_PUBLISH_DESCS: Partial<Record<ControlPublishMode, string>> = {
+	Never: "The switch never publishes a datum.",
+	Change: "Each change of the switch's value publishes a datum, whatever started or stopped its mode.",
+};
+
+/** The browser storage key of the ids of the collapsed datum sources. */
+const COLLAPSED_SOURCES_KEY = "sn-filter-sim.collapsedSources";
+
+/**
+ * The key prefixes of a datum source's own settings: a datum source's, then a
+ * multi datum source's.
+ */
+const SOURCE_KEY_PREFIXES = [
+	"jobService.datumDataSource.",
+	"jobService.multiDatumDataSource.",
+];
+
+/** The Service Name and Source ID settings of a datum source. */
+const SOURCE_UID_KEYS = SOURCE_KEY_PREFIXES.map((p) => `${p}uid`);
+const SOURCE_ID_KEYS = SOURCE_KEY_PREFIXES.map((p) => `${p}sourceId`);
+
+/**
+ * Get a datum source setting, which has one of several keys.
+ *
+ * @param settings the settings
+ * @param keys the keys
+ * @returns the value of the first key with a value, or `undefined`
+ */
+function sourceSetting(
+	settings: Readonly<Record<string, string>>,
+	keys: readonly string[],
+): string | undefined {
+	for (const key of keys) {
+		const v = settings[key];
+		if (v !== undefined) {
+			return v;
+		}
+	}
+	return undefined;
+}
+
+/** The description of the Operational Mode Invoker, from its messages. */
+const INVOKER_DESC =
+	"Polls the datum sources its configurations match on their own schedules, while its operational mode is active.";
+
+/** The Service Name and Mode settings of an Operational Mode Invoker. */
+const INVOKER_UID_KEY = "uid";
+const INVOKER_MODE_KEY = "operationalMode";
+
+/** An invoker configuration's Service Name setting. */
+const INVOKER_CONFIG_UID = /^configurations\[\d+\]\.uid$/;
+
+/**
+ * The Publish choices of a datum source's controls, which post only their
+ * changes.
+ */
+const SOURCE_PUBLISH_MODES = PUBLISH_MODES.filter((m) => m.mode !== "Update");
+
+/** Find a setting in a form, including in its groups. */
+function findField(
+	fields: SettingField[],
+	key: string,
+): SettingField | undefined {
+	for (const f of fields) {
+		if (f.key === key) {
+			return f;
+		}
+		const found = f.fields ? findField(f.fields, key) : undefined;
+		if (found) {
+			return found;
+		}
+	}
+	return undefined;
+}
+
+/** The options of the input panel. */
+export interface InputPanelOptions {
+	/**
+	 * Get the Service Names of the simulated services that match a related
+	 * service filter, for a datum source setting's Choose menu.
+	 */
+	relatedServices(serviceFilter: string): string[];
+
+	/**
+	 * Called when what {@link InputPanel.datumSourceSummaries} gives might
+	 * have changed without the inputs changing, such as when a datum source's
+	 * form loads its defaults.
+	 */
+	datumSourcesChanged?(): void;
+}
+
+/** A rendered datum source card. */
+interface SourceCard {
+	card: HTMLElement;
+	body: HTMLElement;
+	summary: HTMLElement;
+	/** The number of datum the last run polled. */
+	polls: HTMLElement;
+	alerts: HTMLElement;
+	fields: HTMLElement;
+	controls?: HTMLElement;
+	form?: SettingsForm;
+	renderer?: SettingsFormRenderer;
+	/** Increased for each form request, to ignore older answers. */
+	token: number;
+}
 
 /** The placeholder of a control's Value input, by control type. */
 const VALUE_PLACEHOLDERS: Record<ControlInput["type"], string> = {
@@ -182,17 +343,30 @@ export class InputPanel {
 	 * control field.
 	 */
 	readonly #invalid = new Map<string, InputTab>();
+	readonly #options: InputPanelOptions;
+	/** The datum source types, by factory UID. */
+	readonly #sourceTypes = new Map<string, DatumSourceTypeInfo>();
+	/** The rendered datum source cards, by datum source id. */
+	readonly #sourceCards = new Map<string, SourceCard>();
+	readonly #collapsedSources: Set<string>;
+	/** The datum each datum source polled in the last run, by id. */
+	#pollCounts: ReadonlyMap<string, number> | null = null;
 	#finalState: SimulationState | null = null;
+	/** The static datum's summary, for the Datum input's text. */
+	#staticSummary: { text: string; summary: DatumSourceSummary } | null = null;
 
 	/**
 	 * Constructor.
 	 *
 	 * @param inputs the inputs
 	 * @param ws the workspace, for the Entry Point select
+	 * @param options the options
 	 */
-	constructor(inputs: RunInputs, ws: Workspace) {
+	constructor(inputs: RunInputs, ws: Workspace, options: InputPanelOptions) {
 		this.#inputs = inputs;
 		this.#ws = ws;
+		this.#options = options;
+		this.#collapsedSources = this.#loadCollapsedSources();
 		this.#bindTabs();
 		this.#bindTextInputs();
 		this.#bindHistory();
@@ -200,6 +374,7 @@ export class InputPanel {
 		this.#bindDatumMetadata();
 		this.#bindControls();
 		this.#bindConductors();
+		this.#bindDatumSources();
 		this.#bindEntryPoint();
 		$("#use-final-state").addEventListener("click", () =>
 			this.useFinalState(),
@@ -226,6 +401,178 @@ export class InputPanel {
 	}
 
 	/**
+	 * Get the names of the datum sources a run sends, for its results.
+	 *
+	 * @returns the names, by datum source id
+	 */
+	datumSourceNames(): Map<string, DatumSourceName> {
+		// the datum sources and invokers each count their positions, like the
+		// request's lists
+		let sources = 0;
+		let invokers = 0;
+		return new Map(
+			this.#inputs.state.datumSources.map((d) => {
+				if (isInvoker(d)) {
+					return [
+						d.id,
+						{
+							name:
+								d.settings[INVOKER_UID_KEY]?.trim() ||
+								undefined,
+							type: INVOKER_NAME,
+							position: ++invokers,
+							invoker: true,
+						},
+					];
+				}
+				return [
+					d.id,
+					{
+						name:
+							sourceSetting(
+								d.settings,
+								SOURCE_UID_KEYS,
+							)?.trim() || undefined,
+						type:
+							this.#sourceTypes.get(d.factoryUid)?.name ??
+							d.factoryUid,
+						position: ++sources,
+					},
+				];
+			}),
+		);
+	}
+
+	/**
+	 * Get what the canvas shows of the datum sources: the static datum, if
+	 * the Datum input has some, then the datum sources, without the
+	 * Operational Mode Invokers.
+	 *
+	 * @returns the datum sources
+	 */
+	datumSourceSummaries(): DatumSourceSummary[] {
+		const text = this.#inputs.state.datum;
+		const sources = text.trim() ? [this.#staticDatumSummary(text)] : [];
+		return sources.concat(this.#datumSourceSummaries());
+	}
+
+	/** Show the Datum tab, where the static datum are. */
+	showDatumInput(): void {
+		this.#showTab("datum");
+	}
+
+	/**
+	 * Get the static datum's summary, counting the datum only when the text
+	 * changed, as it can be long.
+	 */
+	#staticDatumSummary(text: string): DatumSourceSummary {
+		if (this.#staticSummary?.text !== text) {
+			let count: number | undefined;
+			let problem: string | undefined;
+			try {
+				const json: unknown = JSON.parse(text);
+				count = Array.isArray(json) ? json.length : 1;
+			} catch {
+				problem = "The Datum input is not valid JSON.";
+			}
+			this.#staticSummary = {
+				text,
+				summary: {
+					id: STATIC_SOURCE_ID,
+					factoryUid: "",
+					type: "Static Datum",
+					static: true,
+					count,
+					problem,
+				},
+			};
+		}
+		return this.#staticSummary.summary;
+	}
+
+	#datumSourceSummaries(): DatumSourceSummary[] {
+		return this.#inputs.state.datumSources
+			.filter((d) => !isInvoker(d))
+			.map((d) => {
+				const type = this.#sourceTypes.get(d.factoryUid);
+				const c = this.#sourceCards.get(d.id);
+				const schedule =
+					d.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
+				const problem =
+					scheduleProblem(d.settings[SCHEDULE_KEY]) ??
+					c?.form?.problems[0]?.message;
+				return {
+					id: d.id,
+					factoryUid: d.factoryUid,
+					type: type?.name ?? d.factoryUid,
+					name: this.#sourceValue(d, c, SOURCE_UID_KEYS) || undefined,
+					sourceId:
+						this.#sourceValue(d, c, SOURCE_ID_KEYS) || undefined,
+					schedule: schedule.trim()
+						? scheduleText(schedule)
+						: undefined,
+					problem: problem || undefined,
+				};
+			});
+	}
+
+	/**
+	 * Get a datum source setting, or else its default from the datum source's
+	 * form, trimmed.
+	 */
+	#sourceValue(
+		item: DatumSourceInput,
+		c: SourceCard | undefined,
+		key: string | readonly string[],
+	): string {
+		const keys = typeof key === "string" ? [key] : key;
+		const v = sourceSetting(item.settings, keys);
+		if (v !== undefined) {
+			return v.trim();
+		}
+		for (const k of keys) {
+			const field = c?.form ? findField(c.form.fields, k) : undefined;
+			if (field) {
+				return (field.value ?? field.defaultValue ?? "").trim();
+			}
+		}
+		return "";
+	}
+
+	/**
+	 * Show the number of datum each datum source polled in the last run on its
+	 * card.
+	 *
+	 * @param counts the counts, by datum source id, or `null` if there was no
+	 *     run
+	 */
+	setPollCounts(counts: ReadonlyMap<string, number> | null): void {
+		this.#pollCounts = counts;
+		for (const [id, c] of this.#sourceCards) {
+			this.#showPollCount(id, c);
+		}
+	}
+
+	/**
+	 * Show a datum source's card: switch to its tab, expand it, and scroll to
+	 * it.
+	 *
+	 * @param id the datum source id
+	 */
+	showDatumSource(id: string): void {
+		const c = this.#sourceCards.get(id);
+		if (!c) {
+			return;
+		}
+		this.#showTab("sources");
+		this.#setSourceCollapsed(id, false);
+		c.card.scrollIntoView({ block: "nearest" });
+		c.card.classList.remove("is-flashed");
+		void c.card.offsetWidth;
+		c.card.classList.add("is-flashed");
+	}
+
+	/**
 	 * Show an input problem: switch to its tab, and mark and focus the input.
 	 *
 	 * @param e the problem
@@ -233,7 +580,13 @@ export class InputPanel {
 	showError(e: InputError): void {
 		this.#showTab(e.tab);
 		this.#setInvalid(e.field, e.tab, e.message);
-		this.#fieldElement(e.field)?.focus();
+		const el = this.#fieldElement(e.field);
+		const source = el?.closest<HTMLElement>(".sim-datum-source-item")
+			?.dataset.datumSourceId;
+		if (source) {
+			this.#setSourceCollapsed(source, false);
+		}
+		el?.focus();
 	}
 
 	/* === Tabs === */
@@ -433,6 +786,7 @@ export class InputPanel {
 		this.#renderDatumMetadata();
 		this.#renderControls();
 		this.#renderConductors();
+		this.#renderDatumSources();
 		this.#renderEntryPoints();
 	}
 
@@ -519,6 +873,10 @@ export class InputPanel {
 		);
 		let changed = false;
 		for (const c of this.#inputs.state.controls) {
+			if (c.kind === "OperationalModeSwitch") {
+				// its value follows its mode
+				continue;
+			}
 			const final = finals.get(c.controlId.trim());
 			const value = final?.value ?? "";
 			if (final && value !== c.value) {
@@ -776,6 +1134,613 @@ export class InputPanel {
 		return card;
 	}
 
+	/* === Datum Sources === */
+
+	#bindDatumSources(): void {
+		void getDatumSourceTypes()
+			.then((types) => this.setDatumSourceTypes(types))
+			.catch((e: unknown) => {
+				const item = element("li");
+				item.append(
+					element(
+						"span",
+						"dropdown-item-text text-danger small",
+						`The datum source types did not load: ${message(e)}`,
+					),
+				);
+				$("#datum-source-types").replaceChildren(item);
+			});
+		this.#renderDatumSources();
+	}
+
+	/**
+	 * Set the datum source types, such as when the custom filters are
+	 * reloaded: the Add a datum source menu and the card headers change.
+	 *
+	 * @param types the datum source types
+	 */
+	setDatumSourceTypes(types: DatumSourceTypeInfo[]): void {
+		this.#sourceTypes.clear();
+		for (const t of types) {
+			this.#sourceTypes.set(t.factoryUid, t);
+		}
+		this.#renderSourceTypes();
+		for (const [id, c] of this.#sourceCards) {
+			this.#refreshSourceHead(id, c);
+		}
+	}
+
+	/**
+	 * Render the Add a datum source menu: the standard datum source types, the
+	 * custom ones under a Custom heading, then the Operational Mode Invoker.
+	 */
+	#renderSourceTypes(): void {
+		const typeItem = (
+			factoryUid: string,
+			name: string,
+			description: string | undefined,
+			bundle?: FilterBundleInfo,
+		) => {
+			const item = element("li");
+			const button = element("button", "dropdown-item");
+			button.type = "button";
+			const title = [
+				description ? plainText(description) : "",
+				bundle
+					? `A custom datum source, from ${bundleLabel(bundle)}.`
+					: "",
+			].filter((s) => s);
+			if (title.length) {
+				button.title = title.join("\n\n");
+			}
+			const icon = element(
+				"i",
+				`bi bi-${datumSourceIcon(factoryUid)} me-2`,
+			);
+			icon.setAttribute("aria-hidden", "true");
+			button.append(icon, name);
+			button.addEventListener("click", () =>
+				this.#addDatumSource(factoryUid),
+			);
+			item.append(button);
+			return item;
+		};
+		const divider = element("li");
+		divider.append(element("hr", "dropdown-divider"));
+		const types = [...this.#sourceTypes.values()];
+		const custom = types.filter((t) => t.bundle);
+		const heading = element("li");
+		const headingText = element("h6", "dropdown-header", "Custom");
+		headingText.title =
+			"The datum sources of the jars the simulator was started with, with --sim.filters.path.";
+		heading.append(headingText);
+		$("#datum-source-types").replaceChildren(
+			...types
+				.filter((t) => !t.bundle)
+				.map((t) => typeItem(t.factoryUid, t.name, t.description)),
+			...(custom.length
+				? [
+						heading,
+						...custom.map((t) =>
+							typeItem(
+								t.factoryUid,
+								t.name,
+								t.description,
+								t.bundle,
+							),
+						),
+					]
+				: []),
+			divider,
+			typeItem(INVOKER_FACTORY_UID, INVOKER_NAME, INVOKER_DESC),
+		);
+	}
+
+	#addDatumSource(factoryUid: string): void {
+		const item = this.#inputs.addDatumSource(factoryUid);
+		const card = this.#datumSourceItem(item);
+		$("#datum-source-list").append(card);
+		card.scrollIntoView({ block: "nearest" });
+	}
+
+	#renderDatumSources(): void {
+		this.#clearInvalid("sources");
+		this.#sourceCards.clear();
+		$("#datum-source-list").replaceChildren(
+			...this.#inputs.state.datumSources.map((d) =>
+				this.#datumSourceItem(d),
+			),
+		);
+		this.#refreshTabMarks();
+	}
+
+	#datumSource(id: string): DatumSourceInput | undefined {
+		return this.#inputs.state.datumSources.find((d) => d.id === id);
+	}
+
+	#loadCollapsedSources(): Set<string> {
+		try {
+			const ids: unknown = JSON.parse(
+				localStorage.getItem(COLLAPSED_SOURCES_KEY) ?? "[]",
+			);
+			if (Array.isArray(ids)) {
+				return new Set(
+					ids.filter((id): id is string => typeof id === "string"),
+				);
+			}
+		} catch {
+			// all expanded
+		}
+		return new Set();
+	}
+
+	#setSourceCollapsed(id: string, collapsed: boolean): void {
+		const c = this.#sourceCards.get(id);
+		if (!c || collapsed === this.#collapsedSources.has(id)) {
+			return;
+		}
+		if (collapsed) {
+			this.#collapsedSources.add(id);
+		} else {
+			this.#collapsedSources.delete(id);
+		}
+		this.#showSourceCollapsed(c, collapsed);
+		const known = new Set(this.#inputs.state.datumSources.map((d) => d.id));
+		try {
+			localStorage.setItem(
+				COLLAPSED_SOURCES_KEY,
+				JSON.stringify(
+					[...this.#collapsedSources].filter((i) => known.has(i)),
+				),
+			);
+		} catch {
+			// not saved
+		}
+	}
+
+	#showSourceCollapsed(c: SourceCard, collapsed: boolean): void {
+		c.body.hidden = collapsed;
+		c.card.classList.toggle("is-collapsed", collapsed);
+		const toggle = c.card.querySelector<HTMLElement>(
+			".sim-datum-source-collapse",
+		);
+		if (toggle) {
+			toggle.setAttribute("aria-expanded", String(!collapsed));
+			toggle.title = collapsed
+				? "Show the settings"
+				: "Hide the settings";
+			toggle.setAttribute("aria-label", toggle.title);
+			toggle.querySelector("i")!.className =
+				`bi bi-chevron-${collapsed ? "right" : "down"}`;
+		}
+	}
+
+	/**
+	 * Render a datum source card: its type, name, and schedule, with a
+	 * remove button, then its settings form, which collapses.
+	 */
+	#datumSourceItem(item: DatumSourceInput): HTMLElement {
+		const id = item.id;
+		const card = element("div", "card mb-2 sim-datum-source-item");
+		card.dataset.datumSourceId = id;
+
+		const head = element(
+			"div",
+			"card-header d-flex align-items-center gap-1 px-2 py-1",
+		);
+		const toggle = element(
+			"button",
+			"btn btn-sm btn-link sim-tool sim-datum-source-collapse",
+		);
+		toggle.type = "button";
+		toggle.append(element("i"));
+		toggle.addEventListener("click", () =>
+			this.#setSourceCollapsed(id, !this.#collapsedSources.has(id)),
+		);
+		const icon = element(
+			"i",
+			`bi bi-${datumSourceIcon(item.factoryUid)} sim-datum-source-icon`,
+		);
+		icon.setAttribute("aria-hidden", "true");
+		const titles = element("div", "flex-grow-1 sim-datum-source-titles");
+		const type = element("div", "small fw-semibold text-truncate");
+		type.dataset.sourceType = "";
+		const summary = element(
+			"div",
+			"small text-body-secondary text-truncate",
+		);
+		titles.append(type, summary);
+		// the header shows and hides the settings too
+		titles.addEventListener("click", () => toggle.click());
+		const polls = element("span", "badge rounded-pill sim-pill-soft");
+		polls.hidden = true;
+		const remove = element(
+			"button",
+			"btn btn-sm btn-link text-body-secondary sim-tool",
+		);
+		remove.type = "button";
+		remove.title = isInvoker(item)
+			? "Remove this invoker"
+			: "Remove this datum source";
+		remove.setAttribute("aria-label", remove.title);
+		remove.append(element("i", "bi bi-trash"));
+		remove.addEventListener("click", () => {
+			this.#inputs.removeDatumSource(id);
+			this.#sourceCards.delete(id);
+			card.remove();
+			this.#clearInvalid("sources", id);
+			this.#refreshTabMarks();
+			this.#refreshControlChoices();
+		});
+		head.append(toggle, icon, titles, polls, remove);
+
+		const body = element("div", "card-body p-2");
+		const alerts = element("div");
+		const fields = element("div", "sim-datum-source-form");
+		fields.append(
+			element(
+				"div",
+				"small text-body-secondary",
+				"Loading the settings…",
+			),
+		);
+		body.append(alerts, fields);
+
+		const c: SourceCard = {
+			card,
+			body,
+			summary,
+			polls,
+			alerts,
+			fields,
+			token: 0,
+		};
+		if (
+			this.#sourceTypes
+				.get(item.factoryUid)
+				?.capabilities?.includes("Controls")
+		) {
+			c.controls = this.#sourceControls(item);
+			body.append(c.controls);
+		}
+		card.append(head, body);
+		this.#sourceCards.set(id, c);
+		this.#showSourceCollapsed(c, this.#collapsedSources.has(id));
+		this.#refreshSourceHead(id, c);
+		this.#showPollCount(id, c);
+		this.#checkSchedule(id);
+		void this.#loadSourceForm(id, true);
+		return card;
+	}
+
+	/**
+	 * Show how many datum the last run polled from a datum source, or with an
+	 * invoker.
+	 */
+	#showPollCount(id: string, c: SourceCard): void {
+		const count = this.#pollCounts?.get(id);
+		c.polls.hidden = count === undefined;
+		if (count !== undefined) {
+			const item = this.#datumSource(id);
+			const what =
+				item && isInvoker(item)
+					? "with this invoker"
+					: "from this datum source";
+			c.polls.textContent = `${count} polled`;
+			c.polls.title = `The last run polled ${count === 0 ? "no" : count} datum ${what}`;
+		}
+	}
+
+	/** Show a datum source's type, name, and schedule in its header. */
+	#refreshSourceHead(id: string, c: SourceCard): void {
+		const item = this.#datumSource(id);
+		if (!item) {
+			return;
+		}
+		const type = this.#sourceTypes.get(item.factoryUid);
+		const invoker = isInvoker(item);
+		const typeEl = c.card.querySelector<HTMLElement>("[data-source-type]");
+		if (typeEl) {
+			typeEl.textContent = invoker
+				? INVOKER_NAME
+				: (type?.name ?? item.factoryUid);
+			typeEl.title = invoker ? INVOKER_DESC : (type?.description ?? "");
+		}
+		if (!c.controls && type?.capabilities?.includes("Controls")) {
+			c.controls = this.#sourceControls(item);
+			c.body.append(c.controls);
+			this.#refreshSourceControls(id, c);
+		}
+		const value = (key: string | readonly string[]): string =>
+			this.#sourceValue(item, c, key);
+		const parts = [];
+		if (invoker) {
+			const name = value(INVOKER_UID_KEY);
+			const mode = value(INVOKER_MODE_KEY);
+			if (name) {
+				parts.push(name);
+			}
+			parts.push(mode ? `mode ${mode}` : "no mode");
+		} else {
+			const name = value(SOURCE_UID_KEYS) || value(SOURCE_ID_KEYS);
+			const schedule =
+				item.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
+			if (name) {
+				parts.push(name);
+			}
+			if (schedule.trim()) {
+				parts.push(scheduleText(schedule));
+			}
+		}
+		c.summary.textContent = parts.join(" · ");
+		c.summary.title = c.summary.textContent;
+		this.#options.datumSourcesChanged?.();
+	}
+
+	/** Check a datum source's Schedule, which the form also marks. */
+	#checkSchedule(id: string): void {
+		const item = this.#datumSource(id);
+		if (!item || isInvoker(item)) {
+			return;
+		}
+		this.#setInvalid(
+			scheduleField(id),
+			"sources",
+			scheduleProblem(item.settings[SCHEDULE_KEY]) ?? undefined,
+		);
+	}
+
+	/**
+	 * Get a datum source's settings form, to show it or else its problems.
+	 *
+	 * @param id the datum source's id
+	 * @param render `true` to render the form, `false` to only show its
+	 *     problems and the controls
+	 */
+	async #loadSourceForm(id: string, render: boolean): Promise<void> {
+		const c = this.#sourceCards.get(id);
+		const item = this.#datumSource(id);
+		if (!c || !item) {
+			return;
+		}
+		const token = ++c.token;
+		let form: SettingsForm;
+		try {
+			form = await getSettingsForm(item.factoryUid, item.settings);
+		} catch (e) {
+			if (token === c.token && render) {
+				c.fields.replaceChildren(
+					element(
+						"div",
+						"alert alert-danger py-1 px-2 small mb-0",
+						`The settings did not load: ${message(e)}`,
+					),
+				);
+			}
+			return;
+		}
+		if (token !== c.token || this.#sourceCards.get(id) !== c) {
+			return;
+		}
+		c.form = form;
+		if (render) {
+			c.renderer = new SettingsFormRenderer(this.#sourceFormHost(id));
+			c.fields.replaceChildren(...c.renderer.render(form.fields));
+			const schedule = c.renderer.control(SCHEDULE_KEY);
+			if (schedule) {
+				schedule.dataset.inputField = scheduleField(id);
+			}
+		}
+		c.alerts.replaceChildren();
+		if (form.limitation) {
+			c.alerts.append(
+				element(
+					"div",
+					"alert alert-info py-1 px-2 small mb-2",
+					form.limitation,
+				),
+			);
+		}
+		this.#showSourceProblems(id, c);
+		const controlIds = form.controlIds ?? [];
+		if (controlIds.join("\n") !== item.controlIds.join("\n")) {
+			this.#inputs.updateDatumSource(id, { controlIds });
+			this.#refreshControlChoices();
+		}
+		this.#refreshSourceControls(id, c);
+		this.#refreshSourceHead(id, c);
+	}
+
+	/** Mark the settings with problems, and the tab. */
+	#showSourceProblems(id: string, c: SourceCard): void {
+		const item = this.#datumSource(id);
+		if (!item) {
+			return;
+		}
+		const problems = [...(c.form?.problems ?? [])];
+		const schedule = isInvoker(item)
+			? null
+			: scheduleProblem(item.settings[SCHEDULE_KEY]);
+		if (schedule) {
+			problems.push({
+				key: SCHEDULE_KEY,
+				code: "Schedule",
+				message: schedule,
+			});
+		}
+		c.renderer?.showProblems(problems);
+		const key = `${id}#form`;
+		if (c.form?.problems.length) {
+			this.#invalid.set(key, "sources");
+		} else {
+			this.#invalid.delete(key);
+		}
+		this.#checkSchedule(id);
+	}
+
+	#sourceFormHost(id: string): SettingsFormHost {
+		return {
+			settings: () => this.#datumSource(id)?.settings ?? {},
+			edit: (changes, _mergeKey, rerender) => {
+				this.#inputs.editDatumSourceSettings(id, changes);
+				const c = this.#sourceCards.get(id);
+				if (!c) {
+					return;
+				}
+				this.#refreshSourceHead(id, c);
+				if (rerender) {
+					void this.#loadSourceForm(id, true);
+					return;
+				}
+				this.#showSourceProblems(id, c);
+				const key = `${id}#validate`;
+				window.clearTimeout(this.#timers.get(key));
+				this.#timers.set(
+					key,
+					window.setTimeout(() => {
+						this.#timers.delete(key);
+						void this.#loadSourceForm(id, false);
+					}, VALIDATE_DELAY),
+				);
+			},
+			relatedServices: (serviceFilter) =>
+				this.#options.relatedServices(serviceFilter),
+			choices: (field) =>
+				field.key &&
+				INVOKER_CONFIG_UID.test(field.key) &&
+				this.#datumSource(id)?.factoryUid === INVOKER_FACTORY_UID
+					? {
+							names: () => this.#sourceUids(),
+							none: "No datum source has a Service Name",
+							title: "Choose a datum source",
+						}
+					: undefined,
+		};
+	}
+
+	/** The Service Names of the datum sources. */
+	#sourceUids(): string[] {
+		const names = this.#inputs.state.datumSources
+			.filter((d) => !isInvoker(d))
+			.map(
+				(d) => sourceSetting(d.settings, SOURCE_UID_KEYS)?.trim() ?? "",
+			)
+			.filter((n) => n.length > 0);
+		return [...new Set(names)];
+	}
+
+	/**
+	 * Render the Publish and Persist inputs of a datum source's controls, and
+	 * the list of its control IDs.
+	 */
+	#sourceControls(item: DatumSourceInput): HTMLElement {
+		const id = item.id;
+		const section = element("div", "sim-group mt-2");
+		const heading = element(
+			"div",
+			"form-label small fw-semibold mb-0",
+			"Controls",
+		);
+		const ids = element("div", "form-text mt-0 sim-datum-source-controls");
+
+		const row = element("div", "d-flex gap-2 align-items-end mt-1");
+		const publishId = `source-publish-${id}`;
+		const publishCol = element("div", "sim-control-type");
+		const publishLabel = element(
+			"label",
+			"form-label small fw-semibold mb-0",
+			"Publish",
+		);
+		publishLabel.htmlFor = publishId;
+		const publish = element("select", "form-select form-select-sm");
+		publish.id = publishId;
+		publish.append(
+			...SOURCE_PUBLISH_MODES.map((m) => {
+				const option = new Option(m.label, m.mode);
+				option.title = m.desc;
+				return option;
+			}),
+		);
+		publish.value = item.publish === "Never" ? "Never" : "Change";
+		publishCol.append(publishLabel, publish);
+
+		const persistId = `source-persist-${id}`;
+		const persistCheck = element("div", "form-check mb-1");
+		const persist = element("input", "form-check-input");
+		persist.type = "checkbox";
+		persist.id = persistId;
+		persist.checked = item.persist;
+		const persistLabel = element(
+			"label",
+			"form-check-label small",
+			"Persist",
+		);
+		persistLabel.htmlFor = persistId;
+		persistCheck.title =
+			"Persist the published datum. A node's Control datum source does not by default.";
+		persistCheck.append(persist, persistLabel);
+		row.append(publishCol, persistCheck);
+		const desc = element("div", "form-text mt-1");
+		const showPublish = () => {
+			const mode = publish.value as ControlPublishMode;
+			desc.textContent =
+				mode === "Never"
+					? "Its controls never publish a datum."
+					: "Each change of a control's value publishes a datum, as the datum source posts only changes.";
+			persistCheck.hidden = mode === "Never";
+		};
+		publish.addEventListener("change", () => {
+			showPublish();
+			this.#inputs.updateDatumSource(id, {
+				publish: publish.value as ControlPublishMode,
+			});
+		});
+		persist.addEventListener("change", () =>
+			this.#inputs.updateDatumSource(id, { persist: persist.checked }),
+		);
+		showPublish();
+		section.append(heading, ids, row, desc);
+		return section;
+	}
+
+	/** Show the control IDs a datum source provides. */
+	#refreshSourceControls(id: string, c: SourceCard): void {
+		const el = c.controls?.querySelector<HTMLElement>(
+			".sim-datum-source-controls",
+		);
+		const item = this.#datumSource(id);
+		if (!el || !item) {
+			return;
+		}
+		const controlIds = item.controlIds;
+		if (!controlIds.length) {
+			el.textContent =
+				"Set the control IDs to set and read the datum source with instructions, like a Control Updater's.";
+			return;
+		}
+		const own = new Set(
+			this.#inputs.state.controls.map((ctl) => ctl.controlId.trim()),
+		);
+		el.replaceChildren(
+			controlIds.length === 1 ? "Its control: " : "Its controls: ",
+		);
+		controlIds.forEach((controlId, i) => {
+			if (i > 0) {
+				el.append(", ");
+			}
+			el.append(element("code", undefined, controlId));
+			if (own.has(controlId)) {
+				const warning = element(
+					"span",
+					"text-warning-emphasis",
+					" (also a control in the Controls tab, which is used instead)",
+				);
+				el.append(warning);
+			}
+		});
+		el.append(".");
+	}
+
 	/* === Controls === */
 
 	/**
@@ -881,6 +1846,49 @@ export class InputPanel {
 		head.append(idLabel, controlId, remove);
 		const idFeedback = element("div", "invalid-feedback");
 		idFeedback.dataset.feedbackFor = item.id;
+
+		const kindRow = element("div", "d-flex gap-2 mt-2");
+		const kindId = `control-kind-${item.id}`;
+		const kindCol = element("div", "sim-control-type");
+		const kindLabel = element(
+			"label",
+			"form-label small fw-semibold mb-0",
+			"Kind",
+		);
+		kindLabel.htmlFor = kindId;
+		const kind = element("select", "form-select form-select-sm");
+		kind.id = kindId;
+		kind.append(
+			...CONTROL_KINDS.map((k) => {
+				const option = new Option(k.label, k.kind);
+				option.title = k.desc;
+				return option;
+			}),
+		);
+		kind.value = item.kind;
+		kindCol.append(kindLabel, kind);
+		const modeId = `control-mode-${item.id}`;
+		const modeCol = element("div", "flex-grow-1");
+		const modeLabel = element(
+			"label",
+			"form-label small fw-semibold mb-0",
+			"Operational Mode",
+		);
+		modeLabel.htmlFor = modeId;
+		const mode = element(
+			"input",
+			"form-control form-control-sm font-monospace",
+		);
+		mode.id = modeId;
+		mode.value = item.mode;
+		mode.spellcheck = false;
+		mode.placeholder = "boost";
+		mode.title =
+			"The operational mode the switch enables and disables. Without one, the switch handles no instructions.";
+		mode.addEventListener("input", () => update({ mode: mode.value }));
+		modeCol.append(modeLabel, mode);
+		kindRow.append(kindCol, modeCol);
+		const kindDesc = element("div", "form-text mt-1");
 
 		const row = element("div", "d-flex gap-2 mt-2");
 		const typeId = `control-type-${item.id}`;
@@ -1014,21 +2022,52 @@ export class InputPanel {
 		publishRow.append(publishCol, persistCheck);
 
 		const publishDesc = element("div", "form-text mt-1");
+		const isSwitch = () => kind.value === "OperationalModeSwitch";
 		const showPublish = () => {
 			const mode = publish.value as ControlPublishMode;
 			publishDesc.textContent =
-				PUBLISH_MODES.find((m) => m.mode === mode)?.desc ?? "";
+				(isSwitch() ? SWITCH_PUBLISH_DESCS[mode] : undefined) ??
+				PUBLISH_MODES.find((m) => m.mode === mode)?.desc ??
+				"";
 			persistCheck.hidden = mode === "Never";
 		};
 		publish.addEventListener("change", () => {
 			showPublish();
 			update({ publish: publish.value as ControlPublishMode });
 		});
-		showPublish();
+		const showKind = () => {
+			const sw = isSwitch();
+			modeCol.hidden = !sw;
+			row.hidden = sw;
+			valueFeedback.hidden = sw;
+			propRow.hidden = sw;
+			kindDesc.textContent = sw
+				? (CONTROL_KINDS.find((k) => k.kind === kind.value)?.desc ?? "")
+				: "";
+			kindDesc.hidden = !sw;
+			// a switch posts only changes, so On update is the same as On change
+			for (const option of publish.options) {
+				option.hidden = sw && option.value === "Update";
+			}
+			if (sw && publish.value === "Update") {
+				publish.value = "Change";
+			}
+			showPublish();
+		};
+		kind.addEventListener("change", () => {
+			showKind();
+			update({
+				kind: kind.value as ControlInput["kind"],
+				publish: publish.value as ControlPublishMode,
+			});
+		});
+		showKind();
 
 		card.append(
 			head,
 			idFeedback,
+			kindRow,
+			kindDesc,
 			row,
 			valueFeedback,
 			propRow,
@@ -1145,6 +2184,9 @@ export class InputPanel {
 			...this.#inputs.controlIds.map((id) => new Option(id)),
 		);
 		this.#checkConductors();
+		for (const [id, c] of this.#sourceCards) {
+			this.#refreshSourceControls(id, c);
+		}
 	}
 
 	/** Create a small label, with help as its tooltip. */

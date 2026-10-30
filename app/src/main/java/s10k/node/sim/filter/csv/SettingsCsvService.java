@@ -27,6 +27,7 @@ import s10k.node.sim.filter.domain.SettingsImport;
 import s10k.node.sim.filter.domain.SettingsMergeRequest;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.form.SettingsFormService;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.sim.SimulationException;
 
@@ -34,17 +35,18 @@ import s10k.node.sim.filter.sim.SimulationException;
  * Service for importing and exporting SolarNode settings CSV files.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  * @see SettingsCsvImporter
  * @see SettingsCsvExporter
  */
 public class SettingsCsvService {
 
 	private final FilterTypeRegistry registry;
+	private final DatumSourceTypeRegistry datumSourceTypes;
 	private final SettingsFormService forms;
 
 	/**
-	 * Constructor.
+	 * Constructor, with the standard datum source types.
 	 *
 	 * @param registry
 	 *        the filter type registry
@@ -52,9 +54,29 @@ public class SettingsCsvService {
 	 *        the settings form service
 	 */
 	public SettingsCsvService(FilterTypeRegistry registry, SettingsFormService forms) {
+		this(registry, DatumSourceTypeRegistry.standard(), forms);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
+	 * @param forms
+	 *        the settings form service
+	 */
+	public SettingsCsvService(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes,
+			SettingsFormService forms) {
 		super();
 		this.registry = registry;
+		this.datumSourceTypes = datumSourceTypes;
 		this.forms = forms;
+	}
+
+	private SettingsCsvImporter importer() {
+		return new SettingsCsvImporter(registry.snapshot(), datumSourceTypes.snapshot());
 	}
 
 	/**
@@ -67,7 +89,7 @@ public class SettingsCsvService {
 	 *         if SolarNode cannot import the file
 	 */
 	public SettingsImport importCsv(String csv) {
-		return new SettingsCsvImporter(registry.snapshot()).importCsv(csv);
+		return importer().importCsv(csv);
 	}
 
 	/**
@@ -105,7 +127,7 @@ public class SettingsCsvService {
 		if ( config == null || csv == null ) {
 			throw new SimulationException("The config and csv are required.");
 		}
-		return new SettingsCsvImporter(registry.snapshot()).merge(config, csv);
+		return importer().merge(config, csv);
 	}
 
 	/**
@@ -117,7 +139,7 @@ public class SettingsCsvService {
 	 * @return the combined external settings
 	 */
 	public ExternalSettings external(ExternalSettingsRequest request) {
-		return new SettingsCsvImporter(registry.snapshot()).external(request.filesOrEmpty());
+		return importer().external(request.filesOrEmpty());
 	}
 
 }

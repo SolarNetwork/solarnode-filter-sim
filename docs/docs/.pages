@@ -5,4 +5,5 @@ nav:
   - creating-a-simulation.md
   - sharing-a-simulation.md
   - running-a-simulation.md
+  - datum-sources.md
   - controls-and-instructions.md

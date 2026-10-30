@@ -30,6 +30,7 @@ import s10k.node.sim.filter.custom.CustomFilters;
 import s10k.node.sim.filter.domain.CustomFiltersReload;
 import s10k.node.sim.filter.domain.FilterTypeInfo;
 import s10k.node.sim.filter.domain.UnavailableFilterTypeInfo;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.sim.SimulationException;
@@ -38,13 +39,14 @@ import s10k.node.sim.filter.sim.SimulationException;
  * Web API for the supported filter types.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @RestController
 @RequestMapping("/api")
 public class FilterTypesController {
 
 	private final FilterTypeRegistry registry;
+	private final DatumSourceTypeRegistry datumSourceTypes;
 	private final CustomFilterService customFilters;
 
 	/**
@@ -52,12 +54,16 @@ public class FilterTypesController {
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
 	 * @param customFilters
 	 *        the custom filters service
 	 */
-	public FilterTypesController(FilterTypeRegistry registry, CustomFilterService customFilters) {
+	public FilterTypesController(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes,
+			CustomFilterService customFilters) {
 		super();
 		this.registry = registry;
+		this.datumSourceTypes = datumSourceTypes;
 		this.customFilters = customFilters;
 	}
 
@@ -113,6 +119,7 @@ public class FilterTypesController {
 			System.out.println(line);
 		}
 		return new CustomFiltersReload(registry.filterTypes(locale), unavailableFilterTypes(),
+				datumSourceTypes.datumSourceTypes(locale),
 				custom.describe(locale).stream().map(String::strip).toList());
 	}
 

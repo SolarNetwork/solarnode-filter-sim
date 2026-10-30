@@ -26,6 +26,54 @@ of what you are seeing:
 ![Example simulation, annotated.](./images/example-downsample-annotated@2x.png){width=1920}
 </figure>
 
+## Progress and Cancel
+
+When a simulation takes more than a second, the Execution Flow shows a progress bar with the
+number of datum processed, the simulated time reached, and a **Cancel** button. Cancelling keeps
+the datum processed so far, with a message saying the run was cancelled.
+
+## Long runs
+
+A simulation processes up to its **Maximum Datum**, on the **Environment** tab (1,000 when it is
+blank). To simulate a day or more of [datum sources](./datum-sources.md), raise it and set
+**Keep Running After the Last Datum** to a duration, like `90` (seconds), `15m`, `24h`, `7d`, or
+`PT24H`.
+
+When a result has more than 200 datum, the Execution Flow shows a list of the datum in place of
+their cards. Narrow the list by one or more source IDs, by a time range (like `2025-10-01 12:00`,
+in the simulation's time zone), and with the outcome pills, or type a datum number to go to it.
+Click a datum to see its card below the list, with how it went through the filters.
+
+## Datum routes of large results
+
+When a result has more than 20 datum, the Canvas shows the routes of only the datum you select.
+Click a datum (its card header, or its row in the list) to select it, and click it again to
+unselect it. Selecting a datum opens its card; hold **Alt** (**Option** on a Mac) as you click
+its header to select or unselect it and leave the card as it is. You can select any number of datum, and they stay selected when you filter the
+Execution Flow. In the list, the arrow keys show the route of each datum they reach, without
+selecting it, and **Space** selects it. The datum bar shows how many datum are selected, and
+**Clear selection** unselects them all, even those the filters hide.
+
+## Time zone
+
+The Execution Flow shows every date as a local date and time in the simulation's **Time Zone**,
+from the **Environment** tab, and says which zone that is before the datum. Its **Show in UTC**
+button switches the dates to UTC, and back. The Time Zone also applies to the **Start Date** and
+the list's time range. When it is blank, it is the simulator's own time zone, which the
+simulation itself always runs in: cron schedules, tariff schedules, and expression date functions
+like `today()` use it. Downloaded datum have UTC dates, whatever the Time Zone.
+
+## Downloading datum
+
+The download menu in the Execution Flow header saves the datum of a run as a JSON file, in the
+format of the **Datum** input, to review or chart them elsewhere:
+
+* **Output datum:** the datum the filters output, which a node persists.
+* **Input datum:** each datum as it entered the Datum Queue, before the filters.
+
+The simulator keeps the last three runs, so download a run's datum before running three more.
+A report of a long run has only the datum you have looked at, up to 200.
+
 ## Generated datum
 
 Some filters like [Split][split] generate _new_ datum. These datum are added to SolarNode's

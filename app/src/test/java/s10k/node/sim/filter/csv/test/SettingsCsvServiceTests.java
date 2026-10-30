@@ -38,6 +38,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.domain.ControlConductorConfig;
 import s10k.node.sim.filter.domain.ControlPublishMode;
+import s10k.node.sim.filter.domain.DatumSourceConfig;
 import s10k.node.sim.filter.domain.ExternalFilterOrigin;
 import s10k.node.sim.filter.domain.ExternalSettings;
 import s10k.node.sim.filter.domain.ExternalSettingsFile;
@@ -45,6 +46,7 @@ import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.ExternalSettingsSummary;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.IgnoredComponent;
+import s10k.node.sim.filter.domain.OpModeInvokerConfig;
 import s10k.node.sim.filter.domain.NodeControlConfig;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
@@ -1244,6 +1246,42 @@ public class SettingsCsvServiceTests {
 	}
 
 	@Test
+	public void importModeSwitches() {
+		// GIVEN
+		String csv = csv("net.solarnetwork.node.control.opmode.switch.FACTORY,1,1",
+				"net.solarnetwork.node.control.opmode.switch.1,controlId,/switch/boost",
+				"net.solarnetwork.node.control.opmode.switch.1,mode,boost",
+				"net.solarnetwork.node.control.opmode.switch.FACTORY,2,2",
+				"net.solarnetwork.node.control.opmode.switch.2,controlId,/switch/other",
+				"net.solarnetwork.node.datum.control.FACTORY,1,1",
+				"net.solarnetwork.node.datum.control.1,controlIdRegexValue,^/switch/boost",
+				"net.solarnetwork.node.datum.control.1,persistModeValue,PollAndEvent");
+
+		// WHEN
+		SettingsImport result = service.importCsv(csv);
+
+		// THEN
+		// @formatter:off
+		then(result.controls())
+			.as("Switches publish on change, as the Control Datum Sources allow")
+			.containsExactly(
+					NodeControlConfig.modeSwitch("/switch/boost", "boost", ControlPublishMode.Change, true),
+					NodeControlConfig.modeSwitch("/switch/other", null, ControlPublishMode.Never, false))
+			;
+		then(result.ignored())
+			.as("The switches are not ignored")
+			.isEmpty()
+			;
+		then(result.messages())
+			.as("No Control Datum Source publishes the second switch")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(tuple(SimulationMessage.CODE_CONTROL_SETTINGS,
+					"No Control Datum Source publishes the change events of /switch/other, so it never publishes datum."))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void exportLeavesOutControls() {
 		// GIVEN
 		SettingsImport imported = service.importCsv(resource("control-settings.csv"));
@@ -1285,6 +1323,135 @@ public class SettingsCsvServiceTests {
 					"net.solarnetwork.node.control.gpiod",
 					"net.solarnetwork.node.datum.control",
 					"net.solarnetwork.node.control.conductor")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importDatumSources() {
+		// GIVEN
+		String csv = csv("net.solarnetwork.node.datum.energymeter.mock.1,schedule,30000",
+				"net.solarnetwork.node.datum.energymeter.mock.1,triggerCronExpression,0 * * * * ?",
+				"net.solarnetwork.node.datum.energymeter.mock.1,jobService.datumDataSource.sourceId,/meter/1",
+				"net.solarnetwork.node.datum.energymeter.mock.FACTORY,1,1",
+				"net.solarnetwork.node.datum.fixed.FACTORY,Site,Site",
+				"net.solarnetwork.node.datum.fixed.Site,triggerCronExpression,0 */5 * * * ?",
+				"net.solarnetwork.node.datum.fixed.Site,jobDetail.jobDataMap['datumDataSource'].sourceId,/site",
+				"net.solarnetwork.node.datum.fixed.Site,jobDetail.jobDataMap['datumDataSource'].uid,Site",
+				"net.solarnetwork.node.datum.battery.mock.Bat,jobService.datumDataSource.sourceId,/bat",
+				"net.solarnetwork.node.datum.modbus.FACTORY,1,1",
+				"net.solarnetwork.node.datum.modbus.1,jobService.datumDataSource.sourceId,/modbus",
+				"net.solarnetwork.node.datum.samplefilter.limiter.FACTORY,1,1",
+				"net.solarnetwork.node.datum.samplefilter.limiter.1,uid,Throttle");
+
+		// WHEN
+		SettingsImport result = service.importCsv(csv);
+
+		// THEN
+		// @formatter:off
+		then(result.datumSources())
+			.as("The supported datum sources, in file order, with the 1.x keys changed to the current ones")
+			.containsExactly(
+					new DatumSourceConfig(null, "net.solarnetwork.node.datum.energymeter.mock", "1", Map.of(
+							"schedule", "30000",
+							"jobService.datumDataSource.sourceId", "/meter/1")),
+					new DatumSourceConfig(null, "net.solarnetwork.node.datum.fixed", "Site", Map.of(
+							"schedule", "0 */5 * * * ?",
+							"jobService.datumDataSource.sourceId", "/site",
+							"jobService.datumDataSource.uid", "Site")),
+					new DatumSourceConfig(null, "net.solarnetwork.node.datum.battery.mock", "Bat", Map.of(
+							"jobService.datumDataSource.sourceId", "/bat")))
+			;
+		then(result.config().filtersOrEmpty())
+			.as("Only the filter is a filter")
+			.extracting(FilterConfig::id)
+			.containsExactly("net.solarnetwork.node.datum.samplefilter.limiter.1")
+			;
+		then(result.ignored())
+			.as("The unsupported datum source is ignored")
+			.extracting(IgnoredComponent::key, IgnoredComponent::instanceKey)
+			.containsExactly(tuple("net.solarnetwork.node.datum.modbus", "1"))
+			;
+		then(result.messages())
+			.as("The 1.x keys and the missing FACTORY row are described")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(
+					tuple(SimulationMessage.CODE_LEGACY_SETTINGS,
+							"The Mock Energy Meter \"1\" has SolarNode 1.x setting keys, which the simulator changed to the current ones."),
+					tuple(SimulationMessage.CODE_LEGACY_SETTINGS,
+							"The Fixed Data \"Site\" has SolarNode 1.x setting keys, which the simulator changed to the current ones."),
+					tuple(SimulationMessage.CODE_MISSING_FACTORY,
+							"The file has no net.solarnetwork.node.datum.battery.mock.FACTORY row for the Mock Battery \"Bat\", so SolarNode would not create it. The simulator imported it anyway."))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importInvokers() {
+		// GIVEN
+		String csv = csv("net.solarnetwork.node.datum.opmode.invoker.FACTORY,1,1",
+				"net.solarnetwork.node.datum.opmode.invoker.1,uid,Boost",
+				"net.solarnetwork.node.datum.opmode.invoker.1,operationalMode,boost",
+				"net.solarnetwork.node.datum.opmode.invoker.1,configurationsCount,1",
+				"net.solarnetwork.node.datum.opmode.invoker.1,configurations[0].uid,Meter",
+				"net.solarnetwork.node.datum.opmode.invoker.1,configurations[0].schedule,10",
+				"net.solarnetwork.node.datum.opmode.invoker.Two,operationalMode,eco");
+
+		// WHEN
+		SettingsImport result = service.importCsv(csv);
+
+		// THEN
+		// @formatter:off
+		then(result.invokers())
+			.as("The invokers, in file order, with their settings")
+			.containsExactly(
+					new OpModeInvokerConfig(null, "1", Map.of(
+							"uid", "Boost",
+							"operationalMode", "boost",
+							"configurationsCount", "1",
+							"configurations[0].uid", "Meter",
+							"configurations[0].schedule", "10")),
+					new OpModeInvokerConfig(null, "Two", Map.of(
+							"operationalMode", "eco")))
+			;
+		then(result.datumSources())
+			.as("No datum sources")
+			.isNull()
+			;
+		then(result.ignored())
+			.as("Nothing ignored")
+			.isEmpty()
+			;
+		then(result.messages())
+			.as("The missing FACTORY row is described")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(
+					tuple(SimulationMessage.CODE_MISSING_FACTORY,
+							"The file has no net.solarnetwork.node.datum.opmode.invoker.FACTORY row for the Operational Mode Invoker \"Two\", so SolarNode would not create it. The simulator imported it anyway."))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void externalIgnoresDatumSources() {
+		// GIVEN
+		ExternalSettingsFile file = new ExternalSettingsFile("sources.csv",
+				csv("net.solarnetwork.node.datum.energymeter.mock.FACTORY,1,1",
+						"net.solarnetwork.node.datum.energymeter.mock.1,schedule,30000"));
+
+		// WHEN
+		ExternalSettings result = service.external(new ExternalSettingsRequest(List.of(file)));
+
+		// THEN
+		// @formatter:off
+		then(result.files())
+			.as("One file")
+			.hasSize(1)
+			.first()
+			.extracting(ExternalSettingsSummary::ignored, list(IgnoredComponent.class))
+			.extracting(IgnoredComponent::key)
+			.as("The datum source is ignored")
+			.containsExactly("net.solarnetwork.node.datum.energymeter.mock")
 			;
 		// @formatter:on
 	}

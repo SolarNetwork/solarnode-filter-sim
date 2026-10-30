@@ -23,6 +23,7 @@ import static net.solarnetwork.domain.tariff.SimpleTemporalRangesTariffEvaluator
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -47,7 +48,7 @@ import net.solarnetwork.service.OptionalService.OptionalFilterableService;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class TariffScheduleCheck implements FilterCheck {
 
@@ -64,45 +65,67 @@ public final class TariffScheduleCheck implements FilterCheck {
 					? "The Tariff filter's schedule has no rules, so the filter changes no datum."
 					: null);
 		}
+		return scheduleProblem(NO_SCHEDULE, f.getMetadataServiceUid(), f.getTariffMetadataPath(),
+				f.getLocale(), f.isPreserveRateCase(), f.isFirstMatchOnly(), context);
+	}
 
-		// find the metadata service the way the filter does
-		final String uid = f.getMetadataServiceUid();
+	/**
+	 * Find why a component that reads a tariff schedule from metadata has none.
+	 *
+	 * @param noSchedule
+	 *        the start of the message, which says the component has no schedule
+	 * @param uid
+	 *        the Service Name of the metadata service the component uses
+	 * @param path
+	 *        the metadata path of the schedule
+	 * @param locale
+	 *        the schedule's locale
+	 * @param preserveRateCase
+	 *        the component's setting of the same name
+	 * @param firstMatchOnly
+	 *        the component's setting of the same name
+	 * @param context
+	 *        the simulated services
+	 * @return the message
+	 */
+	public static String scheduleProblem(String noSchedule, @Nullable String uid, @Nullable String path,
+			Locale locale, boolean preserveRateCase, boolean firstMatchOnly, FilterContext context) {
+		// find the metadata service the way the component does
 		final OptionalFilterableService<MetadataService> tracker = context
 				.serviceTracker(MetadataService.class, false);
 		tracker.setPropertyFilter(Identifiable.UID_PROPERTY, uid);
 		final MetadataService service = tracker.service();
 		if ( service == null ) {
-			return NO_SCHEDULE
+			return noSchedule
 					+ ": no metadata service has the Service Name \"%s\". The metadata services are: %s."
 							.formatted(uid, context.services(MetadataService.class).stream()
 									.map(MetadataService::getUid).filter(Objects::nonNull)
 									.map(SimulationMessage::quoted).collect(Collectors.joining(", ")));
 		}
 
-		final String path = f.getTariffMetadataPath();
 		final Object data = service.metadataAtPath(path);
 		if ( data == null ) {
-			return NO_SCHEDULE + ": %s has no metadata at %s."
+			return noSchedule + ": %s has no metadata at %s."
 					.formatted(SimulationMessage.quoted(service.getUid()), path);
 		}
 		try {
-			if ( TariffUtils.parseCsvTemporalRangeSchedule(f.getLocale(), f.isPreserveRateCase(),
-					f.isFirstMatchOnly(), DEFAULT_EVALUATOR, data) == null ) {
+			if ( TariffUtils.parseCsvTemporalRangeSchedule(locale, preserveRateCase, firstMatchOnly,
+					DEFAULT_EVALUATOR, data) == null ) {
 				if ( data instanceof List<?> ) {
-					return NO_SCHEDULE
+					return noSchedule
 							+ ": the array at %s in %s needs to be an array of rows, each an array of values, starting with a header row of at least 5 columns."
 									.formatted(path, service.getUid());
 				}
-				return NO_SCHEDULE
+				return noSchedule
 						+ ": the metadata at %s in %s is a JSON %s, but a tariff schedule must be CSV text or an array of arrays."
 								.formatted(path, service.getUid(), jsonType(data));
 			}
 		} catch ( IOException | RuntimeException e ) {
-			return NO_SCHEDULE
+			return noSchedule
 					+ ": the metadata at %s in %s is not a valid tariff schedule: %s".formatted(path,
 							service.getUid(), e.getMessage() != null ? e.getMessage() : e.toString());
 		}
-		return NO_SCHEDULE + ".";
+		return noSchedule + ".";
 	}
 
 	private static String jsonType(Object o) {

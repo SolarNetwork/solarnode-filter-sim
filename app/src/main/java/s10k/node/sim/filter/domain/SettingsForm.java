@@ -24,23 +24,44 @@ import org.jspecify.annotations.Nullable;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * The settings form of a filter: its settings, as SolarNode presents them.
+ * The settings form of a filter or datum source: its settings, as SolarNode
+ * presents them.
  *
  * @param factoryUid
- *        the SolarNode component factory UID of the filter type
+ *        the SolarNode component factory UID of the filter or datum source type
  * @param fields
  *        the form fields, in display order
  * @param problems
- *        problems applying the settings to the filter, such as unknown setting
- *        keys
+ *        problems applying the settings, such as unknown setting keys
  * @param limitation
- *        how the simulation of the filter, with these settings, differs from
- *        SolarNode, or {@code null} if there are no known differences
+ *        how the simulation of the filter or datum source, with these settings,
+ *        differs from SolarNode, or {@code null} if there are no known
+ *        differences
+ * @param controlIds
+ *        for a datum source that provides controls, the control IDs it provides
+ *        with these settings, with any placeholders resolved; else {@code null}
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SettingsForm(String factoryUid, List<SettingField> fields, List<SettingProblem> problems,
-		@Nullable String limitation) {
+		@Nullable String limitation, @Nullable List<String> controlIds) {
+
+	/**
+	 * Constructor, for a form without controls.
+	 *
+	 * @param factoryUid
+	 *        the factory UID
+	 * @param fields
+	 *        the fields
+	 * @param problems
+	 *        the problems
+	 * @param limitation
+	 *        the limitation, or {@code null}
+	 */
+	public SettingsForm(String factoryUid, List<SettingField> fields, List<SettingProblem> problems,
+			@Nullable String limitation) {
+		this(factoryUid, fields, problems, limitation, null);
+	}
 
 }

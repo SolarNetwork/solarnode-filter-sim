@@ -73,7 +73,7 @@ import net.solarnetwork.service.DatumFilterStats;
  * </p>
  *
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 public final class FilterTracer {
 
@@ -181,14 +181,7 @@ public final class FilterTracer {
 				if ( !paramsAfter.equals(paramsBefore) ) {
 					step.parameters = paramsAfter;
 				}
-				Set<String> modesAfter = activeModes();
-				if ( !modesAfter.equals(modesBefore) ) {
-					Set<String> enabled = new TreeSet<>(modesAfter);
-					enabled.removeAll(modesBefore);
-					Set<String> disabled = new TreeSet<>(modesBefore);
-					disabled.removeAll(modesAfter);
-					step.opModes = new OpModeChange(enabled, disabled);
-				}
+				step.opModes = opModeChange(modesBefore, activeModes());
 			}
 		}
 	}
@@ -280,6 +273,7 @@ public final class FilterTracer {
 	 *        the run record
 	 */
 	void beginRun(RunRecord record) {
+		record.modesBefore = activeModes();
 		this.run = record;
 	}
 
@@ -287,6 +281,10 @@ public final class FilterTracer {
 	 * Stop recording an instruction run.
 	 */
 	void endRun() {
+		final RunRecord r = this.run;
+		if ( r != null ) {
+			r.opModes = opModeChange(r.modesBefore, activeModes());
+		}
 		this.run = null;
 	}
 
@@ -342,6 +340,26 @@ public final class FilterTracer {
 		if ( r != null ) {
 			r.controls.add(update);
 		}
+	}
+
+	/**
+	 * Get the change between two sets of active operational modes.
+	 *
+	 * @param before
+	 *        the modes before
+	 * @param after
+	 *        the modes after
+	 * @return the change, or {@code null} if there was none
+	 */
+	private static @Nullable OpModeChange opModeChange(Set<String> before, Set<String> after) {
+		if ( after.equals(before) ) {
+			return null;
+		}
+		final Set<String> enabled = new TreeSet<>(after);
+		enabled.removeAll(before);
+		final Set<String> disabled = new TreeSet<>(before);
+		disabled.removeAll(after);
+		return new OpModeChange(enabled, disabled);
 	}
 
 	private Set<String> activeModes() {
@@ -453,6 +471,9 @@ public final class FilterTracer {
 		final List<InstructionInfo> instructions = new ArrayList<>(2);
 		final List<ControlUpdate> controls = new ArrayList<>(1);
 		final List<Integer> generated = new ArrayList<>(1);
+		Set<String> modesBefore = Set.of();
+		@Nullable
+		OpModeChange opModes;
 		@Nullable
 		String error;
 
@@ -468,7 +489,7 @@ public final class FilterTracer {
 		InstructionRun toRun() {
 			final SimInstructionService.Issuer i = issuer;
 			return new InstructionRun(date, afterSeq, instruction, instructions, controls, generated,
-					i != null ? i.datumSeq() : null, i != null ? i.stepId() : null,
+					opModes, i != null ? i.datumSeq() : null, i != null ? i.stepId() : null,
 					i != null ? i.filterId() : null, error);
 		}
 

@@ -45,13 +45,19 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        for a datum published while the Instruction Execution Job ran an
  *        instruction, the {@link InstructionInfo#number()} of that instruction,
  *        or {@code null}
+ * @param datumSourceId
+ *        for a datum polled from a datum source, the {@code id} of the datum
+ *        source configuration, or {@code null}
+ * @param invokerId
+ *        for a datum polled by an Operational Mode Datum Source Invoker, the
+ *        {@code id} of the invoker configuration, or {@code null}
  * @author matt
- * @version 1.1
+ * @version 1.3
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer parentSeq,
 		@Nullable Integer stepId, @Nullable String filterId, @Nullable String controlId,
-		@Nullable Integer instruction) {
+		@Nullable Integer instruction, @Nullable String datumSourceId, @Nullable String invokerId) {
 
 	/**
 	 * Datum origin types.
@@ -73,6 +79,12 @@ public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer 
 		 */
 		Instruction,
 
+		/**
+		 * A datum polled from a datum source, between datum, on its schedule or
+		 * by an Operational Mode Datum Source Invoker.
+		 */
+		Polled,
+
 	}
 
 	/**
@@ -83,7 +95,7 @@ public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer 
 	 * @return the origin
 	 */
 	public static DatumOrigin input(int index) {
-		return new DatumOrigin(Type.Input, index, null, null, null, null, null);
+		return new DatumOrigin(Type.Input, index, null, null, null, null, null, null, null);
 	}
 
 	/**
@@ -102,7 +114,8 @@ public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer 
 	 */
 	public static DatumOrigin generated(@Nullable Integer parentSeq, @Nullable Integer stepId,
 			@Nullable String filterId) {
-		return new DatumOrigin(Type.Generated, null, parentSeq, stepId, filterId, null, null);
+		return new DatumOrigin(Type.Generated, null, parentSeq, stepId, filterId, null, null, null,
+				null);
 	}
 
 	/**
@@ -114,7 +127,7 @@ public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer 
 	 * @return the origin
 	 */
 	public static DatumOrigin scheduled(@Nullable String filterId) {
-		return new DatumOrigin(Type.Scheduled, null, null, null, filterId, null, null);
+		return new DatumOrigin(Type.Scheduled, null, null, null, filterId, null, null, null, null);
 	}
 
 	/**
@@ -128,7 +141,19 @@ public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer 
 	 * @return the origin
 	 */
 	public static DatumOrigin instruction(int instruction, @Nullable String filterId) {
-		return new DatumOrigin(Type.Instruction, null, null, null, filterId, null, instruction);
+		return new DatumOrigin(Type.Instruction, null, null, null, filterId, null, instruction, null,
+				null);
+	}
+
+	/**
+	 * Create a polled datum origin.
+	 *
+	 * @param datumSourceId
+	 *        the {@code id} of the datum source configuration
+	 * @return the origin
+	 */
+	public static DatumOrigin polled(String datumSourceId) {
+		return new DatumOrigin(Type.Polled, null, null, null, null, null, null, datumSourceId, null);
 	}
 
 	/**
@@ -139,7 +164,21 @@ public record DatumOrigin(Type type, @Nullable Integer index, @Nullable Integer 
 	 * @return the new origin
 	 */
 	public DatumOrigin withControlId(@Nullable String controlId) {
-		return new DatumOrigin(type, index, parentSeq, stepId, filterId, controlId, instruction);
+		return new DatumOrigin(type, index, parentSeq, stepId, filterId, controlId, instruction,
+				datumSourceId, invokerId);
+	}
+
+	/**
+	 * Get a copy of this origin for a datum an Operational Mode Datum Source
+	 * Invoker polled.
+	 *
+	 * @param invokerId
+	 *        the {@code id} of the invoker configuration
+	 * @return the new origin
+	 */
+	public DatumOrigin withInvokerId(@Nullable String invokerId) {
+		return new DatumOrigin(type, index, parentSeq, stepId, filterId, controlId, instruction,
+				datumSourceId, invokerId);
 	}
 
 }

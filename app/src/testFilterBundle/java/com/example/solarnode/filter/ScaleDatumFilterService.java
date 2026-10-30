@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import com.example.solarnode.filter.lib.Scaling;
 import net.solarnetwork.domain.datum.Datum;
 import net.solarnetwork.domain.datum.DatumSamples;
@@ -61,6 +62,7 @@ public class ScaleDatumFilterService extends BaseDatumFilterSupport
 	private final Clock clock;
 	private final OptionalService<DatumQueue> datumQueue;
 	private TransientSettingDao transientSettingDao;
+	private Executor executor;
 	private String propertyName;
 	private BigDecimal factor = BigDecimal.ONE;
 	private boolean started;
@@ -121,6 +123,11 @@ public class ScaleDatumFilterService extends BaseDatumFilterSupport
 		out.putSampleValue(DatumSamplesType.Status, "contextLoader",
 				Thread.currentThread().getContextClassLoader() == getClass().getClassLoader());
 		out.putSampleValue(DatumSamplesType.Status, "transientSettingDao", transientSettingDao != null);
+		if ( executor != null ) {
+			final Thread caller = Thread.currentThread();
+			executor.execute(() -> out.putSampleValue(DatumSamplesType.Status, "executedInline",
+					Thread.currentThread() == caller));
+		}
 		incrementStats(start, samples, out);
 		return out;
 	}
@@ -156,6 +163,16 @@ public class ScaleDatumFilterService extends BaseDatumFilterSupport
 	 */
 	public void setTransientSettingDao(TransientSettingDao transientSettingDao) {
 		this.transientSettingDao = transientSettingDao;
+	}
+
+	/**
+	 * Set the executor, for tasks run apart from the datum.
+	 *
+	 * @param executor
+	 *        the executor
+	 */
+	public void setExecutor(Executor executor) {
+		this.executor = executor;
 	}
 
 	/**

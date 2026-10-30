@@ -6,12 +6,15 @@ import type {
 	ControlInfo,
 	DatumOrigin,
 	FilterBundleInfo,
+	InstructionHandlerInfo,
 	InstructionInfo,
 	InstructionRun,
 	MessageLevel,
+	OpModeChange,
 	SamplesInfo,
 	SimulationMessage,
 } from "./model.ts";
+import { formatLocal } from "./dates.ts";
 
 /**
  * Quote a name in a sentence, such as a Service Name, which can have spaces
@@ -22,6 +25,128 @@ import type {
  */
 export function quoted(name: string): string {
 	return `"${name}"`;
+}
+
+/**
+ * How the results name a datum source, or an Operational Mode Invoker, of the
+ * run they show.
+ */
+export interface DatumSourceName {
+	/** The Service Name, if it has one. */
+	name?: string;
+	/** The type's name. */
+	type: string;
+	/**
+	 * The position in the run's datum sources, or its invokers, counting from
+	 * 1.
+	 */
+	position: number;
+	/** `true` for an Operational Mode Invoker. */
+	invoker?: boolean;
+}
+
+/** What the canvas shows of a datum source. */
+export interface DatumSourceSummary {
+	/** The datum source id. */
+	id: string;
+	factoryUid: string;
+	/** The type's name. */
+	type: string;
+	/** The Service Name, if it has one. */
+	name?: string;
+	/** The Source ID, if it has one. */
+	sourceId?: string;
+	/** The schedule, as text, like `every 30s`. */
+	schedule?: string;
+	/** A problem with its settings, if it has one. */
+	problem?: string;
+	/** `true` for the static datum, the Datum tab's input datum. */
+	static?: boolean;
+	/** For the static datum, the number of datum. */
+	count?: number;
+}
+
+/**
+ * The datum sources of the run the results show, by id, as they were when it
+ * ran, so later edits do not rename them.
+ */
+let datumSourceNames = new Map<string, DatumSourceName>();
+
+/**
+ * Set the datum sources of the run the results show.
+ *
+ * @param names the datum source names, by id
+ */
+export function setDatumSourceNames(
+	names: ReadonlyMap<string, DatumSourceName>,
+): void {
+	datumSourceNames = new Map(names);
+}
+
+/**
+ * Name a datum source of the run the results show, like the server's
+ * messages: `"Meter 1" (Mock Energy Meter)`, or `datum source 2 (Mock Energy
+ * Meter)` without a Service Name. An Operational Mode Invoker is `"Boost"
+ * (Operational Mode Invoker)`, or `Operational Mode Invoker 1`.
+ *
+ * @param id the datum source or invoker id
+ * @returns the name, starting with a lowercase letter, unless it is an
+ *     invoker's type
+ */
+export function datumSourceLabel(id: string): string {
+	const n = datumSourceNames.get(id);
+	if (!n) {
+		return `datum source ${quoted(id)}`;
+	}
+	if (n.name) {
+		return `${quoted(n.name)} (${n.type})`;
+	}
+	return n.invoker
+		? `${n.type} ${n.position}`
+		: `datum source ${n.position} (${n.type})`;
+}
+
+/**
+ * Name a datum source of the run the results show in short: its Service
+ * Name, else `datum source 2`.
+ *
+ * @param id the datum source id
+ * @returns the name, starting with a lowercase letter
+ */
+export function datumSourceShortLabel(id: string): string {
+	const n = datumSourceNames.get(id);
+	return n?.name
+		? quoted(n.name)
+		: `${n?.invoker ? "invoker" : "datum source"} ${n?.position ?? quoted(id)}`;
+}
+
+/**
+ * Describe where a polled datum came from, like `Polled from "Meter 1" (Mock
+ * Energy Meter)`, or `Polled from "Meter 1" (Mock Energy Meter) by "Boost"
+ * (Operational Mode Invoker)`.
+ *
+ * @param origin the datum's origin, of type `Polled`
+ * @returns the description, starting with a capital letter
+ */
+export function polledOriginText(origin: DatumOrigin): string {
+	const by = origin.invokerId
+		? ` by ${datumSourceLabel(origin.invokerId)}`
+		: "";
+	return `Polled from ${datumSourceLabel(origin.datumSourceId ?? "")}${by}`;
+}
+
+/**
+ * Describe where a polled datum came from in short, like `from "Meter 1"`, or
+ * `from "Meter 1" by "Boost"`.
+ *
+ * @param origin the datum's origin, of type `Polled`
+ * @returns the description
+ */
+export function polledOriginShortText(origin: DatumOrigin): string {
+	const by = origin.invokerId
+		? ` by ${datumSourceShortLabel(origin.invokerId)}`
+		: "";
+	return `from ${datumSourceShortLabel(origin.datumSourceId ?? "")}${by}`;
 }
 
 /**
@@ -91,9 +216,43 @@ export function formatValue(value: unknown): string {
 	return String(value);
 }
 
-/** Format a timestamp like `2025-10-01 12:00:00Z`. */
+/** The time zone the results show dates in. */
+let displayZone = "UTC";
+
+/**
+ * Set the time zone the results show dates in.
+ *
+ * @param zone the time zone
+ */
+export function setDisplayZone(zone: string): void {
+	displayZone = zone;
+}
+
+/**
+ * Get the time zone the results show dates in.
+ *
+ * @returns the time zone
+ */
+export function getDisplayZone(): string {
+	return displayZone;
+}
+
+/**
+ * Format a timestamp as a local date and time in the time zone the results
+ * show, like `2025-10-01 12:00:00`, keeping any fraction of a second.
+ *
+ * @param ts the timestamp, as an ISO 8601 instant
+ * @returns the date and time
+ */
 export function formatTimestamp(ts: string | undefined): string {
-	return ts ? ts.replace("T", " ") : "";
+	if (!ts) {
+		return "";
+	}
+	const ms = Date.parse(ts);
+	if (Number.isNaN(ms)) {
+		return ts.replace("T", " ");
+	}
+	return formatLocal(ms, displayZone, /\.(\d+)/.exec(ts)?.[1]);
 }
 
 export function formatDuration(micros: number | undefined): string {
@@ -380,9 +539,31 @@ export function controlsTable(
 				),
 			);
 		}
+		const type = element("td", "text-body-secondary");
+		if (c.kind === "OperationalModeSwitch") {
+			type.append("switch of ");
+			type.append(
+				c.mode
+					? element("span", "font-monospace", c.mode)
+					: element("span", "fst-italic", "no mode"),
+			);
+			type.title = `An Operational Mode Switch: a ${c.type} control of whether its operational mode is active`;
+		} else {
+			type.append(c.type);
+		}
+		if (c.component) {
+			type.append(
+				element(
+					"div",
+					"small",
+					`of ${datumSourceShortLabel(c.component)}`,
+				),
+			);
+			type.title = `A ${c.type} control of ${datumSourceLabel(c.component)}`;
+		}
 		row.append(
 			element("td", "font-monospace", c.controlId),
-			element("td", "text-body-secondary", c.type),
+			type,
 			value,
 			element(
 				"td",
@@ -412,6 +593,57 @@ export function instructionLabel(instruction: InstructionInfo): string {
 	return instruction.conductor
 		? `Control Conductor ${quoted(instruction.conductor)} task ${instruction.task ?? "?"}`
 		: instruction.topic;
+}
+
+/**
+ * Name the component that handled an instruction, like `the Control Conductor
+ * "HVAC DR"`.
+ *
+ * @param handler the handler
+ * @returns the name, starting with a lowercase letter
+ */
+export function handlerLabel(handler: InstructionHandlerInfo): string {
+	switch (handler.type) {
+		case "Reactor":
+			return "the reactor";
+		case "OperationalModes":
+			return "the operational modes service";
+		case "Metadata":
+			return `the metadata service ${quoted(handler.name ?? "")}`;
+		case "Control":
+			return `control ${handler.name ?? ""}`;
+		case "OperationalModeSwitch":
+			return `the Operational Mode Switch ${handler.name ?? ""}`;
+		case "DatumSource":
+			return datumSourceLabel(handler.name ?? "");
+		case "Conductor":
+			return `the Control Conductor ${quoted(handler.name ?? "")}`;
+	}
+}
+
+/**
+ * Describe a change to the active operational modes, like `+boost −eco`.
+ *
+ * @param change the change
+ * @returns the description
+ */
+export function opModesText(change: OpModeChange): string {
+	return [
+		...(change.enabled ?? []).map((m) => `+${m}`),
+		...(change.disabled ?? []).map((m) => `−${m}`),
+	].join(" ");
+}
+
+/**
+ * Describe where a datum published during a scheduled task of no filter came
+ * from: an Operational Mode Switch whose mode the operational modes service's
+ * auto-expire task found expired.
+ *
+ * @param controlId the control ID
+ * @returns the description, starting with a capital letter
+ */
+export function expiredModeOriginText(controlId: string): string {
+	return `Published by control ${controlId}, when the operational modes service found its mode expired`;
 }
 
 /**
@@ -482,6 +714,15 @@ export function instructionsList(
 				instr.state ?? "not handled: no control or service handles it",
 			),
 		);
+		if (instr.handler) {
+			heading.append(
+				element(
+					"span",
+					"text-body-secondary",
+					`handled by ${handlerLabel(instr.handler)}`,
+				),
+			);
+		}
 		if (instr.executeAt) {
 			heading.append(
 				element(

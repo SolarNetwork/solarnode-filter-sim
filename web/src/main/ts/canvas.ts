@@ -12,16 +12,26 @@ import {
 	type SeqRange,
 } from "./routesLegend.ts";
 import { showToast } from "./dialogs.ts";
-import { filterIcon, iconGlyph, MAIN_CHAIN_ICON } from "./icons.ts";
+import {
+	datumSourceIcon,
+	filterIcon,
+	glyphCenterTransform,
+	iconFontLoaded,
+	iconGlyph,
+	MAIN_CHAIN_ICON,
+} from "./icons.ts";
 import {
 	END_SIZE,
 	layout,
+	STATIC_SOURCE_ID,
 	NODE_SIZE,
 	UNASSIGNED_SIZE,
 	type ContinuationLink,
 	type EndNode,
 	type FilterNode,
 	type FlowLink,
+	type SourceLink,
+	type SourceNode,
 } from "./layout.ts";
 import {
 	UNASSIGNED_UID,
@@ -33,8 +43,12 @@ import type { DatumPath, FilterRunStats } from "./results.ts";
 import {
 	bundleLabel,
 	externalFilesText,
+	expiredModeOriginText,
 	instructionOriginText,
+	polledOriginShortText,
+	polledOriginText,
 	quoted,
+	type DatumSourceSummary,
 } from "./view.ts";
 import type {
 	ChainSlot,
@@ -65,7 +79,7 @@ const WHEEL_LINE = 16;
 const FLOW_WIDTH = 1;
 
 type DrawnNode = FilterNode | EndNode;
-type DrawnLink = FlowLink | ContinuationLink;
+type DrawnLink = FlowLink | ContinuationLink | SourceLink;
 
 /** Where a dragged filter would go: a link to insert it at, or a place to fill. */
 interface Drop {
@@ -84,16 +98,27 @@ export interface CanvasRun {
 	datum: DatumTrace[];
 	/** The instruction runs, for the origins of the datum they published. */
 	instructionRuns?: InstructionRun[];
+	/** The number of datum each datum source polled, by datum source id. */
+	polled?: ReadonlyMap<string, number>;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** The font size of the filter and datum source icons. */
+const ICON_SIZE = 28;
+
+/** The icon of the static datum, the Datum tab's input datum. */
+const STATIC_SOURCE_ICON = "braces";
 
 /** Start a sentence's text with a lowercase letter, to use it mid-sentence. */
 function lowerFirst(text: string): string {
 	return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
-/** The most datum routes shown at first, so a large run stays readable. */
+/**
+ * The most datum routes shown at first in debug mode, so a large run stays
+ * readable.
+ */
 const MAX_START_ROUTES = 20;
 
 /** The browser storage key of whether every datum route is shown. */
@@ -144,7 +169,7 @@ const FilterElement = dia.Element.define(
 				textAnchor: "middle",
 				textVerticalAnchor: "middle",
 				fontFamily: "bootstrap-icons",
-				fontSize: 28,
+				fontSize: ICON_SIZE,
 			},
 			ext: {
 				x: "calc(w-6)",
@@ -326,7 +351,9 @@ function clamp(n: number, min: number, max: number): number {
  * It emits a `select` event with the selected {@link FilterNode} (or `null`)
  * as its detail, a `filedrop` event with a dropped `File` as its detail, and a
  * `datumselect` event with a datum sequence number detail when a datum route
- * is clicked, and a `blankclick` event when the background is clicked.
+ * is clicked, a `datumsourceselect` event with a datum source id detail when a
+ * datum source is clicked, and a `blankclick` event when the background is
+ * clicked.
  */
 export class Canvas extends EventTarget {
 	readonly graph: dia.Graph;
@@ -334,6 +361,12 @@ export class Canvas extends EventTarget {
 	readonly #ws: Workspace;
 	readonly #el: HTMLElement;
 	readonly #nodes = new Map<string, DrawnNode>();
+	/** The datum source nodes, by node key. */
+	readonly #sourceNodes = new Map<string, SourceNode>();
+	/** The datum sources to draw. */
+	#datumSources: DatumSourceSummary[] = [];
+	/** The datum sources as last drawn, to draw them only when they change. */
+	#datumSourcesKey = "[]";
 	readonly #colors = linkColors();
 	#selected: string | null = null;
 	#selectedFilterId: string | null = null;
@@ -350,8 +383,17 @@ export class Canvas extends EventTarget {
 	readonly #legend: RoutesLegend | null;
 	/** The datum whose routes the legend shows, or `null` for all. */
 	#visibleSeqs: Set<number> | null = null;
+	/**
+	 * The datum whose routes show, as a large run's results selected them, or
+	 * `null` to show every route.
+	 */
+	#selection: Set<number> | null = null;
 	/** The datum whose route the pointer is over. */
 	#routeHover: number | null = null;
+	/** The datum source node the pointer is over, by key. */
+	#sourceHover: string | null = null;
+	/** The datum whose drawn routes start at each datum source node, by key. */
+	#sourceRouteSeqs = new Map<string, number[]>();
 	#drop: Drop | null = null;
 	#drag: { key: string; start: Point } | null = null;
 	#changes = 0;
@@ -430,6 +472,8 @@ export class Canvas extends EventTarget {
 			}
 		});
 		this.render();
+		// the icons are centred by their glyphs' measurements, once the font loads
+		void iconFontLoaded(ICON_SIZE).then(() => this.render());
 	}
 
 	/** The selected filter node, or `null` if none. */
@@ -442,11 +486,18 @@ export class Canvas extends EventTarget {
 
 	/** Draw the workspace. */
 	render(): void {
-		const drawing = layout(this.#ws);
+		const drawing = layout(
+			this.#ws,
+			this.#datumSources.map((d) => d.id),
+		);
 		this.#nodes.clear();
+		this.#sourceNodes.clear();
 		this.#drop = null;
 		for (const node of [...drawing.nodes, ...drawing.ends]) {
 			this.#nodes.set(node.key, node);
+		}
+		for (const source of drawing.sources) {
+			this.#sourceNodes.set(source.key, source);
 		}
 
 		// keep the selection, or else select the same filter where it is now,
@@ -470,6 +521,7 @@ export class Canvas extends EventTarget {
 		const cells: dia.Cell[] = [
 			...drawing.nodes.map((node) => this.#filterCell(node)),
 			...drawing.ends.map((end) => this.#endCell(end)),
+			...drawing.sources.map((source) => this.#sourceCell(source)),
 			...drawing.links.map((link) => this.#linkCell(link)),
 		];
 		// draw the continuations under the flows, and both under the nodes
@@ -494,6 +546,22 @@ export class Canvas extends EventTarget {
 		this.#drawRoutes();
 		// the selected filter might have changed, so always tell listeners
 		this.#emitSelect();
+	}
+
+	/**
+	 * Set the datum sources, which are drawn left of the Main chain, feeding
+	 * it. The canvas is drawn again only if they changed.
+	 *
+	 * @param sources the datum sources, without Operational Mode Invokers
+	 */
+	setDatumSources(sources: readonly DatumSourceSummary[]): void {
+		const key = JSON.stringify(sources);
+		if (key === this.#datumSourcesKey) {
+			return;
+		}
+		this.#datumSources = [...sources];
+		this.#datumSourcesKey = key;
+		this.render();
 	}
 
 	/**
@@ -544,14 +612,20 @@ export class Canvas extends EventTarget {
 	setRun(run: CanvasRun | null): void {
 		this.#run = run;
 		this.#path = null;
+		this.#selection = null;
 		const datum = run?.datum ?? [];
-		this.#visibleSeqs =
-			datum.length > MAX_START_ROUTES
-				? new Set(datum.slice(0, MAX_START_ROUTES).map((t) => t.seq))
-				: null;
+		this.#visibleSeqs = this.#startRoutes();
 		this.#routeHover = null;
+		this.#sourceHover = null;
 		this.#sourceColors.clear();
-		for (const trace of run?.datum ?? []) {
+		this.#addSourceColors(datum);
+		this.#el.classList.remove("is-stale");
+		this.render();
+	}
+
+	/** Give each new source ID of some datum a route color. */
+	#addSourceColors(traces: readonly DatumTrace[]): void {
+		for (const trace of traces) {
 			const sourceId = trace.input.sourceId ?? "";
 			if (!this.#sourceColors.has(sourceId)) {
 				this.#sourceColors.set(
@@ -560,8 +634,77 @@ export class Canvas extends EventTarget {
 				);
 			}
 		}
-		this.#el.classList.remove("is-stale");
-		this.render();
+	}
+
+	/**
+	 * Add datum traces to the run's, for their routes, such as the traces of
+	 * a result without every trace as they load.
+	 *
+	 * @param traces the traces
+	 */
+	addTraces(traces: readonly DatumTrace[]): void {
+		const run = this.#run;
+		if (!run || !traces.length) {
+			return;
+		}
+		const bySeq = new Map(run.datum.map((t) => [t.seq, t]));
+		for (const trace of traces) {
+			bySeq.set(trace.seq, trace);
+		}
+		run.datum = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+		this.#addSourceColors(traces);
+		this.#drawRoutes();
+	}
+
+	/** The routes the legend shows at first, so a large run stays readable. */
+	#startRoutes(): Set<number> | null {
+		const datum = this.#run?.datum ?? [];
+		return datum.length > MAX_START_ROUTES
+			? new Set(datum.slice(0, MAX_START_ROUTES).map((t) => t.seq))
+			: null;
+	}
+
+	/**
+	 * Show only the routes of some datum, such as the datum selected in a
+	 * large run's results, or every route.
+	 *
+	 * @param seqs the datum sequence numbers, or `null` for every datum
+	 */
+	setRouteSelection(seqs: readonly number[] | null): void {
+		const before = this.#selection;
+		if (seqs === null) {
+			if (before !== null) {
+				this.#selection = null;
+				this.#visibleSeqs = this.#startRoutes();
+				this.#drawRoutes();
+			}
+			return;
+		}
+		const selection = new Set(seqs);
+		if (before === null) {
+			this.#visibleSeqs = null;
+		} else if (this.#visibleSeqs) {
+			// the legend shows the datum newly selected
+			for (const seq of selection) {
+				if (!before.has(seq)) {
+					this.#visibleSeqs.add(seq);
+				}
+			}
+		}
+		this.#selection = selection;
+		this.#drawRoutes();
+	}
+
+	/** Draw the datum routes again, such as after their text changed. */
+	refreshRoutes(): void {
+		this.#drawRoutes();
+	}
+
+	/** The datum the legend lists: the selected datum, or every datum. */
+	#legendSeqs(): number[] {
+		const selection = this.#selection;
+		const seqs = (this.#run?.datum ?? []).map((t) => t.seq);
+		return selection ? seqs.filter((s) => selection.has(s)) : seqs;
 	}
 
 	/**
@@ -582,6 +725,11 @@ export class Canvas extends EventTarget {
 		this.#path = path;
 		for (const key of this.#nodes.keys()) {
 			this.#refreshNode(key);
+		}
+		for (const source of this.#sourceNodes.values()) {
+			this.graph
+				.getCell(source.key)
+				?.attr("body/class", this.#sourceClass(source));
 		}
 		this.#drawRoutes();
 	}
@@ -687,6 +835,11 @@ export class Canvas extends EventTarget {
 					? [{ trace: traces[index], upTo: path.upTo }]
 					: []),
 			];
+		} else if (this.#selection) {
+			const selection = this.#selection;
+			shown = traces
+				.filter((t) => selection.has(t.seq) || t.seq === path?.seq)
+				.map((trace) => ({ trace }));
 		} else if (this.#showRoutes) {
 			shown = traces.map((trace) => ({ trace }));
 		} else {
@@ -733,14 +886,34 @@ export class Canvas extends EventTarget {
 				title: this.#routeText(trace, route).title,
 				dim:
 					this.#showRoutes &&
+					!this.#selection &&
 					path?.seq !== undefined &&
 					trace.seq !== path.seq,
 			};
 		});
-		drawRoutes(this.#routeLayers, lines, this.#routeGeometry);
+		this.#sourceRouteSeqs.clear();
+		for (const line of lines) {
+			const key = line.route.source ? line.route.keys[0] : undefined;
+			if (key) {
+				const seqs = this.#sourceRouteSeqs.get(key) ?? [];
+				seqs.push(line.route.seq);
+				this.#sourceRouteSeqs.set(key, seqs);
+			}
+		}
+		drawRoutes(this.#routeLayers, lines, {
+			...this.#routeGeometry,
+			sources: this.#sourceNodes.size > 0,
+		});
+		const selection = this.#selection;
 		this.#legend?.show(
 			this.#showRoutes
-				? traces.map((trace) => {
+				? (selection
+						? traces.filter(
+								(t) =>
+									selection.has(t.seq) || t.seq === path?.seq,
+							)
+						: traces
+					).map((trace) => {
 						const route = whole.get(trace.seq)!;
 						const text = this.#routeText(trace, route);
 						return {
@@ -783,32 +956,46 @@ export class Canvas extends EventTarget {
 						`input ${(origin.index ?? 0) + 1}`,
 						`input ${(origin.index ?? 0) + 1}`,
 					]
-				: origin.type === "Scheduled"
+				: origin.type === "Polled"
 					? [
-							`generated by a scheduled task of ${generator}`,
-							`from ${generator}`,
+							lowerFirst(polledOriginText(origin)),
+							polledOriginShortText(origin),
 						]
-					: origin.type === "Instruction"
+					: origin.type === "Scheduled" &&
+						  origin.controlId &&
+						  !origin.filterId
 						? [
 								lowerFirst(
-									instructionOriginText(
-										origin,
-										this.#run?.instructionRuns,
-									),
+									expiredModeOriginText(origin.controlId),
 								),
-								origin.controlId
-									? `from control ${origin.controlId}`
-									: `from ${generator}`,
+								`from control ${origin.controlId}`,
 							]
-						: origin.controlId
+						: origin.type === "Scheduled"
 							? [
-									`published by control ${origin.controlId}, set by ${generator}`,
-									`from control ${origin.controlId}`,
-								]
-							: [
-									`generated by ${generator}`,
+									`generated by a scheduled task of ${generator}`,
 									`from ${generator}`,
-								];
+								]
+							: origin.type === "Instruction"
+								? [
+										lowerFirst(
+											instructionOriginText(
+												origin,
+												this.#run?.instructionRuns,
+											),
+										),
+										origin.controlId
+											? `from control ${origin.controlId}`
+											: `from ${generator}`,
+									]
+								: origin.controlId
+									? [
+											`published by control ${origin.controlId}, set by ${generator}`,
+											`from control ${origin.controlId}`,
+										]
+									: [
+											`generated by ${generator}`,
+											`from ${generator}`,
+										];
 		const last = this.#nodes.get(route.keys[route.keys.length - 1]);
 		const dropper = label(
 			last?.kind === "filter" ? last.filterId : undefined,
@@ -833,7 +1020,7 @@ export class Canvas extends EventTarget {
 	 * remove them if they are all shown.
 	 */
 	#toggleRoutes({ seqs, additive }: LegendToggle): void {
-		const all = (this.#run?.datum ?? []).map((t) => t.seq);
+		const all = this.#legendSeqs();
 		let visible: Set<number> | null = this.#visibleSeqs ?? new Set(all);
 		if (additive) {
 			const allShown = seqs.every((s) => visible!.has(s));
@@ -868,23 +1055,46 @@ export class Canvas extends EventTarget {
 		}
 	}
 
+	/**
+	 * Emphasize the routes that start at a datum source node, such as while
+	 * the pointer is over it.
+	 *
+	 * @param key the node's key, or `null` for none
+	 */
+	#setSourceHover(key: string | null): void {
+		if (key !== this.#sourceHover) {
+			this.#sourceHover = key;
+			this.#applyRouteHover();
+		}
+	}
+
 	#applyRouteHover(): void {
+		const sourceSeqs =
+			this.#sourceHover !== null
+				? this.#sourceRouteSeqs.get(this.#sourceHover)
+				: undefined;
 		const seq = this.#routeHover;
+		const seqs: ReadonlySet<number> | null =
+			sourceSeqs !== undefined
+				? new Set(sourceSeqs)
+				: seq !== null
+					? new Set([seq])
+					: null;
 		for (const layer of [
 			this.#routeLayers.lines,
 			this.#routeLayers.badges,
 		]) {
-			layer.classList.toggle("is-hovering", seq !== null);
+			layer.classList.toggle("is-hovering", seqs !== null);
 			layer
 				.querySelectorAll<SVGElement>("[data-seq]")
 				.forEach((el) =>
 					el.classList.toggle(
 						"is-hover",
-						el.dataset.seq === String(seq),
+						seqs?.has(Number(el.dataset.seq)) ?? false,
 					),
 				);
 		}
-		this.#legend?.setHover(seq);
+		this.#legend?.setHover(seqs);
 	}
 
 	/** Handle the pointer on routes and their badges. */
@@ -923,7 +1133,7 @@ export class Canvas extends EventTarget {
 		});
 		this.#legend?.addEventListener("showrange", (e) => {
 			const ranges = (e as CustomEvent<SeqRange[]>).detail;
-			const all = (this.#run?.datum ?? []).map((t) => t.seq);
+			const all = this.#legendSeqs();
 			const seqs = all.filter((seq) =>
 				ranges.some((r) => seq >= r.from && seq <= r.to),
 			);
@@ -965,7 +1175,8 @@ export class Canvas extends EventTarget {
 		const ws = this.#ws;
 		const filter = ws.filter(node.filterId);
 		const items: dia.Element.Port[] = [];
-		if (!node.main) {
+		// the Main chain takes the datum sources' lines
+		if (!node.main || this.#sourceNodes.size > 0) {
 			items.push({
 				id: "in",
 				group: "in",
@@ -994,7 +1205,7 @@ export class Canvas extends EventTarget {
 			attrs: {
 				root: { title: this.#tooltip(node, filter) },
 				body: { class: this.#nodeClass(node) },
-				icon: { text: iconGlyph(icon), class: "sim-node-icon" },
+				icon: this.#iconAttrs(icon),
 				// the External Settings marker
 				ext: {
 					text: ws.isExternal(node.filterId)
@@ -1119,6 +1330,17 @@ export class Canvas extends EventTarget {
 	}
 
 	#linkCell(link: DrawnLink): dia.Link {
+		if (link.kind === "source") {
+			return new FlowShape({
+				id: link.key,
+				source: { id: link.source.key, port: link.source.port },
+				target: { id: link.target.key, port: link.target.port },
+				attrs: { line: { stroke: this.#colors.flow } },
+				vertices: link.vertices,
+				router: { name: "normal" },
+				sim: link,
+			});
+		}
 		if (link.kind === "flow") {
 			return new FlowShape({
 				id: link.key,
@@ -1147,6 +1369,139 @@ export class Canvas extends EventTarget {
 			},
 			sim: link,
 		});
+	}
+
+	#sourceCell(node: SourceNode): dia.Element {
+		const source = this.#datumSources.find(
+			(d) => d.id === node.datumSourceId,
+		);
+		const polled = this.#run?.polled?.get(node.datumSourceId);
+		const what = source?.static ? "datum" : "polled";
+		const badge: dia.Cell.Selectors =
+			polled === undefined
+				? {
+						badge: { text: "", display: "none" },
+						badgeBody: { display: "none" },
+					}
+				: {
+						badge: {
+							text: `${polled} ${what}`,
+							display: "block",
+							class: `sim-badge${polled ? "" : " is-idle"} sim-badge-text`,
+						},
+						badgeBody: {
+							display: "block",
+							class: `sim-badge${polled ? "" : " is-idle"}`,
+						},
+					};
+		return new FilterElement({
+			id: node.key,
+			position: node.position,
+			ports: {
+				items: [
+					{
+						id: "out",
+						group: "out",
+						attrs: { portBody: { magnet: false } },
+					},
+				],
+			},
+			attrs: {
+				root: { title: this.#sourceTooltip(source, polled) },
+				body: { rx: NODE_SIZE / 2, ry: NODE_SIZE / 2 },
+				icon: this.#iconAttrs(
+					source?.static
+						? STATIC_SOURCE_ICON
+						: datumSourceIcon(source?.factoryUid ?? ""),
+				),
+				ext: { text: "" },
+				label: {
+					text: source?.static
+						? "Static"
+						: source?.name ||
+							source?.sourceId ||
+							source?.type ||
+							node.datumSourceId,
+					class: "sim-node-label",
+				},
+				...badge,
+			},
+			sim: node,
+		}).attr("body/class", this.#sourceClass(node));
+	}
+
+	/** The attributes of a node's icon, with its glyph's ink centred. */
+	#iconAttrs(icon: string): dia.Cell.Selectors[string] {
+		const text = iconGlyph(icon);
+		return {
+			text,
+			transform: glyphCenterTransform(text, ICON_SIZE),
+			class: "sim-node-icon",
+		};
+	}
+
+	#sourceClass(node: SourceNode): string {
+		const classes = ["sim-node", "is-source"];
+		const source = this.#datumSources.find(
+			(d) => d.id === node.datumSourceId,
+		);
+		if (source?.problem) {
+			classes.push("is-problem");
+		}
+		// the datum source of the selected datum
+		const seq = this.#path?.seq;
+		if (seq !== undefined) {
+			const origin = this.#run?.datum.find((t) => t.seq === seq)?.origin;
+			if (
+				origin?.type === "Polled"
+					? origin.datumSourceId === node.datumSourceId
+					: origin?.type === "Input" &&
+						node.datumSourceId === STATIC_SOURCE_ID
+			) {
+				classes.push("is-visited");
+			}
+		}
+		return classes.join(" ");
+	}
+
+	#sourceTooltip(
+		source: DatumSourceSummary | undefined,
+		polled: number | undefined,
+	): string {
+		if (!source) {
+			return "A datum source.";
+		}
+		if (source.static) {
+			return [
+				"Static: the datum of the Datum tab, which the Main chain processes in order.",
+				source.problem
+					? `Problem: ${source.problem}`
+					: `${source.count ?? 0} datum.`,
+				...(polled !== undefined
+					? [`Last run: ${polled} input datum.`]
+					: []),
+				"Click to show them in the Datum tab.",
+			].join("\n");
+		}
+		const lines = [`${source.type}: a datum source`];
+		if (source.name) {
+			lines.push(`Service Name: ${source.name}`);
+		}
+		if (source.sourceId) {
+			lines.push(`Source ID: ${source.sourceId}`);
+		}
+		if (source.schedule) {
+			lines.push(`Schedule: ${source.schedule}`);
+		}
+		if (source.problem) {
+			lines.push(`Problem: ${source.problem}`);
+		}
+		lines.push("The Main chain processes the datum it polls.");
+		if (polled !== undefined) {
+			lines.push(`Last run: ${polled} datum polled.`);
+		}
+		lines.push("Click to show its settings in the Datum Sources tab.");
+		return lines.join("\n");
 	}
 
 	#nodeClass(node: FilterNode): string {
@@ -1351,9 +1706,26 @@ export class Canvas extends EventTarget {
 
 	#bindPaperEvents(): void {
 		const paper = this.paper;
-		paper.on("element:pointerclick", (view: dia.ElementView) =>
-			this.select(String(view.model.id)),
-		);
+		paper.on("element:pointerclick", (view: dia.ElementView) => {
+			const source = this.#sourceNodes.get(String(view.model.id));
+			if (source) {
+				this.dispatchEvent(
+					new CustomEvent<string>("datumsourceselect", {
+						detail: source.datumSourceId,
+					}),
+				);
+			} else {
+				this.select(String(view.model.id));
+			}
+		});
+		// a datum source node emphasizes the routes that start at it
+		paper.on("element:mouseenter", (view: dia.ElementView) => {
+			const key = String(view.model.id);
+			if (this.#sourceNodes.has(key)) {
+				this.#setSourceHover(key);
+			}
+		});
+		paper.on("element:mouseleave", () => this.#setSourceHover(null));
 		paper.on("blank:pointerclick", () => {
 			this.select(null);
 			this.dispatchEvent(new Event("blankclick"));

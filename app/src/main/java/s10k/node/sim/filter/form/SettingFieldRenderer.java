@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.MessageSource;
@@ -66,14 +67,14 @@ import net.solarnetwork.util.StringUtils;
  * </ul>
  *
  * <p>
- * The runtime status title that SolarNode filters show first is left out,
- * because the form is rendered from a filter that has not processed any datum.
- * A filter chain's list of filters is read-only, because the simulator manages
- * it.
+ * The runtime status titles, such as the one SolarNode filters show first, are
+ * left out, because the form is rendered from a component that has not
+ * processed any datum. A filter chain's list of filters is read-only, because
+ * the simulator manages it.
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class SettingFieldRenderer {
 
@@ -93,6 +94,7 @@ final class SettingFieldRenderer {
 	private final Map<String, String> settings;
 	private final Locale locale;
 	private final boolean chain;
+	private final Set<String> statusKeys;
 
 	/**
 	 * Constructor.
@@ -108,11 +110,31 @@ final class SettingFieldRenderer {
 	 */
 	SettingFieldRenderer(MessageSource messageSource, Map<String, String> settings, Locale locale,
 			boolean chain) {
+		this(messageSource, settings, locale, chain, Set.of(STATUS_KEY));
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param messageSource
+	 *        the component's message source
+	 * @param settings
+	 *        the component settings
+	 * @param locale
+	 *        the locale to use
+	 * @param chain
+	 *        {@code true} if the component is a filter chain
+	 * @param statusKeys
+	 *        the keys of the runtime status titles to leave out
+	 */
+	SettingFieldRenderer(MessageSource messageSource, Map<String, String> settings, Locale locale,
+			boolean chain, Set<String> statusKeys) {
 		super();
 		this.messageSource = messageSource;
 		this.settings = settings;
 		this.locale = locale;
 		this.chain = chain;
+		this.statusKeys = statusKeys;
 	}
 
 	/**
@@ -136,9 +158,9 @@ final class SettingFieldRenderer {
 		return result;
 	}
 
-	private static boolean isStatus(SettingSpecifier s) {
+	private boolean isStatus(SettingSpecifier s) {
 		return (s instanceof TitleSettingSpecifier title && !(s instanceof TextFieldSettingSpecifier)
-				&& STATUS_KEY.equals(title.getKey()));
+				&& statusKeys.contains(title.getKey()));
 	}
 
 	private @Nullable SettingField field(SettingSpecifier s, @Nullable Integer index, boolean readOnly) {

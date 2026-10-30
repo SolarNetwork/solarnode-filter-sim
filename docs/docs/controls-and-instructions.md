@@ -6,7 +6,8 @@ Controls and Instructions are what provide interactivity in SolarNode.
 
 A [Control][controls] represents a value that can be changed in SolarNode. Simulated
 controls can be configured on the [Setup](./getting-your-bearings.md#setup-pane) pane's **Controls**
-tab. Each control has a Control ID, type, starting value, datum property, and a Publish setting.
+tab. Each control has a Control ID, kind, type, starting value, datum property, and a Publish
+setting.
 
 ### Control datum property
 
@@ -32,6 +33,20 @@ datum.
 A generated datum is not persisted unless you turn on **Persist**. After a run, the Execution Flow's
 final state lists each control's value, and **Use the final values** copies them into the
 Controls tab, to continue from there in the next run.
+
+### Operational Mode Switches
+
+Set a control's **Kind** to **Operational Mode Switch** for a simulated [Operational Mode
+Switch][opmode-switch]: a Boolean control whose value is whether its **Operational Mode** is active.
+Setting the control to `true` enables the mode, and setting it to `false` disables it. The switch's
+value also follows its mode when anything else changes the mode, such as an
+[Operational Mode][opmode-filter] filter or an `EnableOperationalModes` instruction.
+
+A switch publishes a datum each time its value changes (**Publish** is **Never** or **On change**),
+whatever changed its mode. A mode that expires is found by SolarNode's operational modes service
+every 20 seconds, so the switch publishes up to 20 seconds after the mode's expiration date. The
+**Starting Operational Modes** on the Environment tab are the switches' starting values, which they
+do not publish.
 
 ### Control Conductors
 
@@ -60,3 +75,5 @@ An instruction can be _deferred_ to a future date by including an `executionDate
 [control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
 [instructions]: https://solarnetwork.github.io/solarnode-handbook/users/instructions/
 [instructor]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/instructor/
+[opmode-filter]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/op-mode/
+[opmode-switch]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.control.opmode#operational-mode-switch

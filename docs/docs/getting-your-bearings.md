@@ -63,9 +63,16 @@ the entire simulation:
 </figure>
 
 The Setup pane is where you configure the overall SolarNode simulation universe. At a minimum you
-must provide the initial [datum][datum] to send into the filter execution flow. These initial datum
-represent data captured from SolarNode [Datum Sources][datum-sources] that read from devices like
-meters and power inverters.
+must provide the initial [datum][datum] to send into the filter execution flow, or a datum source
+that provides them. These initial datum represent data captured from SolarNode
+[Datum Sources][datum-sources] that read from devices like meters and power inverters.
+
+The **Datum Sources** tab holds simulated SolarNode datum sources, like a Mock Energy Meter, a
+Mock Battery, or a Time-based Tariff Datum Source. The simulation polls each one on its schedule,
+and the Datum Queue processes the datum they return, like the input datum. Use **Add a datum
+source** to add one, then configure it in its card's settings form, as you would on a node. A run
+without input datum starts at the **Environment** tab's **Start Date** (or now), and runs for its
+**Keep Running After the Last Datum** time. See [Datum Sources](./datum-sources.md) for more details.
 
 The **History**, **Environment**, **Metadata**, and **Controls** tabs in this pane allow you to
 configure other simulated SolarNode services like [Metadata][metadata],
@@ -128,7 +135,14 @@ upper-right of the pane:
 </figure>
 
 The **Toggle datum routes** button is used to show or hide lines representing "routes" each
-datum takes as it flows through the filters during a simulation run.
+datum takes as it flows through the filters during a simulation run. When a run has more than 20
+datum, only the routes of the datum you select in the Execution Flow show, and this button shows
+or hides their legend.
+
+Where the datum come from is drawn as round nodes below and left of the Main chain, each with a
+line into it: **Static** for the datum of the [Setup](#setup-pane) pane's **Datum** tab, then each
+[datum source](./datum-sources.md). A datum's route starts at the node it came from, and after a
+run each node shows how many datum it provided. Click one to show it in the Setup pane.
 
 ## Inspector
 

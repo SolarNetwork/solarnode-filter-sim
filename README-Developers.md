@@ -57,7 +57,7 @@ The main TypeScript modules are:
 |:-------|:---------|
 | `main.ts`      | The application: wires the parts together, and handles running simulations, import, export, and keyboard shortcuts. |
 | `workspace.ts` | The configuration being edited: filters, chains, undo and redo, and saving in the browser. |
-| `layout.ts`    | The automatic layout of the flow chart. |
+| `layout.ts`    | The automatic layout of the flow chart, with the static datum and datum sources left of the Main chain. |
 | `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
 | `datumRoutes.ts` | The route each datum took through the drawing, from its steps, for the canvas to draw. |
 | `jsonEditor.ts`, `jsonFormat.ts`, `jsonLint.ts`, `jsonComplete.ts` | The [CodeMirror][codemirror] JSON editor of the JSON inputs, its Format button's formatter, its schema checks, and its key completion. |
@@ -65,11 +65,14 @@ The main TypeScript modules are:
 | `routeOverlay.ts` | Draws datum routes on the canvas: lanes, the lines back through the queue, and number badges. |
 | `routesLegend.ts` | The datum routes legend, which shows and hides routes like a Grafana legend. |
 | `inspector.ts` | The filter inspector: the settings form, rendered from `/api/settings-form`, plus the instance ID, comment, and setting notes. |
-| `inputs.ts`    | The run inputs (datum, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a `/api/simulate` request. |
-| `inputPanel.ts` | The input tabs and the Entry Point select. |
-| `results.ts`   | The Execution Flow panel, which shows a simulation result, and the run statistics the canvas shows on its nodes. |
+| `settingsForm.ts` | The settings form fields of a filter or datum source, rendered from `/api/settings-form`, which edit a settings map: help, notes, resets, dynamic lists, and Choose menus. |
+| `inputs.ts`    | The run inputs (datum, datum sources and Operational Mode Invokers, histories, starting state, metadata, controls, and Control Conductors), saved in the browser, which make up a simulation request. |
+| `inputPanel.ts` | The input tabs, including the datum source and invoker cards with their poll counts, and the Entry Point select. |
+| `results.ts`   | The Execution Flow panel, which shows a simulation result (with a run's progress and Cancel, downloads, and, over 200 datum, the datum list with each datum's trace loaded when it is reached), the time zone note with its UTC toggle, the datum selected to show their routes over 20 datum, and the run statistics the canvas shows on its nodes. |
+| `datumList.ts` | The datum list of a result over 200 datum: its filters (source IDs, time range, outcomes, datum number) and virtualized rows, with a current row the keys move and the selected rows. |
+| `dates.ts`     | Dates in a time zone: local date-times of instants, and the instants of entered dates, across daylight saving changes. |
 | `debug.ts`     | Debug mode: the cursor positions, the node state rebuilt at each filter step, and the state tabs. |
-| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, and instruction lists. |
+| `view.ts`      | Rendering helpers shared by the execution flow, debug views, and dialogs, including message rows with a copy button, the controls table, instruction lists, and the names of a run's datum sources. |
 | `instanceIds.ts` | SolarNode's instance ID rules, the same as the app's `InstanceIds` class. |
 | `html.ts`      | A sanitizer for the HTML in SolarNode setting descriptions. |
 | `session.ts`   | Simulation files: the workspace and run inputs saved as JSON, to share a simulation or open it in another browser. |
@@ -88,16 +91,24 @@ records in the `s10k.node.sim.filter.domain` package.
 
 | Endpoint | Description |
 |:---------|:------------|
-| `GET /api/info` | The application name and version, and `customFilters` if the app was started with a custom filters path. |
+| `GET /api/info` | The application name and version, `customFilters` if the app was started with a custom filters path, and the server's `timeZone`. |
 | `GET /api/filter-types` | The supported filter types, sorted by name. A custom filter type has its `bundle` (`name` and `version`). |
 | `POST /api/filter-types/reload` | Load the custom filters again: a `CustomFiltersReload` out, with the filter types, the unavailable ones, and the `messages` of the startup message. A `400` response if there is no custom filters path. |
 | `GET /api/filter-types/unavailable` | The filter types the simulator knows of but cannot run, such as custom filter types that need a service it does not provide, sorted by name, each with its `reason`. |
-| `POST /api/settings-form` | Get a filter's settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. |
-| `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out. |
+| `GET /api/datum-source-types` | The supported datum source types, sorted by name, each with its default poll schedule and `capabilities` (`Controls`, `Instructions`, `TariffSchedule`). |
+| `POST /api/settings-form` | Get a filter's, datum source's, or Operational Mode Invoker's (`net.solarnetwork.node.datum.opmode.invoker`) settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. A datum source's settings are its poll job's (`schedule` and `jobService.datumDataSource.*`, or `jobService.multiDatumDataSource.*` for a multi datum source), and a datum source with controls has its `controlIds`. |
+| `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out, with the filters, and the controls, Control Conductors, supported datum sources, and Operational Mode Invokers for the run inputs. |
 | `POST /api/settings/merge` | Add a settings CSV file to a configuration, the way a node imports a file: a `SettingsMergeRequest` (`config` and `csv`) in, a `SettingsImport` with the combined configuration out. |
 | `POST /api/settings/external` | Combine External Settings files the way a node applies its auto settings files: an `ExternalSettingsRequest` (`files` of `name` and `csv`) in, `ExternalSettings` out. |
 | `POST /api/settings/export` | Export a configuration as a settings CSV file: a `SettingsExportRequest` in, a `SettingsExport` out. With `external`, rows that the external settings already have are left out. |
 | `POST /api/simulate` | Run a simulation: a `SimulationRequest` in, a `SimulationResult` out. An invalid request gets a `400` response with problem details. |
+| `POST /api/runs` | Start a simulation in the background: a `SimulationRequest` in, a `RunInfo` (`id`) out at once. An invalid request gets a `400` response with problem details, as does a request while the simulator is busy with other runs. |
+| `GET /api/runs/{id}/events` | A run's progress, as a `text/event-stream` (see below). |
+| `GET /api/runs/{id}/progress` | A run's progress now: a `RunProgress`. |
+| `GET /api/runs/{id}` | A finished run's result: a `RunResult` (see below). A run that is still running gets a `409` response, and one the simulator no longer has a `404`. |
+| `GET /api/runs/{id}/datum?seq=1,2` | The traces of some of a run's datum, by `seq`, up to 200, in the order asked. |
+| `GET /api/runs/{id}/datum.json` | Download a finished run's output datum (persisted, in processing order), or with `kind=input` each datum as it entered the Datum Queue, as a JSON array in the format of the Datum input. |
+| `DELETE /api/runs/{id}` | Cancel a run, which stops and keeps what it has, with a `Cancelled` message. |
 | `POST /api/capture` | Start capturing the datum a SolarNode captures: a `CaptureRequest` (`url`, `username`, `password`, and optional `sourceIds`) in, a `CaptureInfo` (`id` and `topics`) out. A node that cannot be reached or does not accept the login gets a `400` response with problem details. |
 | `GET /api/capture/{id}/events` | A capture's datum, as a `text/event-stream` (see below). |
 | `DELETE /api/capture/{id}` | End a capture. |
@@ -191,6 +202,36 @@ curl -N http://localhost:8080/api/capture/<id>/events
 curl -X DELETE http://localhost:8080/api/capture/<id>
 ```
 
+## Background runs
+
+`POST /api/runs` runs a simulation on a small pool of threads (two at a time), for long runs
+that the UI shows progress for and can cancel. The simulator keeps the last three runs, however
+long ago they ran, until newer runs replace them. While a run runs, it keeps each datum's trace compressed,
+so memory grows with the compressed size.
+
+The event stream has a `progress` event at once and about every 250 ms while the run goes on,
+and a `done` event when it ends, each a `RunProgress`:
+`{"state":"Running"|"Done"|"Failed","processed":…,"expected":…,"date":…}`, plus `error` and
+`problems` when it failed. `expected` is the input datum plus each datum source's polls, up to
+Maximum Datum, without the datum filters generate. A run that has ended sends only `done`.
+
+A `RunResult` is a `SimulationResult` with the run's `id`. Up to 200 datum it has every trace.
+Above that, `datum` has the first 20 traces only, plus an `index` of every datum (`seq`,
+`sourceId`, `created`, `origin`, `outcome`, and `error`) and `filterStats`, each filter's counts
+(`in`, `out`, `dropped`, `changed`, `skipped`, `errors`). Load other traces with
+`/datum?seq=`.
+
+The server limits runs with `--sim.max-datum` (default 100,000) and `--sim.max-run-time` (default
+`10m`). A run's timeout is 10 seconds per 1,000 datum of its Maximum Datum (at least 10 seconds),
+up to the maximum run time.
+
+```sh
+curl -H 'Content-Type: application/json' -d @request.json http://localhost:8080/api/runs
+curl -N http://localhost:8080/api/runs/<id>/events
+curl -o output.json 'http://localhost:8080/api/runs/<id>/datum.json'
+curl -X DELETE http://localhost:8080/api/runs/<id>
+```
+
 ## Settings CSV files
 
 The import reads a settings CSV file the way SolarNode does (Core Settings Support 4.2.1), and
@@ -257,6 +298,26 @@ passes datum through them unchanged, with the reason in its message. The UI show
 in the inspector and on the canvas, puts the custom types under **Custom** in the palette, and
 saves the bundle of each custom type a simulation uses in simulation files
 (`customFilters`), to say which bundles are missing when a file is opened.
+
+Custom datum source types come from the same bundles. `FilterBlueprintInterpreter` also
+describes each managed service factory of a `ManagedJob` whose `SimpleManagedJob` wraps a
+`DatumDataSourcePollManagedJob`, as a `DatumSourceTypeDescriptor` (the datum source bean, the
+job's schedule argument, the interfaces of its `serviceProviderConfigurations`, and `multi` when
+the bean is the poll job's `multiDatumDataSource`).
+`BlueprintDatumSourceTypes` turns each into a `DatumSourceTypeDefinition` with the shared
+bean creation in `BlueprintBeans` (which `BlueprintFilterTypes` uses too), binding services with
+`ServiceBindings.datumSourceService()`, which adds the `DatumSourceContext` services. It prefers a
+constructor that takes a clock and then a `RandomGenerator`, given the datum source's seeded
+random generator. A multi type (`DatumSourceTypeDefinition.multi`) is a `MultiDatumDataSource`,
+which `SimulationContext.createDatumSource()` gives the poll job as its `multiDatumDataSource`;
+its settings use `settingPrefix()` (`jobService.multiDatumDataSource.`), which the UI's datum
+source cards read too (`sourceSetting()`), and the invokers get the multi datum sources as their
+`MultiDatumDataSource` collection. `CustomFilterService` also owns the `DatumSourceTypeRegistry`, which a reload
+replaces, and runs, forms, and CSV imports (`DatumSourceSettings`) use the registry's
+snapshots. Each datum source call runs with the bundle's class loader
+(`DatumSourceTypeDefinition.run()`). `BlueprintDatumSourceTypesTests` defines the four standard
+datum source types from their own blueprints and compares the `datum-sources` and
+`opmode-invoker` smoke fixtures' results with `StandardDatumSourceTypes`'.
 
 `BlueprintFilterTypesTests` defines the standard filter types from their own blueprints and
 checks that the smoke fixtures give the same results as with `StandardFilterTypes`. That checks
@@ -330,7 +391,10 @@ distribution sets the executable's mode explicitly.
 A native image only has the reflection metadata that Spring's AOT processing and
 `SimulatorRuntimeHints` give it, so an expression can fail natively that works on the JVM. The
 `nativeSmokeTest` task builds the executable (if needed), starts it on a free port, and runs
-the smoke fixtures through `/api/simulate`:
+each smoke fixture twice: through `/api/simulate`, and as a background run through the runs API,
+as the UI does (following its events, then getting its result and both downloads). It then runs
+the `datum-sources` fixture for an hour of simulated time, so the result is over 200 datum, and
+checks that the runs API's result, with the traces it loads by number, matches `/api/simulate`'s:
 
 ```sh
 GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeSmokeTest

@@ -1,14 +1,17 @@
 import "../scss/style.scss";
 import {
 	ApiError,
+	cancelRun,
 	exportSettings,
 	getFilterTypes,
 	getInfo,
+	getRunResult,
 	getUnavailableFilterTypes,
 	importSettings,
 	mergeSettings,
 	reloadCustomFilters,
-	simulate,
+	startRun,
+	waitForRun,
 } from "./api.ts";
 import { Canvas } from "./canvas.ts";
 import { askCapture, CapturePanel, capturedDatumJson } from "./capture.ts";
@@ -23,27 +26,34 @@ import {
 	showToast,
 	type ImportMode,
 } from "./dialogs.ts";
+import { timeZoneNames } from "./dates.ts";
 import { ExternalSettingsDialog } from "./externalSettings.ts";
 import { InputPanel } from "./inputPanel.ts";
 import {
+	getServerTimeZone,
 	InputError,
 	NODE_METADATA_SERVICE_UID,
 	parseDatumList,
 	RunInputs,
+	setServerTimeZone,
 } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
-import { MAIN_KEY, type FilterNode } from "./layout.ts";
+import { MAIN_KEY, STATIC_SOURCE_ID, type FilterNode } from "./layout.ts";
 import {
 	UNKNOWN_FACTORY_UID,
 	type AppInfo,
+	type DatumTrace,
 	type ExportStyle,
 	type FilterTypeInfo,
+	type RunProgress,
+	type SettingsImport,
 	type SimulationResult,
 	type UnavailableFilterType,
 } from "./model.ts";
 import { renderPalette } from "./palette.ts";
 import {
 	filterRunStats,
+	isLargeResult,
 	ResultsPanel,
 	type DatumPath,
 	type DebugMark,
@@ -58,6 +68,7 @@ import {
 } from "./session.ts";
 import { buildReport, REPORT_FILE_NAME } from "./report.ts";
 import { initColumnSplitter, initSplitter } from "./splitter.ts";
+import { setDatumSourceNames } from "./view.ts";
 import { Workspace } from "./workspace.ts";
 
 /** The browser storage key of the hidden side panels. */
@@ -115,6 +126,58 @@ function download(text: string, fileName: string, type: string): void {
 }
 
 /** Test if keyboard events go to a form control rather than the canvas. */
+/**
+ * Count the datum a run polled from each datum source, and with each
+ * Operational Mode Invoker, and its input datum, as the static datum's.
+ *
+ * @param result the result
+ * @param sourceIds the ids of the datum sources and invokers the run had
+ * @returns the counts, by id, with the input datum's by
+ *     {@link STATIC_SOURCE_ID}
+ */
+function pollCounts(
+	result: SimulationResult,
+	sourceIds: readonly string[],
+): Map<string, number> {
+	const counts = new Map(sourceIds.map((id) => [id, 0]));
+	counts.set(STATIC_SOURCE_ID, 0);
+	const origins = isLargeResult(result)
+		? result.index.map((e) => e.origin)
+		: result.datum.map((t) => t.origin);
+	for (const origin of origins) {
+		if (origin.type === "Input") {
+			counts.set(STATIC_SOURCE_ID, counts.get(STATIC_SOURCE_ID)! + 1);
+		}
+		if (origin.type !== "Polled") {
+			continue;
+		}
+		// a datum an invoker polled counts for its datum source and for it
+		for (const id of [origin.datumSourceId, origin.invokerId]) {
+			if (id && counts.has(id)) {
+				counts.set(id, counts.get(id)! + 1);
+			}
+		}
+	}
+	return counts;
+}
+
+/**
+ * Name the input tabs that an import changed, which have no undo.
+ *
+ * @param result the import result
+ * @returns the tab names, like `Controls and Datum Sources tabs`
+ */
+function environmentTabs(result: SettingsImport): string {
+	const tabs: string[] = [];
+	if (result.controls?.length || result.conductors?.length) {
+		tabs.push("Controls");
+	}
+	if (result.datumSources?.length || result.invokers?.length) {
+		tabs.push("Datum Sources");
+	}
+	return `${tabs.join(" and ")} tab${tabs.length === 1 ? "" : "s"}`;
+}
+
 function isTyping(target: EventTarget | null): boolean {
 	return (
 		target instanceof HTMLElement &&
@@ -128,6 +191,9 @@ const METADATA_SERVICE_CLASS = "net.solarnetwork.node.service.MetadataService";
 
 /** How long after a change, in milliseconds, debug mode runs again. */
 const DEBUG_RERUN_DELAY = 600;
+
+/** How long, in milliseconds, a run goes before its progress shows. */
+const PROGRESS_DELAY = 1000;
 
 /** The service filter object class of datum filters. */
 const FILTER_SERVICE_CLASS = "net.solarnetwork.service.DatumFilterService";
@@ -153,6 +219,8 @@ class App {
 	 */
 	#simulationName: string | null = null;
 	#running = false;
+	/** The ID of the run in progress. */
+	#runId: string | null = null;
 	#rerunTimer?: number;
 
 	/**
@@ -196,13 +264,28 @@ class App {
 			conductorUids: () => inputs.conductorUids,
 			addConductor: (uid) => this.#inputPanel.addConductor(uid),
 		});
-		this.#inputPanel = new InputPanel(inputs, ws);
+		this.#inputPanel = new InputPanel(inputs, ws, {
+			relatedServices: (serviceFilter) =>
+				this.#relatedServices(serviceFilter),
+			datumSourcesChanged: () => this.#refreshCanvasSources(),
+		});
 		this.#results = new ResultsPanel($("#results"), ws);
 		this.#capture = new CapturePanel($("#capture"));
 		this.#renderPalette(types);
 		const reloadButton = $<HTMLButtonElement>("#reload-filters-button");
+		$("#time-zone-choices").append(
+			...timeZoneNames().map((name) => new Option(name)),
+		);
 		void info.then((i) => {
 			reloadButton.hidden = !i?.customFilters;
+			if (i?.timeZone) {
+				setServerTimeZone(i.timeZone);
+			}
+			const zone = getServerTimeZone();
+			document
+				.querySelectorAll(".sim-server-time-zone")
+				.forEach((el) => (el.textContent = zone));
+			$<HTMLInputElement>("#input-time-zone").placeholder = zone;
 		});
 		reloadButton.addEventListener(
 			"click",
@@ -240,6 +323,9 @@ class App {
 		this.#canvas.addEventListener("blankclick", () =>
 			this.#results.clearDatum(),
 		);
+		this.#canvas.addEventListener("datumsourceselect", (e) =>
+			this.#showDatumSource((e as CustomEvent<string>).detail),
+		);
 		this.#canvas.addEventListener("filedrop", (e) =>
 			this.openFile((e as CustomEvent<File>).detail),
 		);
@@ -247,7 +333,12 @@ class App {
 			this.#refreshControls();
 			this.#changed();
 		});
-		inputs.addEventListener("change", () => this.#changed());
+		inputs.addEventListener("change", () => {
+			this.#refreshCanvasSources();
+			this.#refreshControls();
+			this.#changed();
+		});
+		this.#refreshCanvasSources();
 		// the inspector warns about commands that are not allowed, and
 		// controls and Control Conductors that are missing
 		let allowed = inputs.state.allowedCommands;
@@ -445,8 +536,7 @@ class App {
 					? this.#ws.mergeConfig(result.config)
 					: this.#ws.importConfig(result.config);
 			const environmentNotes = this.#inputs.importEnvironment(
-				result.controls,
-				result.conductors,
+				result,
 				mode === "replace",
 			);
 			if (environmentNotes.length) {
@@ -474,7 +564,7 @@ class App {
 				showMessages({
 					title: "Settings imported",
 					summary: environmentNotes.length
-						? `${summary} You can undo the filter changes with Ctrl+Z, but not the Controls tab changes.`
+						? `${summary} You can undo the filter changes with Ctrl+Z, but not the ${environmentTabs(result)} changes.`
 						: `${summary} You can undo the import with Ctrl+Z.`,
 					notes,
 					messages: result.messages,
@@ -580,14 +670,45 @@ class App {
 			throw e;
 		}
 		const mark = auto ? this.#results.debugMark : null;
+		// as they are now, as the results name them after later edits too
+		const sourceNames = this.#inputPanel.datumSourceNames();
+		const timeZone = this.#inputs.timeZone;
 		this.#setRunning(true);
+		let progressTimer: number | undefined;
 		try {
-			const result = await simulate({
+			const { id } = await startRun({
 				config: this.#ws.toConfig(),
 				...parts,
 				options: { ...parts.options, detail: debug ? "Debug" : null },
 			});
-			this.#showResult(result, debug, mark);
+			this.#runId = id;
+			// the progress shows only for a run that takes a while
+			let latest: RunProgress = {
+				state: "Running",
+				processed: 0,
+				expected: 0,
+			};
+			progressTimer = window.setTimeout(() => {
+				this.#results.setProgress(latest);
+				this.#refreshBottom();
+			}, PROGRESS_DELAY);
+			const done = await waitForRun(id, (progress) => {
+				latest = progress;
+				if (this.#results.running) {
+					this.#results.setProgress(progress);
+				}
+			});
+			if (done.state === "Failed") {
+				const detail = done.error ?? "The simulation failed.";
+				throw new ApiError(detail, 400, {
+					detail,
+					problems: done.problems ?? undefined,
+				});
+			}
+			const result = await getRunResult(id);
+			setDatumSourceNames(sourceNames);
+			this.#results.setTimeZone(timeZone);
+			this.#showResult(result, debug, mark, [...sourceNames.keys()]);
 		} catch (e) {
 			if (auto) {
 				showToast(
@@ -599,6 +720,10 @@ class App {
 				);
 			}
 		} finally {
+			window.clearTimeout(progressTimer);
+			this.#runId = null;
+			this.#results.setProgress(null);
+			this.#refreshBottom();
 			this.#setRunning(false);
 		}
 	}
@@ -634,13 +759,16 @@ class App {
 		result: SimulationResult,
 		debug: boolean,
 		mark: DebugMark | null,
+		sourceIds: readonly string[],
 	): void {
 		// the canvas first, as debug mode then highlights the cursor on it
+		const polled = pollCounts(result, sourceIds);
 		this.#canvas.setRun({
 			stats: filterRunStats(result),
 			output: result.stats.output,
 			datum: result.datum,
 			instructionRuns: result.instructionRuns,
+			polled,
 		});
 		if (debug) {
 			this.#results.showDebug(result, mark);
@@ -651,6 +779,33 @@ class App {
 		// the top stays where it is
 		this.#refreshBottom();
 		this.#inputPanel.setFinalState(result.finalState);
+		this.#inputPanel.setPollCounts(polled);
+	}
+
+	/** Draw the datum sources on the canvas, as they are now. */
+	#refreshCanvasSources(): void {
+		// the input panel calls this while it renders its first cards too
+		const panel = this.#inputPanel as InputPanel | undefined;
+		if (panel) {
+			this.#canvas.setDatumSources(panel.datumSourceSummaries());
+		}
+	}
+
+	/**
+	 * Show a datum source's card, or the Datum tab for the static datum,
+	 * showing the inputs panel first if it is hidden.
+	 *
+	 * @param id the datum source id
+	 */
+	#showDatumSource(id: string): void {
+		if ($("#layout").classList.contains("is-left-hidden")) {
+			$("#left-panel-button").click();
+		}
+		if (id === STATIC_SOURCE_ID) {
+			this.#inputPanel.showDatumInput();
+		} else {
+			this.#inputPanel.showDatumSource(id);
+		}
 	}
 
 	#stopDebug(): void {
@@ -664,6 +819,7 @@ class App {
 
 	#closeResults(): void {
 		window.clearTimeout(this.#rerunTimer);
+		this.#inputPanel.setPollCounts(null);
 		this.#results.clear();
 		this.#refreshBottom();
 		this.#canvas.setRun(null);
@@ -675,7 +831,7 @@ class App {
 	 */
 	#refreshBottom(): void {
 		const capturing = this.#capture.active;
-		const results = this.#results.result !== null;
+		const results = this.#results.result !== null || this.#results.running;
 		$("#capture").hidden = !capturing;
 		$("#results").hidden = capturing || !results;
 		$("#center-panel").classList.toggle(
@@ -808,6 +964,9 @@ class App {
 		results.addEventListener("filter", (e) =>
 			this.#canvas.selectFilter((e as CustomEvent<string>).detail),
 		);
+		results.addEventListener("datumsource", (e) =>
+			this.#showDatumSource((e as CustomEvent<string>).detail),
+		);
 		results.addEventListener("datum", (e) =>
 			this.#canvas.setPath((e as CustomEvent<DatumPath | null>).detail),
 		);
@@ -824,6 +983,27 @@ class App {
 		results.addEventListener("report", () => void this.downloadReport());
 		results.addEventListener("close", () => this.#closeResults());
 		results.addEventListener("stop", () => this.#stopDebug());
+		results.addEventListener("cancel", () => {
+			if (this.#runId) {
+				void cancelRun(this.#runId);
+			}
+		});
+		results.addEventListener("traces", (e) =>
+			this.#canvas.addTraces((e as CustomEvent<DatumTrace[]>).detail),
+		);
+		results.addEventListener("routeselection", (e) =>
+			this.#canvas.setRouteSelection(
+				(e as CustomEvent<number[] | null>).detail,
+			),
+		);
+		results.addEventListener("timezone", () =>
+			this.#canvas.refreshRoutes(),
+		);
+		window.addEventListener("pagehide", () => {
+			if (this.#runId) {
+				void cancelRun(this.#runId, true);
+			}
+		});
 		$("#run-button").addEventListener("click", () => void this.run());
 		$("#debug-button").addEventListener("click", () => void this.run(true));
 	}
@@ -1079,6 +1259,7 @@ class App {
 		}
 		this.#ws.setTypes(result.filterTypes, result.unavailable);
 		this.#renderPalette(result.filterTypes);
+		this.#inputPanel.setDatumSourceTypes(result.datumSourceTypes);
 		this.#inspector.show(this.#canvas.selection);
 		const [first, ...details] = result.messages;
 		// the first line is like "Custom filters: 1 available from 1 bundle"
@@ -1097,7 +1278,9 @@ class App {
 	#refreshControls(): void {
 		$<HTMLButtonElement>("#undo-button").disabled = !this.#ws.canUndo;
 		$<HTMLButtonElement>("#redo-button").disabled = !this.#ws.canRedo;
-		$("#empty-state").hidden = !this.#ws.isEmpty;
+		// only a new simulation offers the upload: any input, filter, or run
+		// (which needs an input) hides it
+		$("#empty-state").hidden = !(this.#ws.isEmpty && this.#inputs.isEmpty);
 	}
 }
 
