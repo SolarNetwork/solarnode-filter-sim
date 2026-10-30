@@ -38,6 +38,9 @@ import tools.jackson.databind.JsonNode;
  * @param datumSources
  *        the datum sources the simulation polls for more input datum, or
  *        {@code null}
+ * @param invokers
+ *        the Operational Mode Datum Source Invokers, which poll the datum
+ *        sources while their modes are active, or {@code null}
  * @param history
  *        datum to pre-load into the datum history, or {@code null}
  * @param environment
@@ -45,12 +48,38 @@ import tools.jackson.databind.JsonNode;
  * @param options
  *        simulation options, or {@code null} for the defaults
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 public record SimulationRequest(SimConfig config, @Nullable String entryPoint,
 		@Nullable List<JsonNode> datum, @Nullable List<DatumSourceConfig> datumSources,
-		@Nullable SimulationHistory history, @Nullable SimulationEnvironment environment,
-		@Nullable SimulationOptions options) {
+		@Nullable List<OpModeInvokerConfig> invokers, @Nullable SimulationHistory history,
+		@Nullable SimulationEnvironment environment, @Nullable SimulationOptions options) {
+
+	/**
+	 * Constructor, without invokers.
+	 *
+	 * @param config
+	 *        the filter configuration
+	 * @param entryPoint
+	 *        the {@code id} of the filter to apply to each datum, or
+	 *        {@code null}
+	 * @param datum
+	 *        the input datum
+	 * @param datumSources
+	 *        the datum sources, or {@code null}
+	 * @param history
+	 *        datum to pre-load into the datum history, or {@code null}
+	 * @param environment
+	 *        the starting state of the simulated node, or {@code null}
+	 * @param options
+	 *        simulation options, or {@code null} for the defaults
+	 */
+	public SimulationRequest(SimConfig config, @Nullable String entryPoint,
+			@Nullable List<JsonNode> datum, @Nullable List<DatumSourceConfig> datumSources,
+			@Nullable SimulationHistory history, @Nullable SimulationEnvironment environment,
+			@Nullable SimulationOptions options) {
+		this(config, entryPoint, datum, datumSources, null, history, environment, options);
+	}
 
 	/**
 	 * Constructor, without datum sources.
@@ -72,7 +101,7 @@ public record SimulationRequest(SimConfig config, @Nullable String entryPoint,
 	public SimulationRequest(SimConfig config, @Nullable String entryPoint,
 			@Nullable List<JsonNode> datum, @Nullable SimulationHistory history,
 			@Nullable SimulationEnvironment environment, @Nullable SimulationOptions options) {
-		this(config, entryPoint, datum, null, history, environment, options);
+		this(config, entryPoint, datum, null, null, history, environment, options);
 	}
 
 }

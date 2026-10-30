@@ -39,9 +39,11 @@ import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.settings.SettingsApplier;
 import s10k.node.sim.filter.sim.SimDatumSources;
+import s10k.node.sim.filter.sim.SimOpModeInvokers;
 import s10k.node.sim.filter.sim.SimulationContext;
 import s10k.node.sim.filter.sim.SimulationException;
 import net.solarnetwork.domain.datum.GeneralDatumMetadata;
+import net.solarnetwork.node.datum.opmode.DatumDataSourceOpModeInvoker;
 import net.solarnetwork.node.domain.datum.NodeDatum;
 import net.solarnetwork.node.job.SimpleManagedJob;
 import net.solarnetwork.node.service.NodeControlProvider;
@@ -53,7 +55,8 @@ import net.solarnetwork.settings.support.BasicCronExpressionSettingSpecifier;
 import net.solarnetwork.settings.SettingSpecifierProvider;
 
 /**
- * Service for filter and datum source settings forms.
+ * Service for filter, datum source, and Operational Mode Datum Source Invoker
+ * settings forms.
  *
  * <p>
  * A form is rendered from the setting specifiers of a new filter, with the
@@ -67,8 +70,13 @@ import net.solarnetwork.settings.SettingSpecifierProvider;
  * message source. The job is not scheduled.
  * </p>
  *
+ * <p>
+ * An invoker's form is rendered from the setting specifiers of a new invoker,
+ * with the settings applied. The invoker is not started.
+ * </p>
+ *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 public class SettingsFormService {
 
@@ -80,6 +88,9 @@ public class SettingsFormService {
 			DatumSourceTypeDefinition.SETTING_PREFIX + "status",
 			DatumSourceTypeDefinition.SETTING_PREFIX + "datumStatus",
 			DatumSourceTypeDefinition.SETTING_PREFIX + "touStatus");
+
+	/** The key of the runtime status title the invoker shows. */
+	private static final Set<String> INVOKER_STATUS_KEYS = Set.of("status");
 
 	private final FilterTypeRegistry registry;
 	private final DatumSourceTypeRegistry datumSourceRegistry;
@@ -130,6 +141,9 @@ public class SettingsFormService {
 		final String factoryUid = request.factoryUid();
 		if ( factoryUid == null || factoryUid.isBlank() ) {
 			throw new SimulationException("The factoryUid is required.");
+		}
+		if ( SimOpModeInvokers.FACTORY_UID.equals(factoryUid) ) {
+			return invokerForm(request, locale);
 		}
 		final FilterTypeDefinition def = registry.definition(factoryUid);
 		if ( def == null ) {
@@ -186,6 +200,18 @@ public class SettingsFormService {
 				: null);
 		return new SettingsForm(def.factoryUid(), fields, problems, def.limitations(settings),
 				controlIds);
+	}
+
+	private SettingsForm invokerForm(SettingsFormRequest request, Locale locale) {
+		final Map<String, String> settings = settings(request.settingsOrEmpty());
+		final SimulationContext context = newContext();
+		final DatumDataSourceOpModeInvoker invoker = context
+				.createInvoker(SimOpModeInvokers.FACTORY_UID, SimOpModeInvokers.FACTORY_UID).invoker();
+		final List<SettingProblem> problems = SettingsApplier.apply(invoker, settings).stream()
+				.map(p -> problem(p, "invoker")).toList();
+		final List<SettingField> fields = new SettingFieldRenderer(SimOpModeInvokers.MESSAGE_SOURCE,
+				settings, locale, false, INVOKER_STATUS_KEYS).render(invoker.getSettingSpecifiers());
+		return new SettingsForm(SimOpModeInvokers.FACTORY_UID, fields, problems, null);
 	}
 
 	private static List<String> controlIds(NodeControlProvider provider) {

@@ -27,14 +27,22 @@ export function quoted(name: string): string {
 	return `"${name}"`;
 }
 
-/** How the results name a datum source of the run they show. */
+/**
+ * How the results name a datum source, or an Operational Mode Invoker, of the
+ * run they show.
+ */
 export interface DatumSourceName {
 	/** The Service Name, if it has one. */
 	name?: string;
 	/** The type's name. */
 	type: string;
-	/** The position in the run's datum sources, counting from 1. */
+	/**
+	 * The position in the run's datum sources, or its invokers, counting from
+	 * 1.
+	 */
 	position: number;
+	/** `true` for an Operational Mode Invoker. */
+	invoker?: boolean;
 }
 
 /**
@@ -57,18 +65,23 @@ export function setDatumSourceNames(
 /**
  * Name a datum source of the run the results show, like the server's
  * messages: `"Meter 1" (Mock Energy Meter)`, or `datum source 2 (Mock Energy
- * Meter)` without a Service Name.
+ * Meter)` without a Service Name. An Operational Mode Invoker is `"Boost"
+ * (Operational Mode Invoker)`, or `Operational Mode Invoker 1`.
  *
- * @param id the datum source id
- * @returns the name, starting with a lowercase letter
+ * @param id the datum source or invoker id
+ * @returns the name, starting with a lowercase letter, unless it is an
+ *     invoker's type
  */
 export function datumSourceLabel(id: string): string {
 	const n = datumSourceNames.get(id);
 	if (!n) {
 		return `datum source ${quoted(id)}`;
 	}
-	return n.name
-		? `${quoted(n.name)} (${n.type})`
+	if (n.name) {
+		return `${quoted(n.name)} (${n.type})`;
+	}
+	return n.invoker
+		? `${n.type} ${n.position}`
 		: `datum source ${n.position} (${n.type})`;
 }
 
@@ -83,18 +96,36 @@ export function datumSourceShortLabel(id: string): string {
 	const n = datumSourceNames.get(id);
 	return n?.name
 		? quoted(n.name)
-		: `datum source ${n?.position ?? quoted(id)}`;
+		: `${n?.invoker ? "invoker" : "datum source"} ${n?.position ?? quoted(id)}`;
 }
 
 /**
  * Describe where a polled datum came from, like `Polled from "Meter 1" (Mock
- * Energy Meter)`.
+ * Energy Meter)`, or `Polled from "Meter 1" (Mock Energy Meter) by "Boost"
+ * (Operational Mode Invoker)`.
  *
  * @param origin the datum's origin, of type `Polled`
  * @returns the description, starting with a capital letter
  */
 export function polledOriginText(origin: DatumOrigin): string {
-	return `Polled from ${datumSourceLabel(origin.datumSourceId ?? "")}`;
+	const by = origin.invokerId
+		? ` by ${datumSourceLabel(origin.invokerId)}`
+		: "";
+	return `Polled from ${datumSourceLabel(origin.datumSourceId ?? "")}${by}`;
+}
+
+/**
+ * Describe where a polled datum came from in short, like `from "Meter 1"`, or
+ * `from "Meter 1" by "Boost"`.
+ *
+ * @param origin the datum's origin, of type `Polled`
+ * @returns the description
+ */
+export function polledOriginShortText(origin: DatumOrigin): string {
+	const by = origin.invokerId
+		? ` by ${datumSourceShortLabel(origin.invokerId)}`
+		: "";
+	return `from ${datumSourceShortLabel(origin.datumSourceId ?? "")}${by}`;
 }
 
 /**

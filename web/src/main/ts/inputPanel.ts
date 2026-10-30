@@ -11,6 +11,9 @@ import {
 	datumMetadataSourceField,
 	datumMetadataSourceProblem,
 	EXPRESSION_LANGUAGES,
+	INVOKER_FACTORY_UID,
+	INVOKER_NAME,
+	isInvoker,
 	NODE_METADATA_SERVICE_UID,
 	parseInstructionJobSeconds,
 	parseDatumList,
@@ -180,6 +183,17 @@ const COLLAPSED_SOURCES_KEY = "sn-filter-sim.collapsedSources";
 const SOURCE_UID_KEY = "jobService.datumDataSource.uid";
 const SOURCE_ID_KEY = "jobService.datumDataSource.sourceId";
 
+/** The description of the Operational Mode Invoker, from its messages. */
+const INVOKER_DESC =
+	"Polls the datum sources its configurations match on their own schedules, while its operational mode is active.";
+
+/** The Service Name and Mode settings of an Operational Mode Invoker. */
+const INVOKER_UID_KEY = "uid";
+const INVOKER_MODE_KEY = "operationalMode";
+
+/** An invoker configuration's Service Name setting. */
+const INVOKER_CONFIG_UID = /^configurations\[\d+\]\.uid$/;
+
 /**
  * The Publish choices of a datum source's controls, which post only their
  * changes.
@@ -347,17 +361,36 @@ export class InputPanel {
 	 * @returns the names, by datum source id
 	 */
 	datumSourceNames(): Map<string, DatumSourceName> {
+		// the datum sources and invokers each count their positions, like the
+		// request's lists
+		let sources = 0;
+		let invokers = 0;
 		return new Map(
-			this.#inputs.state.datumSources.map((d, i) => [
-				d.id,
-				{
-					name: d.settings[SOURCE_UID_KEY]?.trim() || undefined,
-					type:
-						this.#sourceTypes.get(d.factoryUid)?.name ??
-						d.factoryUid,
-					position: i + 1,
-				},
-			]),
+			this.#inputs.state.datumSources.map((d) => {
+				if (isInvoker(d)) {
+					return [
+						d.id,
+						{
+							name:
+								d.settings[INVOKER_UID_KEY]?.trim() ||
+								undefined,
+							type: INVOKER_NAME,
+							position: ++invokers,
+							invoker: true,
+						},
+					];
+				}
+				return [
+					d.id,
+					{
+						name: d.settings[SOURCE_UID_KEY]?.trim() || undefined,
+						type:
+							this.#sourceTypes.get(d.factoryUid)?.name ??
+							d.factoryUid,
+						position: ++sources,
+					},
+				];
+			}),
 		);
 	}
 
@@ -983,28 +1016,42 @@ export class InputPanel {
 		this.#renderDatumSources();
 	}
 
-	/** Render the Add a datum source menu. */
+	/**
+	 * Render the Add a datum source menu: the datum source types, then the
+	 * Operational Mode Invoker.
+	 */
 	#renderSourceTypes(): void {
+		const typeItem = (
+			factoryUid: string,
+			name: string,
+			description: string | undefined,
+		) => {
+			const item = element("li");
+			const button = element("button", "dropdown-item");
+			button.type = "button";
+			if (description) {
+				button.title = description;
+			}
+			const icon = element(
+				"i",
+				`bi bi-${datumSourceIcon(factoryUid)} me-2`,
+			);
+			icon.setAttribute("aria-hidden", "true");
+			button.append(icon, name);
+			button.addEventListener("click", () =>
+				this.#addDatumSource(factoryUid),
+			);
+			item.append(button);
+			return item;
+		};
+		const divider = element("li");
+		divider.append(element("hr", "dropdown-divider"));
 		$("#datum-source-types").replaceChildren(
-			...[...this.#sourceTypes.values()].map((t) => {
-				const item = element("li");
-				const button = element("button", "dropdown-item");
-				button.type = "button";
-				if (t.description) {
-					button.title = t.description;
-				}
-				const icon = element(
-					"i",
-					`bi bi-${datumSourceIcon(t.factoryUid)} me-2`,
-				);
-				icon.setAttribute("aria-hidden", "true");
-				button.append(icon, t.name);
-				button.addEventListener("click", () =>
-					this.#addDatumSource(t.factoryUid),
-				);
-				item.append(button);
-				return item;
-			}),
+			...[...this.#sourceTypes.values()].map((t) =>
+				typeItem(t.factoryUid, t.name, t.description),
+			),
+			divider,
+			typeItem(INVOKER_FACTORY_UID, INVOKER_NAME, INVOKER_DESC),
 		);
 	}
 
@@ -1131,7 +1178,9 @@ export class InputPanel {
 			"btn btn-sm btn-link text-body-secondary sim-tool",
 		);
 		remove.type = "button";
-		remove.title = "Remove this datum source";
+		remove.title = isInvoker(item)
+			? "Remove this invoker"
+			: "Remove this datum source";
 		remove.setAttribute("aria-label", remove.title);
 		remove.append(element("i", "bi bi-trash"));
 		remove.addEventListener("click", () => {
@@ -1183,16 +1232,21 @@ export class InputPanel {
 		return card;
 	}
 
-	/** Show how many datum the last run polled from a datum source. */
+	/**
+	 * Show how many datum the last run polled from a datum source, or with an
+	 * invoker.
+	 */
 	#showPollCount(id: string, c: SourceCard): void {
 		const count = this.#pollCounts?.get(id);
 		c.polls.hidden = count === undefined;
 		if (count !== undefined) {
+			const item = this.#datumSource(id);
+			const what =
+				item && isInvoker(item)
+					? "with this invoker"
+					: "from this datum source";
 			c.polls.textContent = `${count} polled`;
-			c.polls.title =
-				count === 1
-					? "The last run polled 1 datum from this datum source"
-					: `The last run polled ${count === 0 ? "no" : count} datum from this datum source`;
+			c.polls.title = `The last run polled ${count === 0 ? "no" : count} datum ${what}`;
 		}
 	}
 
@@ -1203,9 +1257,13 @@ export class InputPanel {
 			return;
 		}
 		const type = this.#sourceTypes.get(item.factoryUid);
+		const invoker = isInvoker(item);
 		const typeEl = c.card.querySelector<HTMLElement>("[data-source-type]");
 		if (typeEl) {
-			typeEl.textContent = type?.name ?? item.factoryUid;
+			typeEl.textContent = invoker
+				? INVOKER_NAME
+				: (type?.name ?? item.factoryUid);
+			typeEl.title = invoker ? INVOKER_DESC : (type?.description ?? "");
 		}
 		if (!c.controls && type?.capabilities?.includes("Controls")) {
 			c.controls = this.#sourceControls(item);
@@ -1220,15 +1278,24 @@ export class InputPanel {
 			const field = c.form ? findField(c.form.fields, key) : undefined;
 			return (field?.value ?? field?.defaultValue ?? "").trim();
 		};
-		const name = value(SOURCE_UID_KEY) || value(SOURCE_ID_KEY);
-		const schedule =
-			item.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
 		const parts = [];
-		if (name) {
-			parts.push(name);
-		}
-		if (schedule.trim()) {
-			parts.push(scheduleText(schedule));
+		if (invoker) {
+			const name = value(INVOKER_UID_KEY);
+			const mode = value(INVOKER_MODE_KEY);
+			if (name) {
+				parts.push(name);
+			}
+			parts.push(mode ? `mode ${mode}` : "no mode");
+		} else {
+			const name = value(SOURCE_UID_KEY) || value(SOURCE_ID_KEY);
+			const schedule =
+				item.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
+			if (name) {
+				parts.push(name);
+			}
+			if (schedule.trim()) {
+				parts.push(scheduleText(schedule));
+			}
 		}
 		c.summary.textContent = parts.join(" · ");
 		c.summary.title = c.summary.textContent;
@@ -1237,7 +1304,7 @@ export class InputPanel {
 	/** Check a datum source's Schedule, which the form also marks. */
 	#checkSchedule(id: string): void {
 		const item = this.#datumSource(id);
-		if (!item) {
+		if (!item || isInvoker(item)) {
 			return;
 		}
 		this.#setInvalid(
@@ -1315,7 +1382,9 @@ export class InputPanel {
 			return;
 		}
 		const problems = [...(c.form?.problems ?? [])];
-		const schedule = scheduleProblem(item.settings[SCHEDULE_KEY]);
+		const schedule = isInvoker(item)
+			? null
+			: scheduleProblem(item.settings[SCHEDULE_KEY]);
 		if (schedule) {
 			problems.push({
 				key: SCHEDULE_KEY,
@@ -1360,7 +1429,26 @@ export class InputPanel {
 			},
 			relatedServices: (serviceFilter) =>
 				this.#options.relatedServices(serviceFilter),
+			choices: (field) =>
+				field.key &&
+				INVOKER_CONFIG_UID.test(field.key) &&
+				this.#datumSource(id)?.factoryUid === INVOKER_FACTORY_UID
+					? {
+							names: () => this.#sourceUids(),
+							none: "No datum source has a Service Name",
+							title: "Choose a datum source",
+						}
+					: undefined,
 		};
+	}
+
+	/** The Service Names of the datum sources. */
+	#sourceUids(): string[] {
+		const names = this.#inputs.state.datumSources
+			.filter((d) => !isInvoker(d))
+			.map((d) => d.settings[SOURCE_UID_KEY]?.trim() ?? "")
+			.filter((n) => n.length > 0);
+		return [...new Set(names)];
 	}
 
 	/**

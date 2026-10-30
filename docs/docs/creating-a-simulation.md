@@ -54,6 +54,7 @@ export, **except** for some controls and Control Conductors, which the Simulator
 - Each Fixed Data, Mock Battery, Mock Energy Meter, and Time-based Tariff datum source keeps its
   settings. Settings from SolarNode 1.x, like `triggerCronExpression`, are changed to their current
   names, like `schedule`, so the datum source's card shows them.
+- Each [Operational Mode Invoker](./datum-sources.md#operational-mode-invokers) keeps its settings.
 
 When you add a file to a simulation, its controls replace those with the same control ID, its
 conductors those with the same Service Name, and its datum sources those of the same type and

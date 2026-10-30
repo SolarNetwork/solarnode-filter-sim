@@ -124,6 +124,7 @@ dependencies {
 	implementation(libs.sn.node.datum.battery.mock, snExcludes)
 	implementation(libs.sn.node.datum.energymeter.mock, snExcludes)
 	implementation(libs.sn.node.datum.fixed, snExcludes)
+	implementation(libs.sn.node.datum.opmode, snExcludes)
 	implementation(libs.sn.node.datum.filter.standard, snExcludes)
 	implementation(libs.sn.node.datum.filter.tariff, snExcludes)
 	implementation(libs.sn.node.datum.filter.pvlib, snExcludes)

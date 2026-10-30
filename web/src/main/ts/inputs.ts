@@ -11,6 +11,7 @@ import type {
 	NodeControlConfig,
 	NodeControlPropertyType,
 	NodeLocation,
+	OpModeInvokerConfig,
 	SimulationEnvironment,
 	SimulationHistory,
 	SimulationOptions,
@@ -131,7 +132,27 @@ export interface ConductorInput {
 	tasks: ConductorTaskInput[];
 }
 
-/** A simulated datum source, as entered. */
+/** The factory UID of the Operational Mode Datum Source Invoker. */
+export const INVOKER_FACTORY_UID = "net.solarnetwork.node.datum.opmode.invoker";
+
+/** The name of the Operational Mode Datum Source Invoker. */
+export const INVOKER_NAME = "Operational Mode Invoker";
+
+/**
+ * Test if a datum source input is an Operational Mode Invoker, which the
+ * Datum Sources tab lists with the datum sources.
+ *
+ * @param d the input
+ * @returns `true` if it is an invoker
+ */
+export function isInvoker(d: { factoryUid: string }): boolean {
+	return d.factoryUid === INVOKER_FACTORY_UID;
+}
+
+/**
+ * A simulated datum source, or an Operational Mode Invoker (`isInvoker()`), as
+ * entered.
+ */
 export interface DatumSourceInput {
 	/** A unique id, for the UI, and the datum source's id in requests. */
 	id: string;
@@ -141,7 +162,7 @@ export interface DatumSourceInput {
 	instanceKey: string;
 	/**
 	 * The settings of the datum source's job, like `schedule` and
-	 * `jobService.datumDataSource.sourceId`.
+	 * `jobService.datumDataSource.sourceId`, or an invoker's settings.
 	 */
 	settings: Record<string, string>;
 	/**
@@ -156,6 +177,26 @@ export interface DatumSourceInput {
 	 * placeholders resolved.
 	 */
 	controlIds: string[];
+}
+
+/**
+ * Describe a list of datum sources and invokers, like `2 datum sources and 1
+ * Operational Mode Invoker`.
+ *
+ * @param list the datum sources and invokers
+ * @returns the description
+ */
+export function sourcesText(list: readonly { factoryUid: string }[]): string {
+	const invokers = list.filter(isInvoker).length;
+	const sources = list.length - invokers;
+	const parts = [];
+	if (sources || !invokers) {
+		parts.push(`${sources} datum source${sources === 1 ? "" : "s"}`);
+	}
+	if (invokers) {
+		parts.push(`${invokers} ${INVOKER_NAME}${invokers === 1 ? "" : "s"}`);
+	}
+	return parts.join(" and ");
 }
 
 /** The inputs, as entered, which are saved in the browser. */
@@ -208,7 +249,10 @@ export interface InputsState {
 	controls: ControlInput[];
 	/** The simulated Control Conductors. */
 	conductors: ConductorInput[];
-	/** The simulated datum sources, which the simulation polls. */
+	/**
+	 * The simulated datum sources, which the simulation polls, and the
+	 * Operational Mode Invokers, which poll them while their modes are active.
+	 */
 	datumSources: DatumSourceInput[];
 	/** The `id` of the filter to apply, or `""` for the Main chain. */
 	entryPoint: string;
@@ -230,6 +274,7 @@ export type InputField = Exclude<
 export interface RequestInputs {
 	datum: unknown[];
 	datumSources: DatumSourceConfig[] | null;
+	invokers: OpModeInvokerConfig[] | null;
 	history: SimulationHistory | null;
 	environment: SimulationEnvironment;
 	options: SimulationOptions;
@@ -1392,7 +1437,8 @@ export class RunInputs extends EventTarget {
 	 * Name (ignoring case), and the datum sources with the same type and
 	 * instance ID, and adds the others.
 	 *
-	 * @param imported the file's controls, conductors, and datum sources
+	 * @param imported the file's controls, conductors, datum sources, and
+	 *     invokers
 	 * @param replace `true` to replace, `false` to add
 	 * @returns notes about the changes, or an empty list if there are none
 	 */
@@ -1401,6 +1447,7 @@ export class RunInputs extends EventTarget {
 			controls?: NodeControlConfig[] | null;
 			conductors?: ControlConductorConfig[] | null;
 			datumSources?: DatumSourceConfig[] | null;
+			invokers?: OpModeInvokerConfig[] | null;
 		},
 		replace: boolean,
 	): string[] {
@@ -1435,6 +1482,17 @@ export class RunInputs extends EventTarget {
 				controlIds: [],
 			}),
 		);
+		for (const v of imported.invokers ?? []) {
+			newSources.push({
+				id: `ds-${Date.now().toString(36)}-${++this.#ids}`,
+				factoryUid: INVOKER_FACTORY_UID,
+				instanceKey: v.instanceKey ?? "",
+				settings: { ...(v.settings ?? {}) },
+				publish: "Change",
+				persist: false,
+				controlIds: [],
+			});
+		}
 		if (
 			!newControls.length &&
 			!newConductors.length &&
@@ -1502,12 +1560,11 @@ export class RunInputs extends EventTarget {
 				}
 			}
 			if (newSources.length) {
-				const count = newSources.length;
-				const plural = count === 1 ? "" : "s";
+				const what = sourcesText(newSources);
 				if (replace) {
 					s.datumSources = newSources;
 					notes.push(
-						`The Datum Sources tab now has the file's ${count} datum source${plural}.`,
+						`The Datum Sources tab now has the file's ${what}.`,
 					);
 				} else {
 					let replaced = 0;
@@ -1529,7 +1586,7 @@ export class RunInputs extends EventTarget {
 						}
 					}
 					notes.push(
-						`Added the file's ${count} datum source${plural} to the Datum Sources tab` +
+						`Added the file's ${what} to the Datum Sources tab` +
 							(replaced
 								? `, replacing ${replaced} with the same type and instance ID.`
 								: "."),
@@ -1676,27 +1733,40 @@ export class RunInputs extends EventTarget {
 		const datum = parse("datum", "datum", () =>
 			parseDatumList(s.datum, "Datum"),
 		);
-		if (datum.length === 0 && s.datumSources.length === 0) {
+		if (datum.length === 0 && !s.datumSources.some((d) => !isInvoker(d))) {
 			throw new InputError(
 				"Enter the datum to run through the filters, as a JSON object or array of objects, or add a datum source to poll.",
 				"datum",
 				"datum",
 			);
 		}
-		const datumSources: DatumSourceConfig[] = s.datumSources.map((d) => {
-			const problem = scheduleProblem(d.settings[SCHEDULE_KEY]);
-			if (problem) {
-				throw new InputError(problem, "sources", scheduleField(d.id));
-			}
-			return {
+		const invokers: OpModeInvokerConfig[] = s.datumSources
+			.filter(isInvoker)
+			.map((d) => ({
 				id: d.id,
-				factoryUid: d.factoryUid,
 				instanceKey: d.instanceKey.trim() || null,
 				settings: d.settings,
-				publish: d.publish,
-				persist: d.publish !== "Never" && d.persist ? true : null,
-			};
-		});
+			}));
+		const datumSources: DatumSourceConfig[] = s.datumSources
+			.filter((d) => !isInvoker(d))
+			.map((d) => {
+				const problem = scheduleProblem(d.settings[SCHEDULE_KEY]);
+				if (problem) {
+					throw new InputError(
+						problem,
+						"sources",
+						scheduleField(d.id),
+					);
+				}
+				return {
+					id: d.id,
+					factoryUid: d.factoryUid,
+					instanceKey: d.instanceKey.trim() || null,
+					settings: d.settings,
+					publish: d.publish,
+					persist: d.publish !== "Never" && d.persist ? true : null,
+				};
+			});
 		const filtered = parse("history", "history", () =>
 			parseDatumList(s.history, "History datum"),
 		);
@@ -1854,6 +1924,7 @@ export class RunInputs extends EventTarget {
 		return {
 			datum,
 			datumSources: datumSources.length ? datumSources : null,
+			invokers: invokers.length ? invokers : null,
 			options: {
 				startDate,
 				runAfter: runAfter > 0 ? `PT${runAfter}S` : null,

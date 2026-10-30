@@ -127,11 +127,12 @@ function download(text: string, fileName: string, type: string): void {
 
 /** Test if keyboard events go to a form control rather than the canvas. */
 /**
- * Count the datum a run polled from each datum source.
+ * Count the datum a run polled from each datum source, and with each
+ * Operational Mode Invoker.
  *
  * @param result the result
- * @param sourceIds the ids of the datum sources the run had
- * @returns the counts, by datum source id
+ * @param sourceIds the ids of the datum sources and invokers the run had
+ * @returns the counts, by id
  */
 function pollCounts(
 	result: SimulationResult,
@@ -142,9 +143,14 @@ function pollCounts(
 		? result.index.map((e) => e.origin)
 		: result.datum.map((t) => t.origin);
 	for (const origin of origins) {
-		const id = origin.datumSourceId;
-		if (origin.type === "Polled" && id && counts.has(id)) {
-			counts.set(id, counts.get(id)! + 1);
+		if (origin.type !== "Polled") {
+			continue;
+		}
+		// a datum an invoker polled counts for its datum source and for it
+		for (const id of [origin.datumSourceId, origin.invokerId]) {
+			if (id && counts.has(id)) {
+				counts.set(id, counts.get(id)! + 1);
+			}
 		}
 	}
 	return counts;
@@ -161,7 +167,7 @@ function environmentTabs(result: SettingsImport): string {
 	if (result.controls?.length || result.conductors?.length) {
 		tabs.push("Controls");
 	}
-	if (result.datumSources?.length) {
+	if (result.datumSources?.length || result.invokers?.length) {
 		tabs.push("Datum Sources");
 	}
 	return `${tabs.join(" and ")} tab${tabs.length === 1 ? "" : "s"}`;

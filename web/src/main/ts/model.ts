@@ -130,7 +130,10 @@ export interface SimulationMessage {
 	message: string;
 	filterId?: string;
 	datumSeq?: number;
-	/** The id of the datum source the message is about. */
+	/**
+	 * The id of the datum source or Operational Mode Invoker the message is
+	 * about.
+	 */
 	datumSourceId?: string;
 }
 
@@ -155,6 +158,8 @@ export interface SettingsImport {
 	 * tab, with the current setting keys.
 	 */
 	datumSources?: DatumSourceConfig[] | null;
+	/** The file's Operational Mode Invokers, for the Datum Sources tab. */
+	invokers?: OpModeInvokerConfig[] | null;
 }
 
 /** An External Settings file: a settings CSV file the simulation applies first. */
@@ -485,6 +490,19 @@ export interface DatumSourceConfig {
 	persist?: boolean | null;
 }
 
+/** A simulated SolarNode Operational Mode Datum Source Invoker. */
+export interface OpModeInvokerConfig {
+	/**
+	 * The id of the invoker, unique among the request's invokers and datum
+	 * sources; an imported invoker has none.
+	 */
+	id?: string | null;
+	/** The SolarNode instance ID, or `null`. */
+	instanceKey?: string | null;
+	/** The settings, like `operationalMode` and `configurations[0].uid`. */
+	settings?: Record<string, string> | null;
+}
+
 /** A request to run a simulation. */
 export interface SimulationRequest {
 	config: SimConfig;
@@ -494,6 +512,11 @@ export interface SimulationRequest {
 	datum?: unknown[] | null;
 	/** The datum sources the simulation polls for more input datum. */
 	datumSources?: DatumSourceConfig[] | null;
+	/**
+	 * The Operational Mode Invokers, which poll the datum sources while their
+	 * modes are active.
+	 */
+	invokers?: OpModeInvokerConfig[] | null;
 	history?: SimulationHistory | null;
 	environment?: SimulationEnvironment | null;
 	options?: SimulationOptions | null;
@@ -542,6 +565,8 @@ export interface DatumOrigin {
 	instruction?: number;
 	/** For a polled datum, the id of its datum source. */
 	datumSourceId?: string;
+	/** For a datum an Operational Mode Invoker polled, the invoker's id. */
+	invokerId?: string;
 }
 
 /** The outcome of a filter step. */

@@ -41,10 +41,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param datumSeq
  *        the sequence number of the datum the message is about, or {@code null}
  * @param datumSourceId
- *        the {@code id} of the datum source configuration the message is about,
- *        or {@code null}
+ *        the {@code id} of the datum source or Operational Mode Datum Source
+ *        Invoker configuration the message is about, or {@code null}
  * @author matt
- * @version 1.3
+ * @version 1.4
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record SimulationMessage(Level level, String code, String message, @Nullable String filterId,
@@ -70,10 +70,10 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	}
 
 	/**
-	 * Get a copy of this message about a datum source.
+	 * Get a copy of this message about a datum source or invoker.
 	 *
 	 * @param datumSourceId
-	 *        the {@code id} of the datum source configuration
+	 *        the {@code id} of the datum source or invoker configuration
 	 * @return the new message
 	 */
 	public SimulationMessage withDatumSourceId(@Nullable String datumSourceId) {
@@ -246,6 +246,15 @@ public record SimulationMessage(Level level, String code, String message, @Nulla
 	 * setting keys, which were changed to the current ones.
 	 */
 	public static final String CODE_LEGACY_SETTINGS = "LegacySettings";
+
+	/**
+	 * An Operational Mode Datum Source Invoker that cannot poll, or polls
+	 * nothing.
+	 */
+	public static final String CODE_INVALID_INVOKER = "InvalidInvoker";
+
+	/** An Operational Mode Datum Source Invoker that did not poll. */
+	public static final String CODE_INVOKER_RUNS = "InvokerRuns";
 
 	/**
 	 * Message levels.

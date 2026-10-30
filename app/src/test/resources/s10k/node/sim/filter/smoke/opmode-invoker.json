@@ -1,0 +1,93 @@
+{
+ "config": {
+  "mainChainId": "main",
+  "filters": [
+   {
+    "id": "main",
+    "factoryUid": "net.solarnetwork.node.datum.xform.user",
+    "settings": {
+     "uid": "Chain - Main"
+    },
+    "filterIds": [
+     "mode"
+    ]
+   },
+   {
+    "id": "mode",
+    "factoryUid": "net.solarnetwork.node.datum.samplefilter.opmode",
+    "settings": {
+     "uid": "Boost Mode",
+     "sourceId": "^/meter/1$",
+     "expressionConfigsCount": "1",
+     "expressionConfigs[0].operationalMode": "boost",
+     "expressionConfigs[0].expressionServiceId": "net.solarnetwork.common.expr.spel.SpelExpressionService",
+     "expressionConfigs[0].expression": "watts > 100",
+     "expressionConfigs[0].expireSeconds": "45"
+    }
+   }
+  ]
+ },
+ "datum": [
+  {
+   "created": "2025-10-01 00:00:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 50
+   }
+  },
+  {
+   "created": "2025-10-01 00:00:30Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 400
+   }
+  },
+  {
+   "created": "2025-10-01 00:02:00Z",
+   "sourceId": "/meter/1",
+   "i": {
+    "watts": 10
+   }
+  }
+ ],
+ "datumSources": [
+  {
+   "id": "meter",
+   "factoryUid": "net.solarnetwork.node.datum.energymeter.mock",
+   "settings": {
+    "schedule": "0 0 * * * ?",
+    "jobService.datumDataSource.uid": "Meter",
+    "jobService.datumDataSource.sourceId": "/meter/mock",
+    "jobService.datumDataSource.randomness": "false"
+   }
+  },
+  {
+   "id": "site",
+   "factoryUid": "net.solarnetwork.node.datum.fixed",
+   "settings": {
+    "schedule": "0 0 * * * ?",
+    "jobService.datumDataSource.uid": "Site",
+    "jobService.datumDataSource.sourceId": "/site",
+    "jobService.datumDataSource.propertyConfigsCount": "1",
+    "jobService.datumDataSource.propertyConfigs[0].propertyKey": "watts",
+    "jobService.datumDataSource.propertyConfigs[0].propertyTypeKey": "i",
+    "jobService.datumDataSource.propertyConfigs[0].config": "100"
+   }
+  }
+ ],
+ "invokers": [
+  {
+   "id": "boost",
+   "settings": {
+    "uid": "Boost",
+    "operationalMode": "Boost",
+    "configurationsCount": "2",
+    "configurations[0].datumType": "net.solarnetwork.domain.datum.EnergyDatum",
+    "configurations[0].schedule": "0/20 * * * * ?",
+    "configurations[1].uid": "site",
+    "configurations[1].schedule": "30",
+    "configurations[1].persist": "true"
+   }
+  }
+ ]
+}

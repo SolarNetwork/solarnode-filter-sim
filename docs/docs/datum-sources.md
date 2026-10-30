@@ -24,9 +24,10 @@ settings.
 The **Schedule** is a cron expression, like `0 * * * * ?` to poll at the start of every minute, or
 a number of milliseconds between polls, like `30000` to poll every 30 seconds.
 
-Importing a SolarNode settings CSV file also adds its datum sources of these types to the tab,
-with their settings. See [Creating a simulation](./creating-a-simulation.md) for how the import
-adds or replaces them. Exports never include datum sources.
+Importing a SolarNode settings CSV file also adds its datum sources of these types, and its
+[Operational Mode Invokers](#operational-mode-invokers), to the tab, with their settings. See
+[Creating a simulation](./creating-a-simulation.md) for how the import adds or replaces them.
+Exports never include datum sources.
 
 ## Running with datum sources
 
@@ -57,7 +58,32 @@ its value changes, like the [Controls tab's](./controls-and-instructions.md#cont
 A control set shows in the step's control chip, like `control: /bat/rate 0 → 1000 (asked 5000)`
 when the battery limited the rate it was asked for.
 
+## Operational Mode Invokers
+
+An [Operational Mode Invoker][invoker] polls datum sources on schedules of its own while an
+[operational mode][op-modes] is active, as well as their own schedules: for example, to read a
+meter every 5 seconds while a `boost` mode is active. Add one with **Add a datum source** →
+**Operational Mode Invoker**. Its card has the same settings SolarNode provides:
+
+* **Mode**: the operational mode that makes the invoker active.
+* **Data Source Configurations**: each one matches datum sources by **Service Name**, **Service
+  Group**, or **Datum Type** (any of them, when blank), and polls them on its **Schedule**. Unlike
+  a datum source's schedule, a plain number here is a number of **seconds** between polls.
+  The **Service Name**'s Choose menu lists the datum sources' Service Names.
+
+The invoker hears every change of the active modes, whatever made it: the Environment tab's
+**Starting Operational Modes**, an Operational Mode filter, an `EnableOperationalModes`
+instruction, or a mode that expires. A mode that expires is noticed up to 20 seconds late, as on a
+node.
+
+In the Execution Flow, a datum an invoker polled reads like `Polled from "Meter" (Mock Energy
+Meter) by "Boost" (Operational Mode Invoker)`. The simulation warns about an invoker without a
+mode, a configuration with no valid schedule or that matches no datum source, and tells you when
+an invoker never polled.
+
 [controls]: https://solarnetwork.github.io/solarnode-handbook/users/controls/
+[invoker]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.datum.opmode
+[op-modes]: https://solarnetwork.github.io/solarnode-handbook/users/op-modes/
 [datum-sources]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/
 [fixed]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/fixed/
 [mock-battery]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.datum.battery.mock

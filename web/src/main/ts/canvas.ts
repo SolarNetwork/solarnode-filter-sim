@@ -32,10 +32,10 @@ import {
 import type { DatumPath, FilterRunStats } from "./results.ts";
 import {
 	bundleLabel,
-	datumSourceShortLabel,
 	externalFilesText,
 	expiredModeOriginText,
 	instructionOriginText,
+	polledOriginShortText,
 	polledOriginText,
 	quoted,
 } from "./view.ts";
@@ -884,7 +884,7 @@ export class Canvas extends EventTarget {
 				: origin.type === "Polled"
 					? [
 							lowerFirst(polledOriginText(origin)),
-							`from ${datumSourceShortLabel(origin.datumSourceId ?? "")}`,
+							polledOriginShortText(origin),
 						]
 					: origin.type === "Scheduled" &&
 						  origin.controlId &&

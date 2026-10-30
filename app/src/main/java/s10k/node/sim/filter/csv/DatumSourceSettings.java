@@ -28,15 +28,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import s10k.node.sim.filter.domain.DatumSourceConfig;
+import s10k.node.sim.filter.domain.OpModeInvokerConfig;
 import s10k.node.sim.filter.domain.SimulationMessage;
 import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
+import s10k.node.sim.filter.sim.SimOpModeInvokers;
 
 /**
- * The simulated datum sources of a settings CSV file's datum source component
- * settings.
+ * The simulated datum sources and Operational Mode Datum Source Invokers of a
+ * settings CSV file's datum source and invoker component settings.
  *
  * <p>
  * Each instance of a supported datum source type is a datum source with its
@@ -50,8 +53,12 @@ import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
  * {@code triggerCronExpression} once {@code schedule} is set.
  * </p>
  *
+ * <p>
+ * Each instance of the invoker is an invoker with its settings.
+ * </p>
+ *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class DatumSourceSettings {
 
@@ -59,8 +66,10 @@ final class DatumSourceSettings {
 	private static final DatumSourceTypeRegistry TYPES = DatumSourceTypeRegistry.standard();
 
 	/** The factory UIDs of the components this class reads. */
-	static final List<String> FACTORY_UIDS = TYPES.definitions().stream()
-			.map(DatumSourceTypeDefinition::factoryUid).toList();
+	static final List<String> FACTORY_UIDS = Stream
+			.concat(TYPES.definitions().stream().map(DatumSourceTypeDefinition::factoryUid),
+					Stream.of(SimOpModeInvokers.FACTORY_UID))
+			.toList();
 
 	private static final String JOB_DETAIL_PREFIX = "jobDetail.";
 
@@ -77,10 +86,13 @@ final class DatumSourceSettings {
 	 *
 	 * @param datumSources
 	 *        the datum sources
+	 * @param invokers
+	 *        the invokers
 	 * @param messages
 	 *        messages about them
 	 */
-	record Result(List<DatumSourceConfig> datumSources, List<SimulationMessage> messages) {
+	record Result(List<DatumSourceConfig> datumSources, List<OpModeInvokerConfig> invokers,
+			List<SimulationMessage> messages) {
 
 	}
 
@@ -110,7 +122,7 @@ final class DatumSourceSettings {
 	}
 
 	/**
-	 * Get the datum sources of component instances.
+	 * Get the datum sources and invokers of component instances.
 	 *
 	 * @param instances
 	 *        the instances, in file order
@@ -119,6 +131,7 @@ final class DatumSourceSettings {
 	static Result of(List<ControlSettings.Instance> instances) {
 		final List<SimulationMessage> messages = new ArrayList<>(2);
 		final List<DatumSourceConfig> result = new ArrayList<>(instances.size());
+		final List<OpModeInvokerConfig> invokers = new ArrayList<>(2);
 		for ( ControlSettings.Instance instance : instances ) {
 			final String label = label(instance);
 			if ( !instance.factoryRow() ) {
@@ -126,6 +139,11 @@ final class DatumSourceSettings {
 						"The file has no %s%s row for the %s, so SolarNode would not create it. The simulator imported it anyway."
 								.formatted(instance.factoryUid(), SettingsCsv.FACTORY_SUFFIX, label),
 						null, null));
+			}
+			if ( SimOpModeInvokers.FACTORY_UID.equals(instance.factoryUid()) ) {
+				invokers.add(new OpModeInvokerConfig(null, instance.instanceKey(),
+						new LinkedHashMap<>(instance.settings())));
+				continue;
 			}
 			final Map<String, String> settings = new LinkedHashMap<>(instance.settings().size());
 			final Map<String, String> legacy = new LinkedHashMap<>(2);
@@ -147,7 +165,7 @@ final class DatumSourceSettings {
 			result.add(new DatumSourceConfig(null, instance.factoryUid(), instance.instanceKey(),
 					settings));
 		}
-		return new Result(result, messages);
+		return new Result(result, invokers, messages);
 	}
 
 	/**
@@ -174,6 +192,9 @@ final class DatumSourceSettings {
 	}
 
 	private static String label(ControlSettings.Instance instance) {
+		if ( SimOpModeInvokers.FACTORY_UID.equals(instance.factoryUid()) ) {
+			return "Operational Mode Invoker " + SimulationMessage.quoted(instance.instanceKey());
+		}
 		final DatumSourceTypeDefinition type = TYPES.definition(instance.factoryUid());
 		final String name = (type != null ? type.name(Locale.getDefault()) : "datum source");
 		return name + ' ' + SimulationMessage.quoted(instance.instanceKey());

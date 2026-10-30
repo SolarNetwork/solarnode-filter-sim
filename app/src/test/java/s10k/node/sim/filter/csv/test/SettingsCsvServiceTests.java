@@ -46,6 +46,7 @@ import s10k.node.sim.filter.domain.ExternalSettingsRequest;
 import s10k.node.sim.filter.domain.ExternalSettingsSummary;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.IgnoredComponent;
+import s10k.node.sim.filter.domain.OpModeInvokerConfig;
 import s10k.node.sim.filter.domain.NodeControlConfig;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
@@ -1381,6 +1382,52 @@ public class SettingsCsvServiceTests {
 							"The Fixed Data \"Site\" has SolarNode 1.x setting keys, which the simulator changed to the current ones."),
 					tuple(SimulationMessage.CODE_MISSING_FACTORY,
 							"The file has no net.solarnetwork.node.datum.battery.mock.FACTORY row for the Mock Battery \"Bat\", so SolarNode would not create it. The simulator imported it anyway."))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void importInvokers() {
+		// GIVEN
+		String csv = csv("net.solarnetwork.node.datum.opmode.invoker.FACTORY,1,1",
+				"net.solarnetwork.node.datum.opmode.invoker.1,uid,Boost",
+				"net.solarnetwork.node.datum.opmode.invoker.1,operationalMode,boost",
+				"net.solarnetwork.node.datum.opmode.invoker.1,configurationsCount,1",
+				"net.solarnetwork.node.datum.opmode.invoker.1,configurations[0].uid,Meter",
+				"net.solarnetwork.node.datum.opmode.invoker.1,configurations[0].schedule,10",
+				"net.solarnetwork.node.datum.opmode.invoker.Two,operationalMode,eco");
+
+		// WHEN
+		SettingsImport result = service.importCsv(csv);
+
+		// THEN
+		// @formatter:off
+		then(result.invokers())
+			.as("The invokers, in file order, with their settings")
+			.containsExactly(
+					new OpModeInvokerConfig(null, "1", Map.of(
+							"uid", "Boost",
+							"operationalMode", "boost",
+							"configurationsCount", "1",
+							"configurations[0].uid", "Meter",
+							"configurations[0].schedule", "10")),
+					new OpModeInvokerConfig(null, "Two", Map.of(
+							"operationalMode", "eco")))
+			;
+		then(result.datumSources())
+			.as("No datum sources")
+			.isNull()
+			;
+		then(result.ignored())
+			.as("Nothing ignored")
+			.isEmpty()
+			;
+		then(result.messages())
+			.as("The missing FACTORY row is described")
+			.extracting(SimulationMessage::code, SimulationMessage::message)
+			.containsExactly(
+					tuple(SimulationMessage.CODE_MISSING_FACTORY,
+							"The file has no net.solarnetwork.node.datum.opmode.invoker.FACTORY row for the Operational Mode Invoker \"Two\", so SolarNode would not create it. The simulator imported it anyway."))
 			;
 		// @formatter:on
 	}

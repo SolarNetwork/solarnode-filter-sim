@@ -131,6 +131,7 @@ public final class SimulationContext implements DatumSourceContext {
 	private final SimNodeControlService controlService;
 	private final SimModeSwitches modeSwitches;
 	private final SimDatumSources datumSources;
+	private final SimOpModeInvokers invokers;
 	private final SimInstructionService instructionService;
 	private final DefaultTransientSettingDao transientSettingDao;
 	private final SimulatedDatumQueue datumQueue;
@@ -215,6 +216,7 @@ public final class SimulationContext implements DatumSourceContext {
 			final Supplier<@Nullable String> owner = taskOwner;
 			return (owner != null ? owner.get() : null);
 		});
+		this.invokers = new SimOpModeInvokers(taskScheduler, opModesService, datumSources);
 		this.nodeMetadataService = new SimMetadataService(SimMetadataService.NODE_METADATA_SERVICE_UID,
 				nodeMetadata, true);
 		instructionService.addHandler(InstructionHandlerInfo.Type.OperationalModes, opModesService,
@@ -320,6 +322,26 @@ public final class SimulationContext implements DatumSourceContext {
 	}
 
 	/**
+	 * Create an Operational Mode Datum Source Invoker with the services its
+	 * blueprint gives it.
+	 *
+	 * <p>
+	 * The invoker still needs its settings, and to be started with
+	 * {@link SimOpModeInvokers#start(SimOpModeInvokers.Invoker, SimEventAdmin)}
+	 * once the operational modes are loaded.
+	 * </p>
+	 *
+	 * @param id
+	 *        the {@code id} of the invoker configuration
+	 * @param label
+	 *        the label of the invoker in messages
+	 * @return the invoker
+	 */
+	public SimOpModeInvokers.Invoker createInvoker(String id, String label) {
+		return invokers.add(id, label, datumQueue, executor);
+	}
+
+	/**
 	 * Test if a simulated control, Operational Mode Switch, or datum source has
 	 * a control ID.
 	 *
@@ -350,7 +372,8 @@ public final class SimulationContext implements DatumSourceContext {
 
 	/**
 	 * Start the operational modes service as on a node, if there are
-	 * Operational Mode Switches to hear its events.
+	 * Operational Mode Switches or Operational Mode Datum Source Invokers to
+	 * hear its events.
 	 *
 	 * <p>
 	 * The service reads the starting modes from the setting DAO, without the
@@ -361,7 +384,7 @@ public final class SimulationContext implements DatumSourceContext {
 	 * </p>
 	 */
 	public void startOperationalModes() {
-		if ( modeSwitches.isEmpty() || opModesStarted ) {
+		if ( (modeSwitches.isEmpty() && invokers.isEmpty()) || opModesStarted ) {
 			return;
 		}
 		opModesStarted = true;
@@ -643,6 +666,15 @@ public final class SimulationContext implements DatumSourceContext {
 	 */
 	public SimDatumSources datumSources() {
 		return datumSources;
+	}
+
+	/**
+	 * Get the Operational Mode Datum Source Invokers.
+	 *
+	 * @return the invokers
+	 */
+	public SimOpModeInvokers invokers() {
+		return invokers;
 	}
 
 	@Override

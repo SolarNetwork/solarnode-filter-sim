@@ -119,6 +119,10 @@ import net.solarnetwork.node.domain.datum.SimpleAcEnergyDatum;
 import net.solarnetwork.node.domain.datum.SimpleDatum;
 import net.solarnetwork.node.domain.datum.SimpleEnergyStorageDatum;
 import net.solarnetwork.node.domain.datum.SimpleNodeControlInfoDatum;
+import net.solarnetwork.node.datum.opmode.DatumDataSourceOpModeInvoker;
+import net.solarnetwork.node.domain.datum.AcEnergyDatum;
+import net.solarnetwork.node.domain.datum.NodeDatum;
+import net.solarnetwork.node.domain.datum.EnergyStorageDatum;
 import net.solarnetwork.node.job.DatumDataSourcePollManagedJob;
 import net.solarnetwork.node.job.SimpleManagedJob;
 import tools.jackson.databind.util.RawValue;
@@ -228,6 +232,12 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 			"java.time.ZoneRegion");
 	// @formatter:on
 
+	/**
+	 * The datum types of the datum sources, from their {@code getDatumType()}.
+	 */
+	private static final List<Class<?>> INVOKER_DATUM_TYPES = List.of(NodeDatum.class,
+			EnergyStorageDatum.class, AcEnergyDatum.class);
+
 	@Override
 	public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
 		hints.resources().registerPattern("net/solarnetwork/**/*.properties");
@@ -244,6 +254,13 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 		registerBeanType(hints, DatumDataSourcePollManagedJob.class, registered);
 		for ( DatumSourceTypeDefinition def : StandardDatumSourceTypes.definitions() ) {
 			registerBeanType(hints, def.sourceClass(), registered);
+		}
+		registerBeanType(hints, DatumDataSourceOpModeInvoker.class, registered);
+		// an invoker's Datum Type loads the class it names, to match the datum
+		// sources' datum types and the types they extend
+		final Set<Class<?>> datumTypes = new HashSet<>(16);
+		for ( Class<?> type : INVOKER_DATUM_TYPES ) {
+			registerTypeHierarchy(hints, type, datumTypes);
 		}
 
 		// the poll job publishes device info as metadata, serialized by Jackson
@@ -325,6 +342,18 @@ public class SimulatorRuntimeHints implements RuntimeHintsRegistrar {
 	 * @param registered
 	 *        the types already registered
 	 */
+	private static void registerTypeHierarchy(RuntimeHints hints, @Nullable Class<?> type,
+			Set<Class<?>> registered) {
+		if ( type == null || type == Object.class || !registered.add(type) ) {
+			return;
+		}
+		hints.reflection().registerType(type);
+		registerTypeHierarchy(hints, type.getSuperclass(), registered);
+		for ( Class<?> iface : type.getInterfaces() ) {
+			registerTypeHierarchy(hints, iface, registered);
+		}
+	}
+
 	private static void registerBeanType(RuntimeHints hints, Class<?> type, Set<Class<?>> registered) {
 		if ( !registered.add(type) ) {
 			return;

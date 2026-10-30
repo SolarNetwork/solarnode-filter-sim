@@ -317,6 +317,28 @@ public class SmokeFixtureTests {
 	}
 
 	@Test
+	public void opModeInvoker() throws IOException {
+		// GIVEN
+		final String name = "opmode-invoker";
+		JsonNode expected = resource(name + ".expected.json");
+
+		// WHEN
+		simulateFixture(name, expected);
+
+		// THEN
+		// @formatter:off
+		then(expected.path("messages").valueStream().map(JsonNode::asString))
+			.as("No messages")
+			.isEmpty()
+			;
+		then(expected.path("datum").valueStream().map(d -> d.path("sourceId").asString()))
+			.as("The invoker polls the datum sources while the mode is active")
+			.contains("/meter/mock", "/site")
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void pvlibAndMetrics() throws IOException {
 		// GIVEN
 		final String name = "pvlib-and-metrics";

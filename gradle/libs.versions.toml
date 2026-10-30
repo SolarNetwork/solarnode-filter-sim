@@ -16,6 +16,7 @@ sn-node-datum-filter-pvlib = "2.3.0"
 sn-node-datum-filter-standard = "4.8.0"
 sn-node-datum-filter-tariff = "4.1.1"
 sn-node-datum-fixed = "1.0.1"
+sn-node-datum-opmode = "4.1.1"
 sn-node-datum-tou = "3.0.2"
 sn-node-metrics = "2.2.0"
 sn-node-metrics-harvester = "2.1.1"
@@ -35,6 +36,7 @@ sn-node-datum-filter-pvlib = { module = "net.solarnetwork.node:net.solarnetwork.
 sn-node-datum-filter-standard = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.standard", version.ref = "sn-node-datum-filter-standard" }
 sn-node-datum-filter-tariff = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.filter.tariff", version.ref = "sn-node-datum-filter-tariff" }
 sn-node-datum-fixed = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.fixed", version.ref = "sn-node-datum-fixed" }
+sn-node-datum-opmode = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.opmode", version.ref = "sn-node-datum-opmode" }
 sn-node-datum-tou = { module = "net.solarnetwork.node:net.solarnetwork.node.datum.tou", version.ref = "sn-node-datum-tou" }
 sn-node-metrics = { module = "net.solarnetwork.node:net.solarnetwork.node.metrics", version.ref = "sn-node-metrics" }
 sn-node-metrics-harvester = { module = "net.solarnetwork.node:net.solarnetwork.node.metrics.harvester", version.ref = "sn-node-metrics-harvester" }

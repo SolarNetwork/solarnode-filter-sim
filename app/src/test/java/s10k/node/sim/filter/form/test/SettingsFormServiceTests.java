@@ -429,6 +429,40 @@ public class SettingsFormServiceTests {
 	}
 
 	@Test
+	public void invoker() {
+		// WHEN
+		SettingsForm form = form("net.solarnetwork.node.datum.opmode.invoker", "uid", "Boost",
+				"operationalMode", "boost", "configurationsCount", "1", "configurations[0].uid", "Meter",
+				"foo", "bar");
+
+		// THEN
+		// @formatter:off
+		then(keys(form.fields()))
+			.as("The invoker's settings, without its status title")
+			.containsExactly("uid", "groupUid", "operationalMode", "configurations",
+					"configurations[0].uid", "configurations[0].groupUid",
+					"configurations[0].datumType", "configurations[0].schedule",
+					"configurations[0].persist")
+			;
+		then(field(form.fields(), "operationalMode"))
+			.as("Label from the invoker's message source")
+			.returns("Mode", from(SettingField::label))
+			.returns("boost", from(SettingField::value))
+			;
+		then(field(form.fields(), "configurations[0].schedule"))
+			.as("Schedule default from the invoker")
+			.returns("Schedule", from(SettingField::label))
+			.returns("0/15 * * * * ?", from(SettingField::defaultValue))
+			;
+		then(form.problems())
+			.as("Unknown setting reported for the invoker")
+			.extracting(SettingProblem::key, SettingProblem::message)
+			.containsExactly(tuple("foo", "The invoker has no setting foo."))
+			;
+		// @formatter:on
+	}
+
+	@Test
 	public void unsupportedFilterType() {
 		// THEN
 		// @formatter:off

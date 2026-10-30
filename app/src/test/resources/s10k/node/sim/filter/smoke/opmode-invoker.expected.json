@@ -1,0 +1,88 @@
+{
+  "messages" : [ ],
+  "stats" : {
+    "processed" : "7",
+    "generated" : "0",
+    "output" : "7",
+    "discarded" : "0",
+    "polled" : "4"
+  },
+  "datum" : [ {
+    "seq" : "1",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Unchanged", "mode:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "50"
+      }
+    }
+  }, {
+    "seq" : "2",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Unchanged", "mode:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "400"
+      }
+    }
+  }, {
+    "seq" : "3",
+    "sourceId" : "/site",
+    "steps" : [ "main:Unchanged", "mode:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "100"
+      }
+    }
+  }, {
+    "seq" : "4",
+    "sourceId" : "/meter/mock",
+    "steps" : [ "main:Unchanged", "mode:Skipped" ],
+    "output" : {
+      "i" : {
+        "voltage" : "230",
+        "frequency" : "50",
+        "powerFactor" : "1",
+        "current" : "10",
+        "watts" : "2300"
+      },
+      "a" : {
+        "wattHours" : "8282880"
+      }
+    }
+  }, {
+    "seq" : "5",
+    "sourceId" : "/meter/mock",
+    "steps" : [ "main:Unchanged", "mode:Skipped" ],
+    "output" : {
+      "i" : {
+        "voltage" : "230",
+        "frequency" : "50",
+        "powerFactor" : "1",
+        "current" : "10",
+        "watts" : "2300"
+      },
+      "a" : {
+        "wattHours" : "8282892"
+      }
+    }
+  }, {
+    "seq" : "6",
+    "sourceId" : "/site",
+    "steps" : [ "main:Unchanged", "mode:Skipped" ],
+    "output" : {
+      "i" : {
+        "watts" : "100"
+      }
+    }
+  }, {
+    "seq" : "7",
+    "sourceId" : "/meter/1",
+    "steps" : [ "main:Unchanged", "mode:Unchanged" ],
+    "output" : {
+      "i" : {
+        "watts" : "10"
+      }
+    }
+  } ]
+}

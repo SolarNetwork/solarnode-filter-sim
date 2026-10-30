@@ -59,6 +59,8 @@ import net.solarnetwork.domain.datum.GeneralDatumMetadata;
 import net.solarnetwork.node.control.conductor.ControlConductor;
 import net.solarnetwork.node.control.conductor.ControlTaskConfig;
 import net.solarnetwork.node.datum.battery.mock.MockBatteryDatumDataSource;
+import net.solarnetwork.node.datum.opmode.DatumDataSourceOpModeInvoker;
+import net.solarnetwork.node.datum.opmode.DatumDataSourceScheduleConfig;
 import net.solarnetwork.node.domain.LocalState;
 import net.solarnetwork.node.domain.datum.NodeDatum;
 import net.solarnetwork.node.job.JobUtils;
@@ -88,6 +90,7 @@ import s10k.node.sim.filter.domain.LocalStateInfo;
 import s10k.node.sim.filter.domain.MetricInfo;
 import s10k.node.sim.filter.domain.NodeControlConfig;
 import s10k.node.sim.filter.domain.NodeLocation;
+import s10k.node.sim.filter.domain.OpModeInvokerConfig;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationEnvironment;
 import s10k.node.sim.filter.domain.SimulationHistory;
@@ -210,9 +213,13 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	private @Nullable String creating;
 	/** The scheduled task running, and the datum it generated. */
 	private SimTaskScheduler.@Nullable Task firing;
-	/** The datum source being created or polled. */
+	/** The datum source being created or polled, or read by an invoker. */
 	private SimDatumSources.@Nullable Source polling;
+	/** The Operational Mode Datum Source Invoker being created or running. */
+	private SimOpModeInvokers.@Nullable Invoker invoking;
 	private final Map<String, DatumSourceConfig> datumSourceConfigs = new HashMap<>(4);
+	/** The datum sources an invoker read. */
+	private final Set<String> invokedSources = new HashSet<>(4);
 	private int polledCount;
 	private final List<QueuedDatum> taskGenerated = new ArrayList<>(2);
 	private int taskRuns;
@@ -268,6 +275,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		loadPlaceholders();
 		loadControls();
 		loadDatumSources();
+		loadInvokers();
 		loadConductors();
 		registerUserMetadataServices();
 		loadNodeLocation();
@@ -297,6 +305,19 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
 		context.modeSwitches().setListener(tracer::controlUpdated);
 		context.datumSources().setListener(tracer::controlUpdated);
+		context.invokers().setListener(new SimOpModeInvokers.Listener() {
+
+			@Override
+			public void invoking(SimOpModeInvokers.@Nullable Invoker invoker) {
+				invoking = invoker;
+			}
+
+			@Override
+			public void reading(SimDatumSources.@Nullable Source source) {
+				polling = source;
+			}
+
+		});
 		context.eventAdmin()
 				.setPublisher((controlId, datum, persist) -> offer(datum, persist, controlId));
 	}
@@ -331,6 +352,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		loadEnvironment(firstDate);
 		loadHistory(firstDate);
 		context.startOperationalModes();
+		startInvokers();
 
 		final long deadline = start + TimeUnit.MILLISECONDS.toNanos(limits.timeoutMs());
 		final int maxDatum = limits.maxDatum();
@@ -404,7 +426,9 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		addPendingTaskMessages(scheduler, filters);
 		addPendingInstructionMessages();
 		addDatumSourceMessages(firstDate);
+		addInvokerMessages();
 		shutdown(filters);
+		context.invokers().shutdown();
 		shutdownDatumSources();
 		context.stopOperationalModes();
 		addDepthLimitMessages();
@@ -610,12 +634,18 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	 * the Control Conductor whose stored instruction the job is running.
 	 */
 	private void logged(boolean error, String message) {
-		final StepRecord step = tracer.currentStep();
-		final SimTaskScheduler.Task task = firing;
-		final RunRecord run = tracer.currentRun();
+		// an invoker can hear of a mode change while a filter runs
+		final SimOpModeInvokers.Invoker invoker = invoking;
+		final StepRecord step = (invoker == null ? tracer.currentStep() : null);
+		final SimTaskScheduler.Task task = (invoker == null ? firing : null);
+		final RunRecord run = (invoker == null ? tracer.currentRun() : null);
 		final SimDatumSources.Source datumSource = (step == null ? polling : null);
 		final String source = (datumSource != null ? datumSource.label()
-				: step == null && task == null && run != null ? runLabel(run.instruction) : null);
+				: invoker != null ? invoker.label()
+						: step == null && task == null && run != null ? runLabel(run.instruction)
+								: null);
+		final String sourceId = (datumSource != null ? datumSource.id()
+				: invoker != null ? invoker.id() : null);
 		final String filterId = (step != null ? step.filterId
 				: source != null ? null : task != null ? task.owner() : creating);
 		final QueuedDatum datum = this.current;
@@ -626,8 +656,8 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		if ( existing != null ) {
 			existing.count++;
 		} else {
-			logs.put(key, new LogRecord(filterId, source, datumSource != null ? datumSource.id() : null,
-					datum != null ? datum.seq() : null, error, text));
+			logs.put(key, new LogRecord(filterId, source, sourceId, datum != null ? datum.seq() : null,
+					error, text));
 		}
 	}
 
@@ -1321,7 +1351,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			if ( trigger == null ) {
 				continue;
 			}
-			if ( source.polls() == 0 ) {
+			if ( source.polls() == 0 && !invokedSources.contains(source.id()) ) {
 				final Instant first = firstPoll(trigger, start);
 				messages.add(SimulationMessage
 						.info(SimulationMessage.CODE_DATUM_SOURCE_POLLS, first != null
@@ -1351,6 +1381,164 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 			} finally {
 				polling = null;
 			}
+		}
+	}
+
+	/* === Operational Mode Datum Source Invokers === */
+
+	/**
+	 * Create the Operational Mode Datum Source Invokers, after the datum
+	 * sources, as their checks look for datum sources.
+	 */
+	private void loadInvokers() {
+		final List<OpModeInvokerConfig> configs = request.invokers();
+		if ( configs == null ) {
+			return;
+		}
+		final Set<String> ids = new HashSet<>(configs.size());
+		for ( int i = 0; i < configs.size(); i++ ) {
+			final OpModeInvokerConfig config = configs.get(i);
+			if ( config == null ) {
+				continue;
+			}
+			final String id = (config.id() != null && !config.id().isBlank() ? config.id()
+					: "invoker" + (i + 1));
+			final Map<String, String> settings = new LinkedHashMap<>(config.settingsOrEmpty().size());
+			for ( Map.Entry<String, String> e : config.settingsOrEmpty().entrySet() ) {
+				if ( e.getKey() != null && e.getValue() != null ) {
+					settings.put(e.getKey(), e.getValue());
+				}
+			}
+			final String label = invokerLabel(i, settings);
+			if ( datumSourceConfigs.containsKey(id) || !ids.add(id) ) {
+				warnInvoker(
+						"%s has the id %s, which another invoker or datum source has, so it is left out."
+								.formatted(label, SimulationMessage.quoted(id)),
+						null);
+				continue;
+			}
+			final SimOpModeInvokers.Invoker invoker = context.createInvoker(id, label);
+			invoking = invoker;
+			try {
+				for ( SettingsApplier.Problem p : SettingsApplier.apply(invoker.invoker(), settings) ) {
+					messages.add(SimulationMessage
+							.warning(
+									p.unknown() ? SimulationMessage.CODE_UNKNOWN_SETTING
+											: SimulationMessage.CODE_INVALID_SETTING,
+									p.unknown() ? "%s has no setting %s.".formatted(label, p.key())
+											: "%s setting %s could not be applied: %s".formatted(label,
+													p.key(), p.message()),
+									null, null)
+							.withDatumSourceId(id));
+				}
+			} finally {
+				invoking = null;
+			}
+			checkInvoker(invoker);
+		}
+	}
+
+	/**
+	 * Get the label of an invoker in messages: its Service Name, or its
+	 * position.
+	 */
+	private static String invokerLabel(int index, Map<String, String> settings) {
+		final String uid = settings.get(UID_SETTING);
+		if ( uid != null && !uid.isBlank() ) {
+			return "The Operational Mode Invoker " + SimulationMessage.quoted(uid);
+		}
+		return "Operational Mode Invoker %d".formatted(index + 1);
+	}
+
+	private void warnInvoker(String message, @Nullable String invokerId) {
+		messages.add(
+				SimulationMessage.warning(SimulationMessage.CODE_INVALID_INVOKER, message, null, null)
+						.withDatumSourceId(invokerId));
+	}
+
+	/**
+	 * Check an invoker's configuration for what makes it poll nothing.
+	 */
+	private void checkInvoker(SimOpModeInvokers.Invoker invoker) {
+		final DatumDataSourceOpModeInvoker inv = invoker.invoker();
+		final String label = invoker.label();
+		final String mode = inv.getOperationalMode();
+		if ( mode == null || mode.isBlank() ) {
+			warnInvoker("%s has no Mode, so it never polls.".formatted(label), invoker.id());
+		}
+		final DatumDataSourceScheduleConfig[] configs = inv.getConfigurations();
+		if ( configs == null || configs.length == 0 ) {
+			warnInvoker("%s has no Data Source Configurations, so it never polls.".formatted(label),
+					invoker.id());
+			return;
+		}
+		for ( int i = 0; i < configs.length; i++ ) {
+			final DatumDataSourceScheduleConfig config = configs[i];
+			if ( config == null ) {
+				continue;
+			}
+			final String item = "%s Data Source Configuration %d".formatted(label, i + 1);
+			final String schedule = config.getSchedule();
+			if ( schedule == null || schedule.isBlank() ) {
+				warnInvoker("%s has no Schedule, so it never polls.".formatted(item), invoker.id());
+				continue;
+			}
+			final String expr = schedule.trim();
+			try {
+				final long seconds = Long.parseLong(expr);
+				if ( seconds < 0 ) {
+					warnInvoker(
+							"%s has the Schedule %s, which is not a valid period or cron expression, so it never polls."
+									.formatted(item, SimulationMessage.quoted(expr)),
+							invoker.id());
+					continue;
+				}
+				if ( seconds == 0 ) {
+					warnInvoker(
+							"%s has the Schedule 0, which a node runs without a pause, so the simulator does not run it."
+									.formatted(item),
+							invoker.id());
+					continue;
+				}
+			} catch ( NumberFormatException e ) {
+				if ( !CronExpression.isValidExpression(expr) ) {
+					warnInvoker(
+							"%s has the Schedule %s, which is not a valid period or cron expression, so it never polls."
+									.formatted(item, SimulationMessage.quoted(expr)),
+							invoker.id());
+					continue;
+				}
+			}
+			if ( context.datumSources().sources().stream()
+					.noneMatch(s -> config.matches(s.datumSource())) ) {
+				warnInvoker("%s matches no datum source, so it polls nothing.".formatted(item),
+						invoker.id());
+			}
+		}
+	}
+
+	/**
+	 * Start the invokers, once the operational modes are loaded: each one
+	 * starts polling if its mode is active.
+	 */
+	private void startInvokers() {
+		for ( SimOpModeInvokers.Invoker invoker : context.invokers().invokers() ) {
+			context.invokers().start(invoker, context.eventAdmin());
+		}
+	}
+
+	private void addInvokerMessages() {
+		for ( SimOpModeInvokers.Invoker invoker : context.invokers().invokers() ) {
+			final String mode = invoker.invoker().getOperationalMode();
+			if ( mode == null || mode.isBlank() || invoker.runs() > 0 ) {
+				continue;
+			}
+			messages.add(SimulationMessage.info(SimulationMessage.CODE_INVOKER_RUNS, invoker.active()
+					? "%s did not poll, as the simulation ended before its first poll while its mode was active."
+							.formatted(invoker.label())
+					: "%s did not poll, as its mode %s was never active.".formatted(invoker.label(),
+							SimulationMessage.quoted(mode.trim())),
+					null).withDatumSourceId(invoker.id()));
 		}
 	}
 
@@ -1779,9 +1967,14 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		}
 		final SimDatumSources.Source datumSource = polling;
 		if ( datumSource != null && step == null ) {
-			// a poll: processed after the poll, before later datum
+			// a poll, or an invoker's read: processed after it, before later datum
+			final SimOpModeInvokers.Invoker invoker = invoking;
+			if ( invoker != null ) {
+				invokedSources.add(datumSource.id());
+			}
 			final QueuedDatum qd = new QueuedDatum(nextSeq++, datum, persist, 0,
-					DatumOrigin.polled(datumSource.id()).withControlId(controlId));
+					DatumOrigin.polled(datumSource.id()).withControlId(controlId)
+							.withInvokerId(invoker != null ? invoker.id() : null));
 			addLineage(qd);
 			taskGenerated.add(qd);
 			polledCount++;

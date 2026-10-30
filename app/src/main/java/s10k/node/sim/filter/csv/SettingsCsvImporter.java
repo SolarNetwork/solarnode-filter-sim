@@ -100,8 +100,9 @@ import s10k.node.sim.filter.sim.SimulationException;
  * The Mock, Modbus, and BACnet controls, Control Datum Sources, and Control
  * Conductors become simulated controls and Control Conductors for the
  * simulation's environment ({@link ControlSettings}), and the supported datum
- * sources become simulated datum sources ({@link DatumSourceSettings}), except
- * in external settings, which ignore them. They are imported even without their
+ * sources and Operational Mode Datum Source Invokers become simulated datum
+ * sources and invokers ({@link DatumSourceSettings}), except in external
+ * settings, which ignore them. They are imported even without their
  * {@code .FACTORY} rows, with a warning.
  * </p>
  *
@@ -1107,7 +1108,8 @@ final class SettingsCsvImporter {
 						dqComment != null ? dqComment : baseDatumQueueComment),
 				messages, ignoredComponents, controls.controls().isEmpty() ? null : controls.controls(),
 				controls.conductors().isEmpty() ? null : controls.conductors(),
-				datumSources.datumSources().isEmpty() ? null : datumSources.datumSources());
+				datumSources.datumSources().isEmpty() ? null : datumSources.datumSources(),
+				datumSources.invokers().isEmpty() ? null : datumSources.invokers());
 	}
 
 	private void instanceMessages(Instance instance) {

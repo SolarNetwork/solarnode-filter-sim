@@ -36,6 +36,8 @@ const DATUM_SOURCE_ICONS: Record<string, string> = {
 	"net.solarnetwork.node.datum.battery.mock": "battery-half",
 	"net.solarnetwork.node.datum.energymeter.mock": "lightning-charge",
 	"net.solarnetwork.node.datum.tou": "calendar-week",
+	// the Operational Mode Invoker, listed with the datum sources
+	"net.solarnetwork.node.datum.opmode.invoker": "toggles",
 };
 
 /** The icon of a datum source type with no icon of its own. */

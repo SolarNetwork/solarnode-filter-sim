@@ -9,7 +9,8 @@ The SolarNode Filter Simulator is a web application for designing and testing So
  * simulate the node's controls and Control Conductors, which filters like the Control Updater
    and Instructor use
  * run sample datum through the chain, and see how each filter transformed them
- * poll simulated datum sources, like a Mock Energy Meter or Mock Battery, on their schedules
+ * poll simulated datum sources, like a Mock Energy Meter or Mock Battery, on their schedules,
+   and while an operational mode is active with Operational Mode Invokers
  * record the datum a real SolarNode captures, as they arrive, to use as sample datum
  * see the route each datum took through the filters, drawn on the canvas
  * download the execution flow as a stand-alone HTML report
