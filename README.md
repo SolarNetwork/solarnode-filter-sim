@@ -14,15 +14,12 @@ The SolarNode Filter Simulator is a web application for designing and testing So
  * record the datum a real SolarNode captures, as they arrive, to use as sample datum
  * see the route each datum took through the filters, drawn on the canvas
  * download the execution flow as a stand-alone HTML report
+ * download the datum that the execution processed as JSON or CSV
  * export the configuration as a SolarNode settings CSV file, or import an existing one
  * save the whole simulation, with its inputs, to a file to share it or open it in another
    browser
 
-The simulator runs the real SolarNode filter code, from the SolarNode bundles published to Maven
-Central, so filters behave the same as they do on a node.
-
-> [!NOTE]
-> The simulator is in early development. See [PLAN.md](PLAN.md) for the roadmap.
+The simulator runs the real SolarNode filter code so filters behave the same as they do on a node.
 
 # Running
 
@@ -30,10 +27,10 @@ The simulator is a single application that serves its web UI over HTTP. Once it 
 visit the URL it prints in a desktop web browser. The native executable listens on port `2008` by
 default, and the JVM build (`bootRun`) on port `8080`.
 
-To run from source with Java 25:
+To build and run from source:
 
 ```sh
-./gradlew :solarnode-filter-sim-app:bootRun
+./gradlew :solarnode-filter-sim-app:bootRun --console=plain
 ```
 
 To run the native executable (see [README-Developers.md](README-Developers.md) for how to build
@@ -71,10 +68,12 @@ commands to allow in every simulation can also be set when starting the simulato
 
 ## Long runs
 
-A run processes up to its **Maximum Datum** (on the Environment tab, 1,000 when blank), and its
-time limit grows with it: 10 seconds per 1,000 datum. A result over 200 datum shows as a list you
-can filter, and the Execution Flow's download menu saves the output or input datum as JSON, as one CSV, or as a zip archive of one CSV per source ID. The simulator allows at most 100,000 datum and 10 minutes per run;
-change these when starting it with `--sim.max-datum` and `--sim.max-run-time` (such as `30m`).
+A run processes up to its **Maximum Datum** (on the Environment tab, 1,000 when blank), and its time
+limit grows with it: 10 seconds per 1,000 datum. A result over 200 datum shows as a list you can
+filter, and the Execution Flow's download menu saves the output or input datum as JSON, as one CSV,
+or as a zip archive of one CSV per source ID. The simulator allows at most 100,000 datum and 10
+minutes per run; change these when starting it with `--sim.max-datum` and `--sim.max-run-time` (such
+as `30m`).
 
 ## Custom filters
 
@@ -153,13 +152,13 @@ arguments and properties, then its settings, then its init method. It does not c
 - **Settings:** the settings form comes from the filter's `getSettingSpecifiers()` and the
   message source of its `SettingSpecifierProviderFactory` service, as on a node.
 
-### Custom datum sources
+## Custom datum sources
 
-The bundles can also have datum sources: a managed service factory of a `SimpleManagedJob` that
-polls the datum source with a `DatumDataSourcePollManagedJob`, as the SolarNode datum source
-bundles have. They appear under **Custom** in the Datum Sources tab's **Add a datum source**
-menu, and a settings CSV import adds their instances to that tab. The simulator wraps each in
-its own poll and managed jobs, so its schedule, settings form, and polling work like the
+The bundles can also have [datum sources][datum-sources]: a managed service factory of a
+`SimpleManagedJob` that polls the datum source with a `DatumDataSourcePollManagedJob`, as the
+SolarNode datum source bundles have. They appear under **Custom** in the Datum Sources tab's **Add a
+datum source** menu, and a settings CSV import adds their instances to that tab. The simulator wraps
+each in its own poll and managed jobs, so its schedule, settings form, and polling work like the
 standard datum sources'.
 
 - **Time and randomness:** like a filter, a datum source class with a constructor that takes a
@@ -183,3 +182,4 @@ standard datum sources'.
   job's `serviceDidShutdown()` runs at the end of each run.
 
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/
+[datum-sources]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/

@@ -16,6 +16,7 @@ This document has information for developers of the SolarNode Filter Simulator.
    Node, so a local one is only needed to run the Vite development server.
  * GraalVM for JDK 25, to build the native executable.
 
+
 # Running the app
 
 ```sh
@@ -23,6 +24,124 @@ This document has information for developers of the SolarNode Filter Simulator.
 ```
 
 Then visit <http://localhost:8080/>.
+
+# Code style
+
+Java sources are formatted with the Eclipse profile in `config/codeformatter.xml`, applied by
+Spotless. UI sources are checked with ESLint and formatted with Prettier. `./gradlew check`
+verifies both.
+
+```sh
+./gradlew spotlessApply          # format Java sources
+
+cd web
+npm run lint:fix                 # fix ESLint findings where possible
+npm run prettier:write           # format UI sources
+```
+
+Java code is compiled with ErrorProne and NullAway. Every package has a `package-info.java`
+annotated `@NullMarked`, and nullable types use the JSpecify `@Nullable` annotation.
+
+
+# Building
+
+```sh
+./gradlew build
+```
+
+This builds the UI (with `npm ci` and a Vite production build, using a Gradle-managed Node) and
+packages it into the app. It also compiles and tests the app and runs the code checks. The
+runnable jar is `app/build/libs/sn-filter-sim-<version>.jar`. `build` also builds the native
+distribution (see below), so it needs GraalVM. Without it, `./gradlew bootJar` builds the
+runnable jar, and `./gradlew check` runs the tests and code checks.
+
+## Using unreleased SolarNetwork bundles
+
+The SolarNode and SolarNetwork Common bundles come from Maven Central, at the versions in
+`gradle/libs.versions.toml`. To try an unreleased bundle version, first publish it to your local
+Ivy repository with `ant publish` in the bundle's directory (in the `solarnetwork-node` or
+`solarnetwork-common` repository). Then set that version in `gradle/libs.versions.toml` and pass
+`-PlocalIvy` to Gradle:
+
+```sh
+./gradlew -PlocalIvy :solarnode-filter-sim-app:bootRun
+```
+
+The local Ivy repository defaults to `~/.ivy2/local`. Use `-PlocalIvyPath=/some/path` to change
+it. Publish with `ant publish -Dpublish.ivy=true`, so the repository has the bundle's Ivy
+descriptor, which Gradle needs to resolve it.
+
+## Native executable
+
+The native executable needs GraalVM for JDK 25. Point `GRAALVM_HOME` at it, for example:
+
+```sh
+GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeCompile
+```
+
+The executable is `app/build/native/nativeCompile/sn-filter-sim`. It listens on port 2008 by
+default (`FilterSimulatorApplication.NATIVE_DEFAULT_PORT`), and only on `127.0.0.1`
+(`NATIVE_DEFAULT_ADDRESS`), while the JVM build keeps Spring Boot's 8080 on every interface,
+which the Vite dev server proxies to.
+
+The build needs about 5 GB of memory for `native-image`. On a machine with less to spare, stop
+other JVMs (such as a `bootRun`) first, or cap the builder's heap with `-J-Xmx4g` in the
+native build arguments below.
+
+By default the native build uses `-O3` and a fixed 256 MB runtime heap. You can supply your own
+`native-image` arguments from any of these sources:
+
+ * the `NATIVE_BUILD_ARGS` environment variable, as a comma-delimited list
+ * the `nativeBuildArgs` Gradle property, as a comma-delimited list
+ * a `native-build.args` file in `app/`, with one argument per line and `#` comment lines
+   (choose another file with the `nativeBuildArgsFile` Gradle property)
+
+Arguments from all of these sources are combined, and they replace the defaults entirely.
+
+For example, for a faster development build:
+
+```sh
+NATIVE_BUILD_ARGS=--enable-native-access=ALL-UNNAMED,-Ob GRAALVM_HOME=/opt/graalvm-jdk@25 \
+  ./gradlew :solarnode-filter-sim-app:nativeCompile
+```
+
+### Native smoke test
+
+A native image only has the reflection metadata that Spring's AOT processing and
+`SimulatorRuntimeHints` give it, so an expression can fail natively that works on the JVM. The
+`nativeSmokeTest` task builds the executable (if needed), starts it on a free port, and runs
+each smoke fixture twice: through `/api/simulate`, and as a background run through the runs API,
+as the UI does (following its events, then getting its result and the JSON, CSV, and zip downloads). It then runs
+the `datum-sources` fixture for an hour of simulated time, so the result is over 200 datum, and
+checks that the runs API's result, with the traces it loads by number, matches `/api/simulate`'s:
+
+```sh
+GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeSmokeTest
+```
+
+The fixtures are in `app/src/test/resources/s10k/node/sim/filter/smoke/`. Each `<name>.json` is
+a simulation request, and `<name>.expected.json` is a summary of the expected result: message
+codes, stats, and each datum's step statuses and output samples. `SmokeFixtureTests` checks the
+same summaries on the JVM. When a summary differs, the actual one is written to
+`app/build/reports/native-smoke/<name>.actual.json` (or `app/build/smoke/` by the test), next
+to the executable's log. A native-only difference usually means a missing runtime hint, shown
+as a `FilterLog` message with the expression error. When a behaviour change is deliberate,
+review the new summary and copy it over the fixture's.
+
+## Distribution
+
+The release distribution is a tarball holding only the native executable, named for the
+operating system and CPU (`darwin`, `linux`, or `windows`, and `arm64` or `amd64`), for example
+`app/build/distributions/solarnode-filter-simualtor-0.1.0-linux-arm64.tar.gz`:
+
+```sh
+GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:distTar
+```
+
+The executable runs on its own: the JDK shim libraries and build report that `nativeCompile`
+writes next to it are left out. Gradle 9 archives normalize file permissions, so the
+distribution sets the executable's mode explicitly.
+
 
 # UI development
 
@@ -83,6 +202,7 @@ The main TypeScript modules are:
 | `api.ts`, `model.ts` | The web API client and its types. |
 
 To change a filter's icon, change its entry in `icons.ts` to the name of another Bootstrap icon.
+
 
 # Web API
 
@@ -206,26 +326,25 @@ curl -X DELETE http://localhost:8080/api/capture/<id>
 
 ## Background runs
 
-`POST /api/runs` runs a simulation on a small pool of threads (two at a time), for long runs
-that the UI shows progress for and can cancel. The simulator keeps the last three runs, however
-long ago they ran, until newer runs replace them. While a run runs, it keeps each datum's trace compressed,
+`POST /api/runs` runs a simulation on a small pool of threads (two at a time), for long runs that
+the UI shows progress for and can cancel. The simulator keeps the last three runs, however long ago
+they ran, until newer runs replace them. While a run runs, it keeps each datum's trace compressed,
 so memory grows with the compressed size.
 
-The event stream has a `progress` event at once and about every 250 ms while the run goes on,
-and a `done` event when it ends, each a `RunProgress`:
+The event stream has a `progress` event at once and about every 250 ms while the run goes on, and a
+`done` event when it ends, each a `RunProgress`:
 `{"state":"Running"|"Done"|"Failed","processed":…,"expected":…,"date":…}`, plus `error` and
 `problems` when it failed. `expected` is the input datum plus each datum source's polls, up to
 Maximum Datum, without the datum filters generate. A run that has ended sends only `done`.
 
-A `RunResult` is a `SimulationResult` with the run's `id`. Up to 200 datum it has every trace.
-Above that, `datum` has the first 20 traces only, plus an `index` of every datum (`seq`,
-`sourceId`, `created`, `origin`, `outcome`, and `error`) and `filterStats`, each filter's counts
-(`in`, `out`, `dropped`, `changed`, `skipped`, `errors`). Load other traces with
-`/datum?seq=`.
+A `RunResult` is a `SimulationResult` with the run's `id`. Up to 200 datum it has every trace. Above
+that, `datum` has the first 20 traces only, plus an `index` of every datum (`seq`, `sourceId`,
+`created`, `origin`, `outcome`, and `error`) and `filterStats`, each filter's counts (`in`, `out`,
+`dropped`, `changed`, `skipped`, `errors`). Load other traces with `/datum?seq=`.
 
 The server limits runs with `--sim.max-datum` (default 100,000) and `--sim.max-run-time` (default
-`10m`). A run's timeout is 10 seconds per 1,000 datum of its Maximum Datum (at least 10 seconds),
-up to the maximum run time.
+`10m`). A run's timeout is 10 seconds per 1,000 datum of its Maximum Datum (at least 10 seconds), up
+to the maximum run time.
 
 ```sh
 curl -H 'Content-Type: application/json' -d @request.json http://localhost:8080/api/runs
@@ -256,7 +375,8 @@ in execution order, each with its comments or a generated banner. The `Plain` st
 rows like a SolarNode export. A configuration with instance IDs that SolarNode does not allow
 gets a `400` response whose `problems` array lists each one.
 
-# Custom filters
+
+# Custom filters and datum sources
 
 The standard filter types are ported by hand from their bundles' blueprints, in
 `StandardFilterTypes`. Custom filter types, from the jars of `sim.filters.path`, are defined
@@ -328,122 +448,6 @@ the service bindings against real filters. `CustomFilterLoaderTests` loads a tes
 the build makes from the `testFilterBundle` source set, with a library jar from the
 `testFilterLib` source set embedded in it. The bundle is not on the test class path; the
 `sim.test.filterBundle` system property names its jar.
-
-# Building
-
-```sh
-./gradlew build
-```
-
-This builds the UI (with `npm ci` and a Vite production build, using a Gradle-managed Node) and
-packages it into the app. It also compiles and tests the app and runs the code checks. The
-runnable jar is `app/build/libs/sn-filter-sim-<version>.jar`. `build` also builds the native
-distribution (see below), so it needs GraalVM. Without it, `./gradlew bootJar` builds the
-runnable jar, and `./gradlew check` runs the tests and code checks.
-
-## Native executable
-
-The native executable needs GraalVM for JDK 25. Point `GRAALVM_HOME` at it, for example:
-
-```sh
-GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeCompile
-```
-
-The executable is `app/build/native/nativeCompile/sn-filter-sim`. It listens on port 2008 by
-default (`FilterSimulatorApplication.NATIVE_DEFAULT_PORT`), and only on `127.0.0.1`
-(`NATIVE_DEFAULT_ADDRESS`), while the JVM build keeps Spring Boot's 8080 on every interface,
-which the Vite dev server proxies to.
-
-The build needs about 5 GB of memory for `native-image`. On a machine with less to spare, stop
-other JVMs (such as a `bootRun`) first, or cap the builder's heap with `-J-Xmx4g` in the
-native build arguments below.
-
-By default the native build uses `-O3` and a fixed 256 MB runtime heap. You can supply your own
-`native-image` arguments from any of these sources:
-
- * the `NATIVE_BUILD_ARGS` environment variable, as a comma-delimited list
- * the `nativeBuildArgs` Gradle property, as a comma-delimited list
- * a `native-build.args` file in `app/`, with one argument per line and `#` comment lines
-   (choose another file with the `nativeBuildArgsFile` Gradle property)
-
-Arguments from all of these sources are combined, and they replace the defaults entirely.
-
-For example, for a faster development build:
-
-```sh
-NATIVE_BUILD_ARGS=--enable-native-access=ALL-UNNAMED,-Ob GRAALVM_HOME=/opt/graalvm-jdk@25 \
-  ./gradlew :solarnode-filter-sim-app:nativeCompile
-```
-
-### Distribution
-
-The release distribution is a tarball holding only the native executable, named for the
-operating system and CPU (`darwin`, `linux`, or `windows`, and `arm64` or `amd64`), for example
-`app/build/distributions/solarnode-filter-simualtor-0.1.0-linux-arm64.tar.gz`:
-
-```sh
-GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:distTar
-```
-
-The executable runs on its own: the JDK shim libraries and build report that `nativeCompile`
-writes next to it are left out. Gradle 9 archives normalize file permissions, so the
-distribution sets the executable's mode explicitly.
-
-### Native smoke test
-
-A native image only has the reflection metadata that Spring's AOT processing and
-`SimulatorRuntimeHints` give it, so an expression can fail natively that works on the JVM. The
-`nativeSmokeTest` task builds the executable (if needed), starts it on a free port, and runs
-each smoke fixture twice: through `/api/simulate`, and as a background run through the runs API,
-as the UI does (following its events, then getting its result and the JSON, CSV, and zip downloads). It then runs
-the `datum-sources` fixture for an hour of simulated time, so the result is over 200 datum, and
-checks that the runs API's result, with the traces it loads by number, matches `/api/simulate`'s:
-
-```sh
-GRAALVM_HOME=/opt/graalvm-jdk@25 ./gradlew :solarnode-filter-sim-app:nativeSmokeTest
-```
-
-The fixtures are in `app/src/test/resources/s10k/node/sim/filter/smoke/`. Each `<name>.json` is
-a simulation request, and `<name>.expected.json` is a summary of the expected result: message
-codes, stats, and each datum's step statuses and output samples. `SmokeFixtureTests` checks the
-same summaries on the JVM. When a summary differs, the actual one is written to
-`app/build/reports/native-smoke/<name>.actual.json` (or `app/build/smoke/` by the test), next
-to the executable's log. A native-only difference usually means a missing runtime hint, shown
-as a `FilterLog` message with the expression error. When a behaviour change is deliberate,
-review the new summary and copy it over the fixture's.
-
-# Code style
-
-Java sources are formatted with the Eclipse profile in `config/codeformatter.xml`, applied by
-Spotless. UI sources are checked with ESLint and formatted with Prettier. `./gradlew check`
-verifies both.
-
-```sh
-./gradlew spotlessApply          # format Java sources
-
-cd web
-npm run lint:fix                 # fix ESLint findings where possible
-npm run prettier:write           # format UI sources
-```
-
-Java code is compiled with ErrorProne and NullAway. Every package has a `package-info.java`
-annotated `@NullMarked`, and nullable types use the JSpecify `@Nullable` annotation.
-
-# Unreleased SolarNetwork bundles
-
-The SolarNode and SolarNetwork Common bundles come from Maven Central, at the versions in
-`gradle/libs.versions.toml`. To try an unreleased bundle version, first publish it to your local
-Ivy repository with `ant publish` in the bundle's directory (in the `solarnetwork-node` or
-`solarnetwork-common` repository). Then set that version in `gradle/libs.versions.toml` and pass
-`-PlocalIvy` to Gradle:
-
-```sh
-./gradlew -PlocalIvy :solarnode-filter-sim-app:bootRun
-```
-
-The local Ivy repository defaults to `~/.ivy2/local`. Use `-PlocalIvyPath=/some/path` to change
-it. Publish with `ant publish -Dpublish.ivy=true`, so the repository has the bundle's Ivy
-descriptor, which Gradle needs to resolve it.
 
 [bootstrap]: https://getbootstrap.com/
 [bootstrap-icons]: https://icons.getbootstrap.com/
