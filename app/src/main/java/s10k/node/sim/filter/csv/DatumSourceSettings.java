@@ -58,18 +58,15 @@ import s10k.node.sim.filter.sim.SimOpModeInvokers;
  * </p>
  *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 final class DatumSourceSettings {
 
 	/** The datum source types. */
-	private static final DatumSourceTypeRegistry TYPES = DatumSourceTypeRegistry.standard();
+	private final DatumSourceTypeRegistry types;
 
 	/** The factory UIDs of the components this class reads. */
-	static final List<String> FACTORY_UIDS = Stream
-			.concat(TYPES.definitions().stream().map(DatumSourceTypeDefinition::factoryUid),
-					Stream.of(SimOpModeInvokers.FACTORY_UID))
-			.toList();
+	private final List<String> factoryUids;
 
 	private static final String JOB_DETAIL_PREFIX = "jobDetail.";
 
@@ -96,12 +93,35 @@ final class DatumSourceSettings {
 
 	}
 
-	private DatumSourceSettings() {
-		// not available
+	/**
+	 * Constructor.
+	 *
+	 * @param types
+	 *        the datum source types, the standard ones plus any custom ones
+	 */
+	DatumSourceSettings(DatumSourceTypeRegistry types) {
+		super();
+		this.types = types;
+		this.factoryUids = Stream
+				.concat(types.definitions().stream().map(DatumSourceTypeDefinition::factoryUid),
+						Stream.of(SimOpModeInvokers.FACTORY_UID))
+				.toList();
 	}
 
 	/**
-	 * Get the factory UID of a key of one of the {@link #FACTORY_UIDS}
+	 * Test if a factory UID is one of the components this class reads: a datum
+	 * source type, or the invoker.
+	 *
+	 * @param factoryUid
+	 *        the factory UID
+	 * @return {@code true} if it is one of them
+	 */
+	boolean isFactoryUid(String factoryUid) {
+		return factoryUids.contains(factoryUid);
+	}
+
+	/**
+	 * Get the factory UID of a key of one of the {@link #isFactoryUid(String)}
 	 * instances.
 	 *
 	 * @param key
@@ -109,9 +129,10 @@ final class DatumSourceSettings {
 	 * @return the factory UID, or {@code null} if the key is not
 	 *         {@code <factoryUid>.<instanceKey>} for one of them
 	 */
-	static @Nullable String factoryUid(String key) {
+	@Nullable
+	String factoryUid(String key) {
 		String result = null;
-		for ( String uid : FACTORY_UIDS ) {
+		for ( String uid : factoryUids ) {
 			if ( key.length() > uid.length() + 1 && key.startsWith(uid)
 					&& key.charAt(uid.length()) == '.'
 					&& (result == null || uid.length() > result.length()) ) {
@@ -128,7 +149,7 @@ final class DatumSourceSettings {
 	 *        the instances, in file order
 	 * @return the result
 	 */
-	static Result of(List<ControlSettings.Instance> instances) {
+	Result of(List<ControlSettings.Instance> instances) {
 		final List<SimulationMessage> messages = new ArrayList<>(2);
 		final List<DatumSourceConfig> result = new ArrayList<>(instances.size());
 		final List<OpModeInvokerConfig> invokers = new ArrayList<>(2);
@@ -191,11 +212,11 @@ final class DatumSourceSettings {
 		return (current != null ? current : rest);
 	}
 
-	private static String label(ControlSettings.Instance instance) {
+	private String label(ControlSettings.Instance instance) {
 		if ( SimOpModeInvokers.FACTORY_UID.equals(instance.factoryUid()) ) {
 			return "Operational Mode Invoker " + SimulationMessage.quoted(instance.instanceKey());
 		}
-		final DatumSourceTypeDefinition type = TYPES.definition(instance.factoryUid());
+		final DatumSourceTypeDefinition type = types.definition(instance.factoryUid());
 		final String name = (type != null ? type.name(Locale.getDefault()) : "datum source");
 		return name + ' ' + SimulationMessage.quoted(instance.instanceKey());
 	}

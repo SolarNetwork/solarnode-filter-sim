@@ -96,7 +96,7 @@ records in the `s10k.node.sim.filter.domain` package.
 | `POST /api/filter-types/reload` | Load the custom filters again: a `CustomFiltersReload` out, with the filter types, the unavailable ones, and the `messages` of the startup message. A `400` response if there is no custom filters path. |
 | `GET /api/filter-types/unavailable` | The filter types the simulator knows of but cannot run, such as custom filter types that need a service it does not provide, sorted by name, each with its `reason`. |
 | `GET /api/datum-source-types` | The supported datum source types, sorted by name, each with its default poll schedule and `capabilities` (`Controls`, `Instructions`, `TariffSchedule`). |
-| `POST /api/settings-form` | Get a filter's, datum source's, or Operational Mode Invoker's (`net.solarnetwork.node.datum.opmode.invoker`) settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. A datum source's settings are its poll job's (`schedule` and `jobService.datumDataSource.*`), and a datum source with controls has its `controlIds`. |
+| `POST /api/settings-form` | Get a filter's, datum source's, or Operational Mode Invoker's (`net.solarnetwork.node.datum.opmode.invoker`) settings form: a `SettingsFormRequest` in, a `SettingsForm` out. Labels and descriptions follow the `Accept-Language` header. A datum source's settings are its poll job's (`schedule` and `jobService.datumDataSource.*`, or `jobService.multiDatumDataSource.*` for a multi datum source), and a datum source with controls has its `controlIds`. |
 | `POST /api/settings/import` | Import a SolarNode settings CSV file, sent as a `text/csv` body or a `file` form upload: a `SettingsImport` out, with the filters, and the controls, Control Conductors, supported datum sources, and Operational Mode Invokers for the run inputs. |
 | `POST /api/settings/merge` | Add a settings CSV file to a configuration, the way a node imports a file: a `SettingsMergeRequest` (`config` and `csv`) in, a `SettingsImport` with the combined configuration out. |
 | `POST /api/settings/external` | Combine External Settings files the way a node applies its auto settings files: an `ExternalSettingsRequest` (`files` of `name` and `csv`) in, `ExternalSettings` out. |
@@ -298,6 +298,26 @@ passes datum through them unchanged, with the reason in its message. The UI show
 in the inspector and on the canvas, puts the custom types under **Custom** in the palette, and
 saves the bundle of each custom type a simulation uses in simulation files
 (`customFilters`), to say which bundles are missing when a file is opened.
+
+Custom datum source types come from the same bundles. `FilterBlueprintInterpreter` also
+describes each managed service factory of a `ManagedJob` whose `SimpleManagedJob` wraps a
+`DatumDataSourcePollManagedJob`, as a `DatumSourceTypeDescriptor` (the datum source bean, the
+job's schedule argument, the interfaces of its `serviceProviderConfigurations`, and `multi` when
+the bean is the poll job's `multiDatumDataSource`).
+`BlueprintDatumSourceTypes` turns each into a `DatumSourceTypeDefinition` with the shared
+bean creation in `BlueprintBeans` (which `BlueprintFilterTypes` uses too), binding services with
+`ServiceBindings.datumSourceService()`, which adds the `DatumSourceContext` services. It prefers a
+constructor that takes a clock and then a `RandomGenerator`, given the datum source's seeded
+random generator. A multi type (`DatumSourceTypeDefinition.multi`) is a `MultiDatumDataSource`,
+which `SimulationContext.createDatumSource()` gives the poll job as its `multiDatumDataSource`;
+its settings use `settingPrefix()` (`jobService.multiDatumDataSource.`), which the UI's datum
+source cards read too (`sourceSetting()`), and the invokers get the multi datum sources as their
+`MultiDatumDataSource` collection. `CustomFilterService` also owns the `DatumSourceTypeRegistry`, which a reload
+replaces, and runs, forms, and CSV imports (`DatumSourceSettings`) use the registry's
+snapshots. Each datum source call runs with the bundle's class loader
+(`DatumSourceTypeDefinition.run()`). `BlueprintDatumSourceTypesTests` defines the four standard
+datum source types from their own blueprints and compares the `datum-sources` and
+`opmode-invoker` smoke fixtures' results with `StandardDatumSourceTypes`'.
 
 `BlueprintFilterTypesTests` defines the standard filter types from their own blueprints and
 checks that the smoke fixtures give the same results as with `StandardFilterTypes`. That checks

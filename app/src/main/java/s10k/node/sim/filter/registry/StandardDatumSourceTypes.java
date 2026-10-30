@@ -36,6 +36,7 @@ import net.solarnetwork.node.datum.fixed.FixedDatumDataSource;
 import net.solarnetwork.node.datum.tou.TouDatumDataSource;
 import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.DatumSourceIdProvider;
 import net.solarnetwork.node.service.MetadataService;
 import net.solarnetwork.node.service.NodeControlProvider;
 import net.solarnetwork.node.service.TariffScheduleProvider;
@@ -50,7 +51,7 @@ import net.solarnetwork.service.StaticOptionalService;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class StandardDatumSourceTypes {
 
@@ -102,7 +103,7 @@ public final class StandardDatumSourceTypes {
 					return s;
 				}, DEFAULT_SCHEDULE, List.of(DatumDataSource.class),
 				s -> ((FixedDatumDataSource) s).getSourceId(),
-				StandardDatumSourceTypes::fixedTimeZoneLimitation, null));
+				StandardDatumSourceTypes::fixedTimeZoneLimitation, null, null));
 
 		final MessageSource batteryMessages = messageSource(
 				"net.solarnetwork.node.datum.battery.mock.MockBatteryDatumDataSource",
@@ -116,7 +117,7 @@ public final class StandardDatumSourceTypes {
 					return s;
 				}, DEFAULT_SCHEDULE,
 				List.of(DatumDataSource.class, NodeControlProvider.class, InstructionHandler.class),
-				s -> ((MockBatteryDatumDataSource) s).getSourceId(), null, null));
+				s -> ((MockBatteryDatumDataSource) s).getSourceId(), null, null, null));
 
 		final MessageSource meterMessages = messageSource(
 				"net.solarnetwork.node.datum.energymeter.mock.MockEnergyMeterDatumSource",
@@ -132,7 +133,7 @@ public final class StandardDatumSourceTypes {
 				s -> ((MockEnergyMeterDatumSource) s).getSourceId(),
 				settings -> timeZoneLimitation(settings, "touMetadataPath",
 						"The Mock Energy Meter's TOU schedule"),
-				null));
+				null, null));
 
 		final MessageSource touMessages = messageSource("propertyConfigsItem.",
 				messageSource("net.solarnetwork.node.datum.tou.TouPropertyConfig",
@@ -150,7 +151,7 @@ public final class StandardDatumSourceTypes {
 				}, DEFAULT_SCHEDULE, List.of(DatumDataSource.class, TariffScheduleProvider.class),
 				s -> ((TouDatumDataSource) s).getSourceId(),
 				settings -> timeZoneLimitation(settings, "metadataPath", "The TOU datum source"),
-				StandardDatumSourceTypes::touCheck));
+				StandardDatumSourceTypes::touCheck, null));
 
 		return result;
 	}
@@ -178,7 +179,7 @@ public final class StandardDatumSourceTypes {
 		return timeZoneLimitation(settings, "touMetadataPath", "The Fixed Data source's TOU rates");
 	}
 
-	private static @Nullable String touCheck(DatumDataSource source, DatumSourceContext context) {
+	private static @Nullable String touCheck(DatumSourceIdProvider source, DatumSourceContext context) {
 		if ( !(source instanceof TouDatumDataSource s) ) {
 			return null;
 		}

@@ -28,14 +28,17 @@ import java.util.List;
  *        the supported filter types, sorted by name
  * @param unavailable
  *        the filter types the simulator knows of but cannot run, sorted by name
+ * @param datumSourceTypes
+ *        the supported datum source types, sorted by name
  * @param messages
  *        the description of the custom filters, like the startup message's: the
- *        jars and their filter types, warnings, the types that are not
- *        available, and problems
+ *        jars and their filter and datum source types, warnings, the types that
+ *        are not available, and problems
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public record CustomFiltersReload(List<FilterTypeInfo> filterTypes,
-		List<UnavailableFilterTypeInfo> unavailable, List<String> messages) {
+		List<UnavailableFilterTypeInfo> unavailable, List<DatumSourceTypeInfo> datumSourceTypes,
+		List<String> messages) {
 
 }

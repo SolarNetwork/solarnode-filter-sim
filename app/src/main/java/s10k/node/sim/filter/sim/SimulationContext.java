@@ -51,8 +51,10 @@ import net.solarnetwork.node.reactor.ReactorService;
 import net.solarnetwork.node.runtime.DefaultDatumService;
 import net.solarnetwork.node.runtime.DefaultOperationalModesService;
 import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.DatumSourceIdProvider;
 import net.solarnetwork.node.service.DatumMetadataService;
 import net.solarnetwork.node.service.DatumQueue;
+import net.solarnetwork.node.service.MultiDatumDataSource;
 import net.solarnetwork.node.service.PlaceholderService;
 import net.solarnetwork.node.service.TariffScheduleProvider;
 import net.solarnetwork.node.service.support.SettingsPlaceholderService;
@@ -90,7 +92,7 @@ import net.solarnetwork.service.support.BasicIdentifiable;
  * </p>
  *
  * @author matt
- * @version 1.4
+ * @version 1.5
  */
 public final class SimulationContext implements DatumSourceContext {
 
@@ -144,6 +146,7 @@ public final class SimulationContext implements DatumSourceContext {
 	private @Nullable Supplier<@Nullable String> taskOwner;
 	private final SimMetadataService nodeMetadataService;
 	private final List<Object> services = new ArrayList<>(16);
+	private final ExpressionService expressionService;
 	private final StaticOptionalServiceCollection<ExpressionService> expressionServices;
 	private final SimServiceTracker<TariffScheduleProvider> tariffScheduleProviders;
 	private final List<DatumFilterService> filterServices = new ArrayList<>(16);
@@ -227,6 +230,7 @@ public final class SimulationContext implements DatumSourceContext {
 				controlService::handlingControlId);
 		instructionService.addHandler(InstructionHandlerInfo.Type.OperationalModeSwitch, modeSwitches,
 				modeSwitches::handlingControlId);
+		this.expressionService = expressionService;
 		this.expressionServices = new StaticOptionalServiceCollection<>(List.of(expressionService));
 		this.tariffScheduleProviders = new SimServiceTracker<>(TariffScheduleProvider.class, services,
 				true);
@@ -278,7 +282,8 @@ public final class SimulationContext implements DatumSourceContext {
 	/**
 	 * Create a datum source with the simulated clock and the services its
 	 * blueprint gives it, wrapped in the node's poll job and managed job, like
-	 * its blueprint does.
+	 * its blueprint does. The poll job polls a multi datum source type's datum
+	 * source as its {@code multiDatumDataSource}.
 	 *
 	 * <p>
 	 * The datum source still needs its settings, applied to the managed job,
@@ -297,9 +302,18 @@ public final class SimulationContext implements DatumSourceContext {
 	 */
 	public SimDatumSources.Source createDatumSource(DatumSourceTypeDefinition type, String id,
 			String label, RandomGenerator rng) {
-		final DatumDataSource source = type.factory().create(this, rng);
+		final DatumSourceIdProvider source = type.factory().create(this, rng);
 		final DatumDataSourcePollManagedJob poll = new DatumDataSourcePollManagedJob();
-		poll.setDatumDataSource(source);
+		if ( type.multi() && source instanceof MultiDatumDataSource multi ) {
+			poll.setMultiDatumDataSource(multi);
+		} else if ( !type.multi() && source instanceof DatumDataSource single ) {
+			poll.setDatumDataSource(single);
+		} else {
+			throw new IllegalStateException(
+					"The %s datum source is not a %s.".formatted(type.factoryUid(),
+							(type.multi() ? MultiDatumDataSource.class : DatumDataSource.class)
+									.getSimpleName()));
+		}
 		poll.setDatumQueue(datumQueue());
 		poll.setDatumMetadataService(datumMetadataService());
 		final SimpleManagedJob job = new SimpleManagedJob(poll, type.defaultSchedule());
@@ -574,11 +588,7 @@ public final class SimulationContext implements DatumSourceContext {
 		return NODE_OBJECT_MAPPER;
 	}
 
-	/**
-	 * Get the Location Service, which has the node location.
-	 *
-	 * @return the service
-	 */
+	@Override
 	public SimLocationService locationService() {
 		return locationService;
 	}
@@ -603,11 +613,7 @@ public final class SimulationContext implements DatumSourceContext {
 		return new SimServiceTracker<>(serviceClass, services, ignoreEmptyPropertyFilterValues);
 	}
 
-	/**
-	 * Get the Local State DAO.
-	 *
-	 * @return the DAO
-	 */
+	@Override
 	public SimLocalStateDao localStateDao() {
 		return localStateDao;
 	}
@@ -623,20 +629,12 @@ public final class SimulationContext implements DatumSourceContext {
 		return opModes;
 	}
 
-	/**
-	 * Get the operational modes service.
-	 *
-	 * @return the service
-	 */
+	@Override
 	public DefaultOperationalModesService opModesService() {
 		return opModesService;
 	}
 
-	/**
-	 * Get the datum service, which holds the datum history.
-	 *
-	 * @return the service
-	 */
+	@Override
 	public DefaultDatumService datumService() {
 		return datumService;
 	}
@@ -685,6 +683,11 @@ public final class SimulationContext implements DatumSourceContext {
 	@Override
 	public SimEventAdmin eventAdmin() {
 		return eventAdmin;
+	}
+
+	@Override
+	public ExpressionService expressionService() {
+		return expressionService;
 	}
 
 	/**

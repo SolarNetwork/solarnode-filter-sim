@@ -121,4 +121,180 @@
 		</bean>
 	</osgix:managed-service-factory>
 
+	<!--
+	 !!! Counter datum source
+	 -->
+
+	<bean id="placeholderService" class="net.solarnetwork.common.osgi.service.DynamicServiceTracker">
+		<argument ref="bundleContext"/>
+		<property name="serviceClassName" value="net.solarnetwork.node.service.PlaceholderService"/>
+		<property name="sticky" value="true"/>
+	</bean>
+
+	<bean id="datumMetadataService" class="net.solarnetwork.common.osgi.service.DynamicServiceTracker">
+		<argument ref="bundleContext"/>
+		<property name="serviceClassName" value="net.solarnetwork.node.service.DatumMetadataService"/>
+		<property name="sticky" value="true"/>
+	</bean>
+
+	<bean id="counterMessageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basenames">
+			<list>
+				<value>com.example.solarnode.filter.CounterDatumDataSource</value>
+				<value>net.solarnetwork.node.service.support.DatumDataSourceSupport</value>
+				<value>net.solarnetwork.service.support.BasicIdentifiable</value>
+			</list>
+		</property>
+	</bean>
+
+	<bean id="counterJobMessageSource" class="net.solarnetwork.support.PrefixedMessageSource">
+		<property name="prefix" value="datumDataSource."/>
+		<property name="delegate" ref="counterMessageSource"/>
+	</bean>
+
+	<service interface="net.solarnetwork.settings.SettingSpecifierProviderFactory">
+		<bean class="net.solarnetwork.settings.support.BasicSettingSpecifierProviderFactory">
+			<property name="displayName" value="Counter Datum Source"/>
+			<property name="factoryUid" value="com.example.solarnode.datum.counter"/>
+			<property name="messageSource" ref="counterMessageSource"/>
+		</bean>
+	</service>
+
+	<osgix:managed-service-factory factory-pid="com.example.solarnode.datum.counter" autowire-on-update="true">
+		<osgix:interfaces>
+			<beans:value>net.solarnetwork.node.job.ManagedJob</beans:value>
+		</osgix:interfaces>
+		<bean class="net.solarnetwork.node.job.SimpleManagedJob"
+				init-method="serviceDidStartup" destroy-method="serviceDidShutdown">
+			<argument>
+				<bean class="net.solarnetwork.node.job.DatumDataSourcePollManagedJob">
+					<property name="datumMetadataService" ref="datumMetadataService"/>
+					<property name="datumQueue" ref="datumQueue"/>
+					<property name="datumDataSource">
+						<bean class="com.example.solarnode.filter.CounterDatumDataSource" init-method="startup">
+							<property name="messageSource" ref="counterJobMessageSource"/>
+							<property name="placeholderService" ref="placeholderService"/>
+							<property name="step" value="2"/>
+						</bean>
+					</property>
+				</bean>
+			</argument>
+			<argument value="0/30 * * * * ?"/>
+			<property name="serviceProviderConfigurations">
+				<map>
+					<entry key="datumDataSource">
+						<bean class="net.solarnetwork.node.job.SimpleServiceProviderConfiguration">
+							<property name="interfaces">
+								<list>
+									<value>net.solarnetwork.node.service.DatumDataSource</value>
+								</list>
+							</property>
+						</bean>
+					</entry>
+				</map>
+			</property>
+		</bean>
+	</osgix:managed-service-factory>
+
+	<!--
+	 !!! Multi counter datum source
+	 -->
+
+	<bean id="multiCounterMessageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basenames">
+			<list>
+				<value>com.example.solarnode.filter.MultiCounterDatumDataSource</value>
+				<value>net.solarnetwork.node.service.support.DatumDataSourceSupport</value>
+				<value>net.solarnetwork.service.support.BasicIdentifiable</value>
+			</list>
+		</property>
+	</bean>
+
+	<bean id="multiCounterJobMessageSource" class="net.solarnetwork.support.PrefixedMessageSource">
+		<property name="prefix" value="multiDatumDataSource."/>
+		<property name="delegate" ref="multiCounterMessageSource"/>
+	</bean>
+
+	<service interface="net.solarnetwork.settings.SettingSpecifierProviderFactory">
+		<bean class="net.solarnetwork.settings.support.BasicSettingSpecifierProviderFactory">
+			<property name="displayName" value="Multi Counter Datum Source"/>
+			<property name="factoryUid" value="com.example.solarnode.datum.counter.multi"/>
+			<property name="messageSource" ref="multiCounterMessageSource"/>
+		</bean>
+	</service>
+
+	<osgix:managed-service-factory factory-pid="com.example.solarnode.datum.counter.multi" autowire-on-update="true">
+		<osgix:interfaces>
+			<beans:value>net.solarnetwork.node.job.ManagedJob</beans:value>
+		</osgix:interfaces>
+		<bean class="net.solarnetwork.node.job.SimpleManagedJob"
+				init-method="serviceDidStartup" destroy-method="serviceDidShutdown">
+			<argument>
+				<bean class="net.solarnetwork.node.job.DatumDataSourcePollManagedJob">
+					<property name="datumMetadataService" ref="datumMetadataService"/>
+					<property name="datumQueue" ref="datumQueue"/>
+					<property name="multiDatumDataSource">
+						<bean class="com.example.solarnode.filter.MultiCounterDatumDataSource">
+							<property name="messageSource" ref="multiCounterJobMessageSource"/>
+							<property name="placeholderService" ref="placeholderService"/>
+						</bean>
+					</property>
+				</bean>
+			</argument>
+			<argument value="20000"/>
+			<property name="serviceProviderConfigurations">
+				<map>
+					<entry key="multiDatumDataSource">
+						<bean class="net.solarnetwork.node.job.SimpleServiceProviderConfiguration">
+							<property name="interfaces">
+								<list>
+									<value>net.solarnetwork.node.service.MultiDatumDataSource</value>
+								</list>
+							</property>
+						</bean>
+					</entry>
+				</map>
+			</property>
+		</bean>
+	</osgix:managed-service-factory>
+
+	<!--
+	 !!! Modbus counter datum source, which needs a service the simulator does not provide
+	 -->
+
+	<service interface="net.solarnetwork.settings.SettingSpecifierProviderFactory">
+		<bean class="net.solarnetwork.settings.support.BasicSettingSpecifierProviderFactory">
+			<property name="displayName" value="Modbus Counter Datum Source"/>
+			<property name="factoryUid" value="com.example.solarnode.datum.modbus"/>
+			<property name="messageSource" ref="counterMessageSource"/>
+		</bean>
+	</service>
+
+	<osgix:managed-service-factory factory-pid="com.example.solarnode.datum.modbus" autowire-on-update="true">
+		<osgix:interfaces>
+			<beans:value>net.solarnetwork.node.job.ManagedJob</beans:value>
+		</osgix:interfaces>
+		<bean class="net.solarnetwork.node.job.SimpleManagedJob"
+				init-method="serviceDidStartup" destroy-method="serviceDidShutdown">
+			<argument>
+				<bean class="net.solarnetwork.node.job.DatumDataSourcePollManagedJob">
+					<property name="datumMetadataService" ref="datumMetadataService"/>
+					<property name="datumQueue" ref="datumQueue"/>
+					<property name="datumDataSource">
+						<bean class="com.example.solarnode.filter.CounterDatumDataSource">
+							<property name="messageSource" ref="counterJobMessageSource"/>
+							<property name="modbusNetwork">
+								<bean class="net.solarnetwork.common.osgi.service.DynamicServiceTracker">
+									<argument ref="bundleContext"/>
+									<property name="serviceClassName" value="net.solarnetwork.node.io.modbus.ModbusNetwork"/>
+								</bean>
+							</property>
+						</bean>
+					</property>
+				</bean>
+			</argument>
+			<argument value="0 * * * * ?"/>
+		</bean>
+	</osgix:managed-service-factory>
+
 </blueprint>

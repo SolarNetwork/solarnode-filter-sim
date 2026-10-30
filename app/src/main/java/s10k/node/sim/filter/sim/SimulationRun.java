@@ -46,6 +46,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.support.CronExpression;
@@ -69,7 +70,10 @@ import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.runtime.DatumHistory;
 import net.solarnetwork.node.runtime.DefaultLocalStateService;
 import net.solarnetwork.node.runtime.DefaultOperationalModesService;
+import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.DatumSourceIdProvider;
 import net.solarnetwork.node.service.DatumHistorian;
+import net.solarnetwork.node.service.MultiDatumDataSource;
 import net.solarnetwork.node.service.NodeControlProvider;
 import net.solarnetwork.node.service.DatumQueueProcessObserver.Stage;
 import net.solarnetwork.node.service.support.DatumFilterChainService;
@@ -101,6 +105,7 @@ import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.domain.SimulationState;
 import s10k.node.sim.filter.domain.SimulationStats;
 import s10k.node.sim.filter.domain.UserMetadataConfig;
+import s10k.node.sim.filter.registry.ContextClassLoader;
 import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
@@ -129,7 +134,7 @@ import tools.jackson.databind.JsonNode;
  * </p>
  *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 final class SimulationRun implements SimulatedDatumQueue.Sink {
 
@@ -1107,22 +1112,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 					new SplittableRandom(31L * type.factoryUid().hashCode() + i));
 			polling = source;
 			try {
-				for ( SettingsApplier.Problem p : SettingsApplier.apply(source.job(), settings) ) {
-					if ( p.unknown() ) {
-						messages.add(SimulationMessage
-								.warning(SimulationMessage.CODE_UNKNOWN_SETTING,
-										"%s has no setting %s.".formatted(label, p.key()), null, null)
-								.withDatumSourceId(id));
-					} else {
-						messages.add(SimulationMessage
-								.warning(SimulationMessage.CODE_INVALID_SETTING,
-										"%s setting %s could not be applied: %s".formatted(label,
-												p.key(), p.message()),
-										null, null)
-								.withDatumSourceId(id));
-					}
-				}
-				source.job().serviceDidStartup();
+				type.run(() -> applyDatumSourceSettings(source, settings, label, id));
 			} finally {
 				polling = null;
 			}
@@ -1139,12 +1129,38 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 	}
 
 	/**
+	 * Apply a datum source's settings to its managed job, and start it.
+	 */
+	private void applyDatumSourceSettings(SimDatumSources.Source source, Map<String, String> settings,
+			String label, String id) {
+		for ( SettingsApplier.Problem p : SettingsApplier.apply(source.job(), settings) ) {
+			if ( p.unknown() ) {
+				messages.add(SimulationMessage
+						.warning(SimulationMessage.CODE_UNKNOWN_SETTING,
+								"%s has no setting %s.".formatted(label, p.key()), null, null)
+						.withDatumSourceId(id));
+			} else {
+				messages.add(
+						SimulationMessage
+								.warning(SimulationMessage.CODE_INVALID_SETTING,
+										"%s setting %s could not be applied: %s".formatted(label,
+												p.key(), p.message()),
+										null, null)
+								.withDatumSourceId(id));
+			}
+		}
+		source.job().serviceDidStartup();
+	}
+
+	/**
 	 * Get the label of a datum source in messages: its Service Name, or its
 	 * position and type.
 	 */
 	private static String datumSourceLabel(int index, @Nullable DatumSourceTypeDefinition type,
 			Map<String, String> settings) {
-		final String uid = settings.get(DatumSourceTypeDefinition.SETTING_PREFIX + UID_SETTING);
+		final String uid = settings
+				.get((type != null ? type.settingPrefix() : DatumSourceTypeDefinition.SETTING_PREFIX)
+						+ UID_SETTING);
 		if ( uid != null && !uid.isBlank() ) {
 			return "The datum source " + SimulationMessage.quoted(uid);
 		}
@@ -1182,15 +1198,21 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		}
 		for ( SimDatumSources.Source source : context.datumSources().sources() ) {
 			final String label = source.label();
-			final String sourceId = source.type().sourceId().apply(source.datumSource());
-			if ( sourceId == null || sourceId.isBlank() ) {
+			final Function<DatumSourceIdProvider, @Nullable String> sourceIdGetter = source.type()
+					.sourceId();
+			final String sourceId = (sourceIdGetter != null
+					? ContextClassLoader.call(source.type().classLoader(),
+							() -> sourceIdGetter.apply(source.datumSource()))
+					: null);
+			if ( sourceIdGetter != null && (sourceId == null || sourceId.isBlank()) ) {
 				warnDatumSource(
 						"%s has no Source ID, so the Datum Queue discards its datum.".formatted(label),
 						source.id());
 			}
 			polling = source;
 			try {
-				final String problem = source.type().check(source.datumSource(), context);
+				final String problem = ContextClassLoader.call(source.type().classLoader(),
+						() -> source.type().check(source.datumSource(), context));
 				if ( problem != null ) {
 					warnDatumSource(problem, source.id());
 				}
@@ -1334,11 +1356,19 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		final int before = polledCount;
 		polling = source;
 		try {
-			source.job().getJobService().executeJobService();
-		} catch ( Exception e ) {
-			// the poll job logs its own errors
-			warnDatumSource("Error polling %s: %s"
-					.formatted(source.label().replaceFirst("^The ", "the "), e.toString()), source.id());
+			final Exception error = ContextClassLoader.call(source.type().classLoader(), () -> {
+				try {
+					source.job().getJobService().executeJobService();
+					return null;
+				} catch ( Exception e ) {
+					return e;
+				}
+			});
+			if ( error != null ) {
+				// the poll job logs its own errors
+				warnDatumSource("Error polling %s: %s".formatted(
+						source.label().replaceFirst("^The ", "the "), error.toString()), source.id());
+			}
 		} finally {
 			polling = null;
 		}
@@ -1377,7 +1407,7 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 		for ( SimDatumSources.Source source : context.datumSources().sources() ) {
 			polling = source;
 			try {
-				source.job().serviceDidShutdown();
+				source.type().run(source.job()::serviceDidShutdown);
 			} finally {
 				polling = null;
 			}
@@ -1509,12 +1539,24 @@ final class SimulationRun implements SimulatedDatumQueue.Sink {
 					continue;
 				}
 			}
-			if ( context.datumSources().sources().stream()
-					.noneMatch(s -> config.matches(s.datumSource())) ) {
+			if ( context.datumSources().sources().stream().noneMatch(s -> matches(config, s)) ) {
 				warnInvoker("%s matches no datum source, so it polls nothing.".formatted(item),
 						invoker.id());
 			}
 		}
+	}
+
+	/**
+	 * Test if an invoker's configuration matches a datum source, as a
+	 * {@link MultiDatumDataSource} for a multi datum source type, like the
+	 * invoker does.
+	 */
+	private static boolean matches(DatumDataSourceScheduleConfig config, SimDatumSources.Source source) {
+		return switch (source.datumSource()) {
+			case MultiDatumDataSource m when source.type().multi() -> config.matches(m);
+			case DatumDataSource d when !source.type().multi() -> config.matches(d);
+			default -> false;
+		};
 	}
 
 	/**

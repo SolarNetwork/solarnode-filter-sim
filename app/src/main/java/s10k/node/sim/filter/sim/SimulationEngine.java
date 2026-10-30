@@ -157,8 +157,8 @@ public class SimulationEngine {
 		if ( request.config() == null ) {
 			throw new SimulationException("The filter configuration is required.");
 		}
-		// a snapshot, so reloading custom filters during the run does not change its filter types
-		final SimulationRun run = new SimulationRun(registry.snapshot(), datumSourceTypes,
+		// snapshots, so reloading custom filters during the run does not change its types
+		final SimulationRun run = new SimulationRun(registry.snapshot(), datumSourceTypes.snapshot(),
 				expressionService, allowedCommands, limits, request);
 		return run::run;
 	}

@@ -33,6 +33,7 @@ import s10k.node.sim.filter.domain.SettingProblem;
 import s10k.node.sim.filter.domain.SettingsForm;
 import s10k.node.sim.filter.domain.SettingsFormRequest;
 import s10k.node.sim.filter.domain.SimulationMessage;
+import s10k.node.sim.filter.registry.ContextClassLoader;
 import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
@@ -76,7 +77,7 @@ import net.solarnetwork.settings.SettingSpecifierProvider;
  * </p>
  *
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 public class SettingsFormService {
 
@@ -87,7 +88,9 @@ public class SettingsFormService {
 	private static final Set<String> DATUM_SOURCE_STATUS_KEYS = Set.of(
 			DatumSourceTypeDefinition.SETTING_PREFIX + "status",
 			DatumSourceTypeDefinition.SETTING_PREFIX + "datumStatus",
-			DatumSourceTypeDefinition.SETTING_PREFIX + "touStatus");
+			DatumSourceTypeDefinition.SETTING_PREFIX + "touStatus",
+			DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "status",
+			DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "datumStatus");
 
 	/** The key of the runtime status title the invoker shows. */
 	private static final Set<String> INVOKER_STATUS_KEYS = Set.of("status");
@@ -171,6 +174,13 @@ public class SettingsFormService {
 
 	private SettingsForm datumSourceForm(DatumSourceTypeDefinition def, SettingsFormRequest request,
 			Locale locale) {
+		// a custom datum source's code runs with its bundle's class loader
+		return ContextClassLoader.call(def.classLoader(),
+				() -> createDatumSourceForm(def, request, locale));
+	}
+
+	private SettingsForm createDatumSourceForm(DatumSourceTypeDefinition def,
+			SettingsFormRequest request, Locale locale) {
 		final Map<String, String> settings = settings(request.settingsOrEmpty());
 		final SimulationContext context = newContext();
 		final SimDatumSources.Source source = context.createDatumSource(def, def.factoryUid(),

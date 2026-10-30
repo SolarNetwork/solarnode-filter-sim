@@ -1258,6 +1258,7 @@ class App {
 		}
 		this.#ws.setTypes(result.filterTypes, result.unavailable);
 		this.#renderPalette(result.filterTypes);
+		this.#inputPanel.setDatumSourceTypes(result.datumSourceTypes);
 		this.#inspector.show(this.#canvas.selection);
 		const [first, ...details] = result.messages;
 		// the first line is like "Custom filters: 1 available from 1 bundle"

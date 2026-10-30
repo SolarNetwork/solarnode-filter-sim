@@ -61,6 +61,7 @@ import s10k.node.sim.filter.domain.IgnoredComponent;
 import s10k.node.sim.filter.domain.SettingsImport;
 import s10k.node.sim.filter.domain.SimConfig;
 import s10k.node.sim.filter.domain.SimulationMessage;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
@@ -127,7 +128,7 @@ import s10k.node.sim.filter.sim.SimulationException;
  * </p>
  *
  * @author matt
- * @version 1.2
+ * @version 1.3
  */
 final class SettingsCsvImporter {
 
@@ -137,6 +138,7 @@ final class SettingsCsvImporter {
 	private static final String CHAIN_FILTERS_COUNT = CHAIN_FILTERS + SettingsApplier.COUNT_SUFFIX;
 
 	private final FilterTypeRegistry registry;
+	private final DatumSourceSettings datumSourceSettings;
 	private final List<SimulationMessage> messages = new ArrayList<>(8);
 	private final List<SimulationMessage> errors = new ArrayList<>(2);
 	private final List<Line> lines = new ArrayList<>(64);
@@ -323,8 +325,21 @@ final class SettingsCsvImporter {
 	 *        the filter type registry
 	 */
 	SettingsCsvImporter(FilterTypeRegistry registry) {
+		this(registry, DatumSourceTypeRegistry.standard());
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param registry
+	 *        the filter type registry
+	 * @param datumSourceTypes
+	 *        the datum source type registry
+	 */
+	SettingsCsvImporter(FilterTypeRegistry registry, DatumSourceTypeRegistry datumSourceTypes) {
 		super();
 		this.registry = registry;
+		this.datumSourceSettings = new DatumSourceSettings(datumSourceTypes);
 	}
 
 	/**
@@ -810,7 +825,7 @@ final class SettingsCsvImporter {
 	 */
 	private boolean isControlType(String factoryUid) {
 		return (!addOnly && (ControlSettings.FACTORY_UIDS.contains(factoryUid)
-				|| DatumSourceSettings.FACTORY_UIDS.contains(factoryUid)));
+				|| datumSourceSettings.isFactoryUid(factoryUid)));
 	}
 
 	/**
@@ -827,7 +842,7 @@ final class SettingsCsvImporter {
 		}
 		String factoryUid = ControlSettings.factoryUid(c.key());
 		if ( factoryUid == null ) {
-			factoryUid = DatumSourceSettings.factoryUid(c.key());
+			factoryUid = datumSourceSettings.factoryUid(c.key());
 		}
 		return (factoryUid != null
 				? new Component(factoryUid, c.key().substring(factoryUid.length() + 1))
@@ -1091,7 +1106,7 @@ final class SettingsCsvImporter {
 			final ControlSettings.Instance instance = new ControlSettings.Instance(e.getKey().key(),
 					instanceKey != null ? instanceKey : "", e.getValue().settings,
 					e.getValue().factoryRow);
-			if ( DatumSourceSettings.FACTORY_UIDS.contains(instance.factoryUid()) ) {
+			if ( datumSourceSettings.isFactoryUid(instance.factoryUid()) ) {
 				datumSourceComponents.add(instance);
 			} else {
 				controlComponents.add(instance);
@@ -1099,7 +1114,7 @@ final class SettingsCsvImporter {
 		}
 		final ControlSettings.Result controls = ControlSettings.of(controlComponents);
 		messages.addAll(controls.messages());
-		final DatumSourceSettings.Result datumSources = DatumSourceSettings.of(datumSourceComponents);
+		final DatumSourceSettings.Result datumSources = datumSourceSettings.of(datumSourceComponents);
 		messages.addAll(datumSources.messages());
 
 		final String dqComment = comment(datumQueueComment);

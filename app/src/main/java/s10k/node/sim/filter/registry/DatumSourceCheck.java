@@ -20,14 +20,14 @@
 package s10k.node.sim.filter.registry;
 
 import org.jspecify.annotations.Nullable;
-import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.DatumSourceIdProvider;
 
 /**
  * API for checking a datum source for a configuration problem that stops it
  * from working, which SolarNode only reports in its log.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @FunctionalInterface
 public interface DatumSourceCheck {
@@ -43,6 +43,6 @@ public interface DatumSourceCheck {
 	 * @return a description of the problem, or {@code null} if there is none
 	 */
 	@Nullable
-	String check(DatumDataSource source, DatumSourceContext context);
+	String check(DatumSourceIdProvider source, DatumSourceContext context);
 
 }

@@ -26,6 +26,8 @@ import static org.assertj.core.groups.Tuple.tuple;
 import java.math.BigDecimal;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,12 +40,15 @@ import s10k.node.sim.filter.custom.CustomFilterLoader;
 import s10k.node.sim.filter.custom.CustomFilters;
 import s10k.node.sim.filter.custom.FilterBundle;
 import s10k.node.sim.filter.custom.ImportCheck;
+import s10k.node.sim.filter.domain.DatumOrigin;
+import s10k.node.sim.filter.domain.DatumSourceConfig;
 import s10k.node.sim.filter.domain.DatumTrace;
 import s10k.node.sim.filter.domain.FilterBundleInfo;
 import s10k.node.sim.filter.domain.FilterCapability;
 import s10k.node.sim.filter.domain.FilterConfig;
 import s10k.node.sim.filter.domain.FilterStep;
 import s10k.node.sim.filter.domain.FilterStep.Status;
+import s10k.node.sim.filter.domain.OpModeInvokerConfig;
 import s10k.node.sim.filter.domain.SettingField;
 import s10k.node.sim.filter.domain.SettingsExport;
 import s10k.node.sim.filter.domain.SettingsExportRequest;
@@ -51,13 +56,18 @@ import s10k.node.sim.filter.domain.SettingsForm;
 import s10k.node.sim.filter.domain.SettingsFormRequest;
 import s10k.node.sim.filter.domain.SettingsImport;
 import s10k.node.sim.filter.domain.SimConfig;
+import s10k.node.sim.filter.domain.SimulationEnvironment;
 import s10k.node.sim.filter.domain.SimulationMessage;
+import s10k.node.sim.filter.domain.SimulationOptions;
 import s10k.node.sim.filter.domain.SimulationRequest;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.form.SettingsFormService;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
+import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
 import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.registry.UnavailableFilterType;
 import s10k.node.sim.filter.sim.SimulationEngine;
@@ -72,10 +82,13 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The bundle has a Scale filter, which uses a library jar the bundle embeds,
  * and an Identity filter, which needs a service the simulator does not provide.
+ * It also has a Counter datum source, a Multi Counter multi datum source, and a
+ * Modbus Counter datum source, which needs a service the simulator does not
+ * provide.
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class CustomFilterLoaderTests {
 
@@ -84,6 +97,9 @@ public class CustomFilterLoaderTests {
 	private static final String SCALE = "com.example.solarnode.filter.scale";
 	private static final String IDENTITY = "com.example.solarnode.filter.identity";
 	private static final String BUNDLE = "com.example.solarnode.filter";
+	private static final String COUNTER = "com.example.solarnode.datum.counter";
+	private static final String MODBUS_COUNTER = "com.example.solarnode.datum.modbus";
+	private static final String MULTI_COUNTER = "com.example.solarnode.datum.counter.multi";
 
 	private SpelExpressionService expressionService;
 	private CustomFilterLoader loader;
@@ -91,8 +107,11 @@ public class CustomFilterLoaderTests {
 	@BeforeEach
 	public void setup() {
 		expressionService = new SpelExpressionService();
-		loader = new CustomFilterLoader(expressionService, StandardFilterTypes.definitions().stream()
-				.map(FilterTypeDefinition::factoryUid).toList());
+		loader = new CustomFilterLoader(expressionService,
+				StandardFilterTypes.definitions().stream().map(FilterTypeDefinition::factoryUid)
+						.toList(),
+				StandardDatumSourceTypes.definitions().stream()
+						.map(DatumSourceTypeDefinition::factoryUid).toList());
 	}
 
 	private static Path bundleJar() {
@@ -115,6 +134,13 @@ public class CustomFilterLoaderTests {
 		final List<FilterTypeDefinition> defs = new ArrayList<>(StandardFilterTypes.definitions());
 		defs.addAll(custom.definitions());
 		return new FilterTypeRegistry(defs, custom.unavailable());
+	}
+
+	private static DatumSourceTypeRegistry datumSourceRegistry(CustomFilters custom) {
+		final List<DatumSourceTypeDefinition> defs = new ArrayList<>(
+				StandardDatumSourceTypes.definitions());
+		defs.addAll(custom.datumSources());
+		return new DatumSourceTypeRegistry(defs);
 	}
 
 	private static List<FilterConfig> identityChain() {
@@ -150,8 +176,9 @@ public class CustomFilterLoaderTests {
 		then(result.bundles())
 			.as("The bundle is loaded, with its manifest name and version, without parameters")
 			.extracting(FilterBundle::name, FilterBundle::version, FilterBundle::factoryUids,
-					FilterBundle::blueprint)
-			.containsExactly(tuple(BUNDLE, "1.0.0", List.of(SCALE), true))
+					FilterBundle::datumSourceUids, FilterBundle::blueprint)
+			.containsExactly(
+					tuple(BUNDLE, "1.0.0", List.of(SCALE), List.of(COUNTER, MULTI_COUNTER), true))
 			;
 		then(result.definitions())
 			.as("The Scale filter type is available")
@@ -191,6 +218,89 @@ public class CustomFilterLoaderTests {
 			.extracting(UnavailableFilterType::reason)
 			.asString()
 			.contains("net.solarnetwork.node.service.IdentityService")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void load_bundle_datumSources() {
+		// WHEN
+		CustomFilters result = load();
+
+		// THEN
+		// @formatter:off
+		then(result.datumSources())
+			.as("The Counter and Multi Counter datum source types are available")
+			.extracting(DatumSourceTypeDefinition::factoryUid)
+			.containsExactly(COUNTER, MULTI_COUNTER)
+			;
+		then(result.datumSources().getFirst())
+			.as("The Counter datum source type")
+			.returns(false, from(DatumSourceTypeDefinition::multi))
+			.returns("Counter Datum Source", from(DatumSourceTypeDefinition::displayName))
+			.as("The managed job's schedule")
+			.returns("0/30 * * * * ?", from(DatumSourceTypeDefinition::defaultSchedule))
+			.as("Published as a datum source")
+			.returns(List.of(net.solarnetwork.node.service.DatumDataSource.class),
+					from(DatumSourceTypeDefinition::services))
+			;
+		DatumSourceTypeDefinition def = result.datumSources().getFirst();
+		then(def.info(Locale.ENGLISH))
+			.as("The name comes from the bundle's message source title")
+			.returns("Counter", from(i -> i.name()))
+			.as("The bundle is in the information")
+			.returns(new FilterBundleInfo(BUNDLE, "1.0.0"), from(i -> i.bundle()))
+			;
+		then(def.sourceClass().getClassLoader())
+			.as("The datum source class comes from the bundle's class loader")
+			.isSameAs(def.classLoader())
+			;
+		then(result.datumSources().get(1))
+			.as("The Multi Counter datum source type is a multi datum source")
+			.returns(true, from(DatumSourceTypeDefinition::multi))
+			.returns("Multi Counter Datum Source", from(DatumSourceTypeDefinition::displayName))
+			.as("The managed job's period schedule")
+			.returns("20000", from(DatumSourceTypeDefinition::defaultSchedule))
+			.as("Published as a multi datum source")
+			.returns(List.of(net.solarnetwork.node.service.MultiDatumDataSource.class),
+					from(DatumSourceTypeDefinition::services))
+			.as("The multi datum source's settings")
+			.returns(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX,
+					from(DatumSourceTypeDefinition::settingPrefix))
+			.as("No sourceId property, so no Source ID check")
+			.returns(null, from(DatumSourceTypeDefinition::sourceId))
+			;
+		then(result.unavailableDatumSources())
+			.as("The Modbus Counter datum source type is not available, because of its service")
+			.singleElement()
+			.returns(MODBUS_COUNTER, from(UnavailableFilterType::factoryUid))
+			.returns("Modbus Counter Datum Source", from(UnavailableFilterType::displayName))
+			.returns(new FilterBundleInfo(BUNDLE, "1.0.0"), from(UnavailableFilterType::bundle))
+			.extracting(UnavailableFilterType::reason)
+			.asString()
+			.contains("net.solarnetwork.node.io.modbus.ModbusNetwork")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void load_reservedDatumSourceUid() {
+		// GIVEN
+		loader = new CustomFilterLoader(expressionService, List.of(), List.of(COUNTER));
+
+		// WHEN
+		CustomFilters result = load();
+
+		// THEN
+		// @formatter:off
+		then(result.datumSources())
+			.as("A datum source type with a standard factory UID is not available")
+			.extracting(DatumSourceTypeDefinition::factoryUid)
+			.containsExactly(MULTI_COUNTER)
+			;
+		then(result.unavailableDatumSources())
+			.extracting(UnavailableFilterType::factoryUid, UnavailableFilterType::reason)
+			.contains(tuple(COUNTER, "It has the factory UID of a standard datum source type."))
 			;
 		// @formatter:on
 	}
@@ -247,12 +357,15 @@ public class CustomFilterLoaderTests {
 			;
 		then(result.describe(Locale.ENGLISH))
 			.as("The description lists the available types, the import warnings, and the unavailable types")
-			.hasSize(5)
-			.satisfies(lines -> then(lines.get(0)).isEqualTo("Custom filters: 1 available from 1 bundle"))
-			.satisfies(lines -> then(lines.get(1)).contains(BUNDLE + " 1.0.0", "Scale Filter (" + SCALE + ")"))
+			.hasSize(6)
+			.satisfies(lines -> then(lines.get(0)).isEqualTo("Custom filters: 1 filter and 2 datum sources available from 1 bundle"))
+			.satisfies(lines -> then(lines.get(1)).contains(BUNDLE + " 1.0.0", "Scale Filter (" + SCALE + ")",
+					"datum source Counter (" + COUNTER + ")",
+					"datum source Multi Counter (" + MULTI_COUNTER + ")"))
 			.satisfies(lines -> then(lines.get(2)).startsWith("    Warning: ").contains("com.example.missing"))
 			.satisfies(lines -> then(lines.get(3)).startsWith("    Warning: ").contains("net.solarnetwork.service"))
 			.satisfies(lines -> then(lines.get(4)).contains("Not available: Identity Datum Filter"))
+			.satisfies(lines -> then(lines.get(5)).contains("Not available: datum source Modbus Counter Datum Source"))
 			;
 		// @formatter:on
 	}
@@ -564,6 +677,306 @@ public class CustomFilterLoaderTests {
 					.containsEntry("uid", "Scale")
 					.containsEntry("propertyName", "watts")
 					.containsEntry("factor", "3"))
+			;
+		// @formatter:on
+	}
+
+	private static SimulationRequest counterRequest(Map<String, String> settings) {
+		return datumSourceRequest(List.of(new DatumSourceConfig("counter", COUNTER, null, settings)),
+				null, null);
+	}
+
+	private static SimulationRequest datumSourceRequest(List<DatumSourceConfig> sources,
+			List<OpModeInvokerConfig> invokers, List<String> opModes) {
+		return new SimulationRequest(
+				new SimConfig(List.of(new FilterConfig("main", StandardFilterTypes.CHAIN, null,
+						Map.of("uid", "Chain - Main"), List.of())), "main"),
+				null, null, sources, invokers, null,
+				(opModes != null
+						? new SimulationEnvironment(opModes, null, null, null, null, null, null, null,
+								null)
+						: null),
+				new SimulationOptions(null, null, null, null, Instant.parse("2025-10-01T00:00:00Z"),
+						null, Duration.ofMinutes(1), null));
+	}
+
+	private static DatumSourceConfig multiCounter(String... settings) {
+		final Map<String, String> s = new LinkedHashMap<>();
+		s.put(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "uid", "Multi");
+		s.put(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "sourceIds", "/count/a, /count/b");
+		for ( int i = 0; i + 1 < settings.length; i += 2 ) {
+			s.put(settings[i], settings[i + 1]);
+		}
+		return new DatumSourceConfig("multi", MULTI_COUNTER, null, s);
+	}
+
+	@Test
+	public void simulate_datumSource() {
+		// GIVEN
+		CustomFilters custom = load();
+		SimulationEngine engine = new SimulationEngine(registry(custom), datumSourceRegistry(custom),
+				expressionService, List.of());
+		SimulationRequest req = counterRequest(
+				Map.of(DatumSourceTypeDefinition.SETTING_PREFIX + "sourceId", "/count/1"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("No messages")
+			.isEmpty()
+			;
+		then(result.datum())
+			.as("Polled on the blueprint's schedule, counting by the blueprint's step")
+			.extracting(t -> t.input().sourceId(), t -> t.input().timestamp(),
+					t -> new BigDecimal(t.input().samples().i().get("count").toString()).intValue())
+			.containsExactly(
+					tuple("/count/1", Instant.parse("2025-10-01T00:00:30Z"), 2),
+					tuple("/count/1", Instant.parse("2025-10-01T00:01:00Z"), 4))
+			;
+		then(result.datum().getFirst().input().samples().s())
+			.as("Init method called")
+			.containsEntry("started", "true")
+			.as("Polled with the bundle's class loader")
+			.containsEntry("contextLoader", "true")
+			;
+		then(result.stats().polled())
+			.as("Polled datum")
+			.isEqualTo(2)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void simulate_datumSource_settings() {
+		// GIVEN
+		CustomFilters custom = load();
+		SimulationEngine engine = new SimulationEngine(registry(custom), datumSourceRegistry(custom),
+				expressionService, List.of());
+		SimulationRequest req = counterRequest(
+				Map.of(DatumSourceTypeDefinition.SETTING_PREFIX + "sourceId", "/count/1",
+						DatumSourceTypeDefinition.SETTING_PREFIX + "step", "5", "schedule", "60000"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.datum())
+			.as("Polled at the start and each minute, counting by the step setting")
+			.extracting(t -> t.input().timestamp(),
+					t -> new BigDecimal(t.input().samples().i().get("count").toString()).intValue())
+			.containsExactly(
+					tuple(Instant.parse("2025-10-01T00:00:00Z"), 5),
+					tuple(Instant.parse("2025-10-01T00:01:00Z"), 10))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void simulate_datumSource_noSourceId() {
+		// GIVEN
+		CustomFilters custom = load();
+		SimulationEngine engine = new SimulationEngine(registry(custom), datumSourceRegistry(custom),
+				expressionService, List.of());
+
+		// WHEN
+		SimulationResult result = engine.simulate(counterRequest(Map.of()));
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("The Source ID check uses the custom class's sourceId property")
+			.extracting(SimulationMessage::code)
+			.contains(SimulationMessage.CODE_INVALID_DATUM_SOURCE)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void settingsForm_datumSource() {
+		// GIVEN
+		CustomFilters custom = load();
+		SettingsFormService forms = new SettingsFormService(registry(custom),
+				datumSourceRegistry(custom), expressionService);
+
+		// WHEN
+		SettingsForm form = forms.form(
+				new SettingsFormRequest(COUNTER,
+						Map.of(DatumSourceTypeDefinition.SETTING_PREFIX + "sourceId", "/count/1")),
+				Locale.ENGLISH);
+
+		// THEN
+		// @formatter:off
+		then(form.problems())
+			.as("No problems")
+			.isEmpty()
+			;
+		then(form.fields())
+			.as("The managed job's schedule, with the blueprint's default, then the datum source's "
+					+ "settings, labelled from its message source")
+			.filteredOn(f -> f.key() != null && (f.key().equals("schedule")
+					|| f.key().endsWith("sourceId") || f.key().endsWith("step")))
+			.extracting(SettingField::key, SettingField::label, SettingField::value)
+			.containsExactly(
+					tuple("schedule", "Schedule", "0/30 * * * * ?"),
+					tuple(DatumSourceTypeDefinition.SETTING_PREFIX + "sourceId", "Source ID", "/count/1"),
+					tuple(DatumSourceTypeDefinition.SETTING_PREFIX + "step", "Step", "1"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void simulate_multiDatumSource() {
+		// GIVEN
+		CustomFilters custom = load();
+		SimulationEngine engine = new SimulationEngine(registry(custom), datumSourceRegistry(custom),
+				expressionService, List.of());
+		SimulationRequest req = datumSourceRequest(
+				List.of(multiCounter(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "step", "3")),
+				null, null);
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("No messages")
+			.isEmpty()
+			;
+		then(result.datum())
+			.as("Each poll on the blueprint's period gives a datum per source ID, counting by the "
+					+ "step setting")
+			.extracting(t -> t.input().sourceId(), t -> t.input().timestamp(),
+					t -> new BigDecimal(t.input().samples().i().get("count").toString()).intValue())
+			.containsExactly(
+					tuple("/count/a", Instant.parse("2025-10-01T00:00:00Z"), 3),
+					tuple("/count/b", Instant.parse("2025-10-01T00:00:00Z"), 3),
+					tuple("/count/a", Instant.parse("2025-10-01T00:00:20Z"), 6),
+					tuple("/count/b", Instant.parse("2025-10-01T00:00:20Z"), 6),
+					tuple("/count/a", Instant.parse("2025-10-01T00:00:40Z"), 9),
+					tuple("/count/b", Instant.parse("2025-10-01T00:00:40Z"), 9),
+					tuple("/count/a", Instant.parse("2025-10-01T00:01:00Z"), 12),
+					tuple("/count/b", Instant.parse("2025-10-01T00:01:00Z"), 12))
+			;
+		then(result.datum())
+			.as("Polled datum of the multi datum source")
+			.extracting(DatumTrace::origin)
+			.allSatisfy(o -> then(o)
+					.returns(DatumOrigin.Type.Polled, from(DatumOrigin::type))
+					.returns("multi", from(DatumOrigin::datumSourceId)))
+			;
+		then(result.stats().polled())
+			.as("Polled datum")
+			.isEqualTo(8)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void simulate_multiDatumSource_invoker() {
+		// GIVEN
+		CustomFilters custom = load();
+		SimulationEngine engine = new SimulationEngine(registry(custom), datumSourceRegistry(custom),
+				expressionService, List.of());
+		Map<String, String> invoker = new LinkedHashMap<>();
+		invoker.put("uid", "Invoker");
+		invoker.put("operationalMode", "boost");
+		invoker.put("configurationsCount", "1");
+		invoker.put("configurations[0].uid", "Multi");
+		invoker.put("configurations[0].schedule", "30");
+		SimulationRequest req = datumSourceRequest(List.of(multiCounter("schedule", "0 0 0 1 1 ?")),
+				List.of(new OpModeInvokerConfig("inv", null, invoker)), List.of("boost"));
+
+		// WHEN
+		SimulationResult result = engine.simulate(req);
+
+		// THEN
+		// @formatter:off
+		then(result.messages())
+			.as("The invoker's configuration matches the multi datum source, which it polls")
+			.extracting(SimulationMessage::code)
+			.doesNotContain(SimulationMessage.CODE_INVALID_INVOKER)
+			;
+		then(result.datum())
+			.as("The invoker polls the multi datum source, a datum per source ID")
+			.isNotEmpty()
+			.allSatisfy(t -> then(t.origin())
+					.returns(DatumOrigin.Type.Polled, from(DatumOrigin::type))
+					.returns("multi", from(DatumOrigin::datumSourceId))
+					.returns("inv", from(DatumOrigin::invokerId)))
+			.extracting(t -> t.input().sourceId())
+			.contains("/count/a", "/count/b")
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void settingsForm_multiDatumSource() {
+		// GIVEN
+		CustomFilters custom = load();
+		SettingsFormService forms = new SettingsFormService(registry(custom),
+				datumSourceRegistry(custom), expressionService);
+
+		// WHEN
+		SettingsForm form = forms.form(
+				new SettingsFormRequest(MULTI_COUNTER, Map
+						.of(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "sourceIds", "/count/a")),
+				Locale.ENGLISH);
+
+		// THEN
+		// @formatter:off
+		then(form.problems())
+			.as("No problems")
+			.isEmpty()
+			;
+		then(form.fields())
+			.as("The managed job's schedule, with the blueprint's default, then the multi datum "
+					+ "source's settings, labelled from its message source")
+			.filteredOn(f -> f.key() != null && (f.key().equals("schedule")
+					|| f.key().endsWith("sourceIds") || f.key().endsWith("step")))
+			.extracting(SettingField::key, SettingField::label, SettingField::value)
+			.containsExactly(
+					tuple("schedule", "Schedule", "20000"),
+					tuple(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "sourceIds", "Source IDs",
+							"/count/a"),
+					tuple(DatumSourceTypeDefinition.MULTI_SETTING_PREFIX + "step", "Step", "1"))
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void csvImport_datumSource() {
+		// GIVEN
+		CustomFilters custom = load();
+		FilterTypeRegistry registry = registry(custom);
+		DatumSourceTypeRegistry sources = datumSourceRegistry(custom);
+		SettingsCsvService csv = new SettingsCsvService(registry, sources,
+				new SettingsFormService(registry, sources, expressionService));
+		String file = """
+				key,type,value,flags,modified,note
+				%1$s.FACTORY,1,1,,,
+				%1$s.1,jobService.datumDataSource.sourceId,/count/1,,,
+				%1$s.1,schedule,60000,,,
+				""".formatted(COUNTER);
+
+		// WHEN
+		SettingsImport imported = csv.importCsv(file);
+
+		// THEN
+		// @formatter:off
+		then(imported.datumSources())
+			.as("The custom datum source is imported as a datum source")
+			.singleElement()
+			.returns(COUNTER, from(DatumSourceConfig::factoryUid))
+			.returns("1", from(DatumSourceConfig::instanceKey))
+			.extracting(DatumSourceConfig::settings)
+			.satisfies(s -> then(s)
+					.containsEntry("jobService.datumDataSource.sourceId", "/count/1")
+					.containsEntry("schedule", "60000"))
 			;
 		// @formatter:on
 	}

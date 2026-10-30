@@ -153,4 +153,33 @@ arguments and properties, then its settings, then its init method. It does not c
 - **Settings:** the settings form comes from the filter's `getSettingSpecifiers()` and the
   message source of its `SettingSpecifierProviderFactory` service, as on a node.
 
+### Custom datum sources
+
+The bundles can also have datum sources: a managed service factory of a `SimpleManagedJob` that
+polls the datum source with a `DatumDataSourcePollManagedJob`, as the SolarNode datum source
+bundles have. They appear under **Custom** in the Datum Sources tab's **Add a datum source**
+menu, and a settings CSV import adds their instances to that tab. The simulator wraps each in
+its own poll and managed jobs, so its schedule, settings form, and polling work like the
+standard datum sources'.
+
+- **Time and randomness:** like a filter, a datum source class with a constructor that takes a
+  `Clock` or `InstantSource` before the blueprint's arguments gets the simulated clock. A
+  constructor that takes a `Clock` or `InstantSource`, then a `RandomGenerator`, is used first,
+  with a random generator seeded for each datum source, so random datum repeat from run to run.
+- **Services:** the filter services, plus `PlaceholderService`, `EventAdmin`,
+  `LocationService`, `LocalStateDao`, `OperationalModesService`, `DatumService`,
+  `ExpressionService`, and `TemporalRangesTariffEvaluator` (trackers only, which never find
+  one). A datum source that needs any other service, such as a Modbus network or serial port,
+  is not available.
+- **Multi datum sources:** a `MultiDatumDataSource` (the poll job's `multiDatumDataSource`
+  property) works too. Each poll offers every datum it returns, its settings keys start with
+  `jobService.multiDatumDataSource.`, and Operational Mode Invokers match it like a node's.
+  Without a `sourceId` property, it gets no "no Source ID" warning.
+- **Published services:** the `DatumDataSource`, `MultiDatumDataSource`, `NodeControlProvider`,
+  `InstructionHandler`, and `TariffScheduleProvider` interfaces of the managed job's
+  `serviceProviderConfigurations` are what the simulation registers it as, so a
+  `NodeControlProvider`'s controls work like the Mock Battery's.
+- **Lifecycle:** the simulator does not call the datum source's `destroy-method`; the managed
+  job's `serviceDidShutdown()` runs at the end of each run.
+
 [datum-filters]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/

@@ -63,16 +63,20 @@ export interface DatumSourceTypeInfo {
 	defaultSchedule: string;
 	/** `Controls`, `Instructions`, and `TariffSchedule`. */
 	capabilities?: string[];
+	/** The bundle of a custom datum source type, from the custom filters path. */
+	bundle?: FilterBundleInfo;
 }
 
 /** The result of reloading the custom filters. */
 export interface CustomFiltersReload {
 	filterTypes: FilterTypeInfo[];
 	unavailable: UnavailableFilterType[];
+	/** The datum source types, including the custom ones. */
+	datumSourceTypes: DatumSourceTypeInfo[];
 	/**
 	 * The description of the custom filters, like the startup message's: the
-	 * jars and their filter types, warnings, the types that are not available,
-	 * and problems.
+	 * jars and their filter and datum source types, warnings, the types that
+	 * are not available, and problems.
 	 */
 	messages: string[];
 }

@@ -41,7 +41,7 @@ import net.solarnetwork.node.job.SimpleManagedJob;
 import net.solarnetwork.node.reactor.Instruction;
 import net.solarnetwork.node.reactor.InstructionHandler;
 import net.solarnetwork.node.reactor.InstructionStatus;
-import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.DatumSourceIdProvider;
 import net.solarnetwork.node.service.NodeControlProvider;
 import net.solarnetwork.util.StringUtils;
 
@@ -65,7 +65,7 @@ import net.solarnetwork.util.StringUtils;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class SimDatumSources implements SimEventAdmin.ControlListener {
 
@@ -76,7 +76,7 @@ public final class SimDatumSources implements SimEventAdmin.ControlListener {
 		private final String label;
 		private final DatumSourceTypeDefinition type;
 		private final SimpleManagedJob job;
-		private final DatumDataSource datumSource;
+		private final DatumSourceIdProvider datumSource;
 		private final Map<String, Control> controls = new LinkedHashMap<>(2);
 		private @Nullable Trigger trigger;
 		private int polls;
@@ -85,7 +85,7 @@ public final class SimDatumSources implements SimEventAdmin.ControlListener {
 		private int datum;
 
 		private Source(String id, String label, DatumSourceTypeDefinition type, SimpleManagedJob job,
-				DatumDataSource datumSource) {
+				DatumSourceIdProvider datumSource) {
 			super();
 			this.id = id;
 			this.label = label;
@@ -134,9 +134,11 @@ public final class SimDatumSources implements SimEventAdmin.ControlListener {
 		/**
 		 * Get the datum source.
 		 *
-		 * @return the datum source
+		 * @return the datum source, a {@code DatumDataSource}, or a
+		 *         {@code MultiDatumDataSource} if the type is a multi datum
+		 *         source type
 		 */
-		public DatumDataSource datumSource() {
+		public DatumSourceIdProvider datumSource() {
 			return datumSource;
 		}
 
@@ -276,7 +278,7 @@ public final class SimDatumSources implements SimEventAdmin.ControlListener {
 	 * @return the source
 	 */
 	public Source add(String id, String label, DatumSourceTypeDefinition type, SimpleManagedJob job,
-			DatumDataSource datumSource) {
+			DatumSourceIdProvider datumSource) {
 		final Source result = new Source(id, label, type, job, datumSource);
 		sources.add(result);
 		return result;

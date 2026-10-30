@@ -20,6 +20,7 @@
 package s10k.node.sim.filter.registry;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,14 +30,16 @@ import org.jspecify.annotations.Nullable;
 import s10k.node.sim.filter.domain.DatumSourceTypeInfo;
 
 /**
- * The registry of supported datum source types.
+ * The registry of supported datum source types: the standard ones, plus the
+ * custom ones, which {@link #replace(Collection)} swaps when the custom types
+ * are reloaded.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class DatumSourceTypeRegistry {
 
-	private final Map<String, DatumSourceTypeDefinition> definitions;
+	private volatile Map<String, DatumSourceTypeDefinition> definitions;
 
 	/**
 	 * Constructor.
@@ -48,6 +51,16 @@ public class DatumSourceTypeRegistry {
 	 */
 	public DatumSourceTypeRegistry(Collection<DatumSourceTypeDefinition> definitions) {
 		super();
+		this.definitions = map(definitions);
+	}
+
+	private DatumSourceTypeRegistry(Map<String, DatumSourceTypeDefinition> definitions) {
+		super();
+		this.definitions = definitions;
+	}
+
+	private static Map<String, DatumSourceTypeDefinition> map(
+			Collection<DatumSourceTypeDefinition> definitions) {
 		final Map<String, DatumSourceTypeDefinition> map = new LinkedHashMap<>(definitions.size());
 		for ( DatumSourceTypeDefinition def : definitions ) {
 			if ( map.putIfAbsent(def.factoryUid(), def) != null ) {
@@ -55,7 +68,7 @@ public class DatumSourceTypeRegistry {
 						"Duplicate datum source type definition: " + def.factoryUid());
 			}
 		}
-		this.definitions = map;
+		return Collections.unmodifiableMap(map);
 	}
 
 	/**
@@ -65,6 +78,30 @@ public class DatumSourceTypeRegistry {
 	 */
 	public static DatumSourceTypeRegistry standard() {
 		return new DatumSourceTypeRegistry(StandardDatumSourceTypes.definitions());
+	}
+
+	/**
+	 * Replace the datum source types, such as when the custom types are
+	 * reloaded.
+	 *
+	 * @param definitions
+	 *        the datum source type definitions
+	 * @throws IllegalArgumentException
+	 *         if more than one definition has the same factory UID
+	 */
+	public void replace(Collection<DatumSourceTypeDefinition> definitions) {
+		this.definitions = map(definitions);
+	}
+
+	/**
+	 * Get a registry of the current datum source types, which
+	 * {@link #replace(Collection)} does not change, for something that uses the
+	 * registry more than once, like a simulation run.
+	 *
+	 * @return the registry
+	 */
+	public DatumSourceTypeRegistry snapshot() {
+		return new DatumSourceTypeRegistry(definitions);
 	}
 
 	/**

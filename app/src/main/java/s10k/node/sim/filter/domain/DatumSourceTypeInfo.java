@@ -38,11 +38,15 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *        milliseconds
  * @param capabilities
  *        the datum source capabilities
+ * @param bundle
+ *        the bundle of a custom datum source type, or {@code null} for a
+ *        standard one
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record DatumSourceTypeInfo(String factoryUid, String name, @Nullable String description,
-		String defaultSchedule, Set<DatumSourceCapability> capabilities) {
+		String defaultSchedule, Set<DatumSourceCapability> capabilities,
+		@Nullable FilterBundleInfo bundle) {
 
 }

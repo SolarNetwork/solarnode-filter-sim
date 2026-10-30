@@ -47,12 +47,18 @@ import {
 	NODE_CONTROL_TYPES,
 	type ControlPublishMode,
 	type DatumSourceTypeInfo,
+	type FilterBundleInfo,
 	type SettingField,
 	type SettingsForm,
 	type SimulationState,
 } from "./model.ts";
+import { plainText } from "./palette.ts";
 import { SettingsFormRenderer, type SettingsFormHost } from "./settingsForm.ts";
-import type { DatumSourceName, DatumSourceSummary } from "./view.ts";
+import {
+	bundleLabel,
+	type DatumSourceName,
+	type DatumSourceSummary,
+} from "./view.ts";
 import type { Workspace } from "./workspace.ts";
 
 /** How long after typing stops, in milliseconds, an input is checked. */
@@ -180,9 +186,38 @@ const SWITCH_PUBLISH_DESCS: Partial<Record<ControlPublishMode, string>> = {
 /** The browser storage key of the ids of the collapsed datum sources. */
 const COLLAPSED_SOURCES_KEY = "sn-filter-sim.collapsedSources";
 
+/**
+ * The key prefixes of a datum source's own settings: a datum source's, then a
+ * multi datum source's.
+ */
+const SOURCE_KEY_PREFIXES = [
+	"jobService.datumDataSource.",
+	"jobService.multiDatumDataSource.",
+];
+
 /** The Service Name and Source ID settings of a datum source. */
-const SOURCE_UID_KEY = "jobService.datumDataSource.uid";
-const SOURCE_ID_KEY = "jobService.datumDataSource.sourceId";
+const SOURCE_UID_KEYS = SOURCE_KEY_PREFIXES.map((p) => `${p}uid`);
+const SOURCE_ID_KEYS = SOURCE_KEY_PREFIXES.map((p) => `${p}sourceId`);
+
+/**
+ * Get a datum source setting, which has one of several keys.
+ *
+ * @param settings the settings
+ * @param keys the keys
+ * @returns the value of the first key with a value, or `undefined`
+ */
+function sourceSetting(
+	settings: Readonly<Record<string, string>>,
+	keys: readonly string[],
+): string | undefined {
+	for (const key of keys) {
+		const v = settings[key];
+		if (v !== undefined) {
+			return v;
+		}
+	}
+	return undefined;
+}
 
 /** The description of the Operational Mode Invoker, from its messages. */
 const INVOKER_DESC =
@@ -393,7 +428,11 @@ export class InputPanel {
 				return [
 					d.id,
 					{
-						name: d.settings[SOURCE_UID_KEY]?.trim() || undefined,
+						name:
+							sourceSetting(
+								d.settings,
+								SOURCE_UID_KEYS,
+							)?.trim() || undefined,
 						type:
 							this.#sourceTypes.get(d.factoryUid)?.name ??
 							d.factoryUid,
@@ -466,9 +505,9 @@ export class InputPanel {
 					id: d.id,
 					factoryUid: d.factoryUid,
 					type: type?.name ?? d.factoryUid,
-					name: this.#sourceValue(d, c, SOURCE_UID_KEY) || undefined,
+					name: this.#sourceValue(d, c, SOURCE_UID_KEYS) || undefined,
 					sourceId:
-						this.#sourceValue(d, c, SOURCE_ID_KEY) || undefined,
+						this.#sourceValue(d, c, SOURCE_ID_KEYS) || undefined,
 					schedule: schedule.trim()
 						? scheduleText(schedule)
 						: undefined,
@@ -484,14 +523,20 @@ export class InputPanel {
 	#sourceValue(
 		item: DatumSourceInput,
 		c: SourceCard | undefined,
-		key: string,
+		key: string | readonly string[],
 	): string {
-		const v = item.settings[key];
+		const keys = typeof key === "string" ? [key] : key;
+		const v = sourceSetting(item.settings, keys);
 		if (v !== undefined) {
 			return v.trim();
 		}
-		const field = c?.form ? findField(c.form.fields, key) : undefined;
-		return (field?.value ?? field?.defaultValue ?? "").trim();
+		for (const k of keys) {
+			const field = c?.form ? findField(c.form.fields, k) : undefined;
+			if (field) {
+				return (field.value ?? field.defaultValue ?? "").trim();
+			}
+		}
+		return "";
 	}
 
 	/**
@@ -1093,15 +1138,7 @@ export class InputPanel {
 
 	#bindDatumSources(): void {
 		void getDatumSourceTypes()
-			.then((types) => {
-				for (const t of types) {
-					this.#sourceTypes.set(t.factoryUid, t);
-				}
-				this.#renderSourceTypes();
-				for (const [id, c] of this.#sourceCards) {
-					this.#refreshSourceHead(id, c);
-				}
-			})
+			.then((types) => this.setDatumSourceTypes(types))
 			.catch((e: unknown) => {
 				const item = element("li");
 				item.append(
@@ -1117,20 +1154,44 @@ export class InputPanel {
 	}
 
 	/**
-	 * Render the Add a datum source menu: the datum source types, then the
-	 * Operational Mode Invoker.
+	 * Set the datum source types, such as when the custom filters are
+	 * reloaded: the Add a datum source menu and the card headers change.
+	 *
+	 * @param types the datum source types
+	 */
+	setDatumSourceTypes(types: DatumSourceTypeInfo[]): void {
+		this.#sourceTypes.clear();
+		for (const t of types) {
+			this.#sourceTypes.set(t.factoryUid, t);
+		}
+		this.#renderSourceTypes();
+		for (const [id, c] of this.#sourceCards) {
+			this.#refreshSourceHead(id, c);
+		}
+	}
+
+	/**
+	 * Render the Add a datum source menu: the standard datum source types, the
+	 * custom ones under a Custom heading, then the Operational Mode Invoker.
 	 */
 	#renderSourceTypes(): void {
 		const typeItem = (
 			factoryUid: string,
 			name: string,
 			description: string | undefined,
+			bundle?: FilterBundleInfo,
 		) => {
 			const item = element("li");
 			const button = element("button", "dropdown-item");
 			button.type = "button";
-			if (description) {
-				button.title = description;
+			const title = [
+				description ? plainText(description) : "",
+				bundle
+					? `A custom datum source, from ${bundleLabel(bundle)}.`
+					: "",
+			].filter((s) => s);
+			if (title.length) {
+				button.title = title.join("\n\n");
 			}
 			const icon = element(
 				"i",
@@ -1146,10 +1207,30 @@ export class InputPanel {
 		};
 		const divider = element("li");
 		divider.append(element("hr", "dropdown-divider"));
+		const types = [...this.#sourceTypes.values()];
+		const custom = types.filter((t) => t.bundle);
+		const heading = element("li");
+		const headingText = element("h6", "dropdown-header", "Custom");
+		headingText.title =
+			"The datum sources of the jars the simulator was started with, with --sim.filters.path.";
+		heading.append(headingText);
 		$("#datum-source-types").replaceChildren(
-			...[...this.#sourceTypes.values()].map((t) =>
-				typeItem(t.factoryUid, t.name, t.description),
-			),
+			...types
+				.filter((t) => !t.bundle)
+				.map((t) => typeItem(t.factoryUid, t.name, t.description)),
+			...(custom.length
+				? [
+						heading,
+						...custom.map((t) =>
+							typeItem(
+								t.factoryUid,
+								t.name,
+								t.description,
+								t.bundle,
+							),
+						),
+					]
+				: []),
 			divider,
 			typeItem(INVOKER_FACTORY_UID, INVOKER_NAME, INVOKER_DESC),
 		);
@@ -1370,7 +1451,8 @@ export class InputPanel {
 			c.body.append(c.controls);
 			this.#refreshSourceControls(id, c);
 		}
-		const value = (key: string): string => this.#sourceValue(item, c, key);
+		const value = (key: string | readonly string[]): string =>
+			this.#sourceValue(item, c, key);
 		const parts = [];
 		if (invoker) {
 			const name = value(INVOKER_UID_KEY);
@@ -1380,7 +1462,7 @@ export class InputPanel {
 			}
 			parts.push(mode ? `mode ${mode}` : "no mode");
 		} else {
-			const name = value(SOURCE_UID_KEY) || value(SOURCE_ID_KEY);
+			const name = value(SOURCE_UID_KEYS) || value(SOURCE_ID_KEYS);
 			const schedule =
 				item.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
 			if (name) {
@@ -1540,7 +1622,9 @@ export class InputPanel {
 	#sourceUids(): string[] {
 		const names = this.#inputs.state.datumSources
 			.filter((d) => !isInvoker(d))
-			.map((d) => d.settings[SOURCE_UID_KEY]?.trim() ?? "")
+			.map(
+				(d) => sourceSetting(d.settings, SOURCE_UID_KEYS)?.trim() ?? "",
+			)
 			.filter((n) => n.length > 0);
 		return [...new Set(names)];
 	}

@@ -86,6 +86,15 @@ source. Invokers are not drawn on the Canvas. The simulation warns about an invo
 mode, a configuration with no valid schedule or that matches no datum source, and tells you when
 an invoker never polled.
 
+## Custom datum sources
+
+When the simulator was started with custom filters (see the README's *Custom filters*), the
+datum sources of those bundles appear under **Custom** in the **Add a datum source** menu, and
+work like the others, including multi datum sources, whose polls return several datum at once
+(often one per source ID). A custom datum source that needs a service the simulator does not have,
+such as a Modbus network, is not available; the simulator's startup message, and the message
+after **Reload** above the Filters palette, say why.
+
 [controls]: https://solarnetwork.github.io/solarnode-handbook/users/controls/
 [invoker]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.datum.opmode
 [op-modes]: https://solarnetwork.github.io/solarnode-handbook/users/op-modes/

@@ -20,14 +20,14 @@
 package s10k.node.sim.filter.registry;
 
 import java.util.random.RandomGenerator;
-import net.solarnetwork.node.service.DatumDataSource;
+import net.solarnetwork.node.service.DatumSourceIdProvider;
 
 /**
  * API for creating a datum source instance, the way the SolarNode blueprint
  * wiring creates it.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @FunctionalInterface
 public interface DatumSourceFactory {
@@ -40,8 +40,9 @@ public interface DatumSourceFactory {
 	 * @param rng
 	 *        a random number generator seeded for this datum source, so a
 	 *        simulation gives the same datum each time it runs
-	 * @return the new datum source
+	 * @return the new datum source, a {@code DatumDataSource}, or a
+	 *         {@code MultiDatumDataSource} for a multi datum source type
 	 */
-	DatumDataSource create(DatumSourceContext context, RandomGenerator rng);
+	DatumSourceIdProvider create(DatumSourceContext context, RandomGenerator rng);
 
 }

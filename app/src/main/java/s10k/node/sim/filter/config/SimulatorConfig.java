@@ -20,6 +20,7 @@
 package s10k.node.sim.filter.config;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -31,11 +32,14 @@ import s10k.node.sim.filter.csv.SettingsCsvService;
 import s10k.node.sim.filter.custom.CustomFilterLoader;
 import s10k.node.sim.filter.custom.CustomFilterService;
 import s10k.node.sim.filter.form.SettingsFormService;
-import s10k.node.sim.filter.registry.FilterTypeDefinition;
+import s10k.node.sim.filter.registry.DatumSourceTypeDefinition;
 import s10k.node.sim.filter.registry.DatumSourceTypeRegistry;
+import s10k.node.sim.filter.registry.FilterTypeDefinition;
 import s10k.node.sim.filter.registry.FilterTypeRegistry;
+import s10k.node.sim.filter.registry.StandardDatumSourceTypes;
 import s10k.node.sim.filter.registry.StandardFilterTypes;
 import s10k.node.sim.filter.run.RunService;
+import s10k.node.sim.filter.sim.SimOpModeInvokers;
 import s10k.node.sim.filter.sim.SimulationEngine;
 import s10k.node.sim.filter.sim.SimulationLimits;
 import net.solarnetwork.common.expr.spel.SpelExpressionService;
@@ -45,7 +49,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Simulator configuration.
  *
  * @author matt
- * @version 1.1
+ * @version 1.2
  */
 @Configuration(proxyBeanMethods = false)
 @ImportRuntimeHints(SimulatorRuntimeHints.class)
@@ -68,7 +72,11 @@ public class SimulatorConfig {
 			SpelExpressionService expressionService) {
 		final List<String> standard = StandardFilterTypes.definitions().stream()
 				.map(FilterTypeDefinition::factoryUid).toList();
-		return new CustomFilterService(new CustomFilterLoader(expressionService, standard), path);
+		final List<String> standardSources = new ArrayList<>(StandardDatumSourceTypes.definitions()
+				.stream().map(DatumSourceTypeDefinition::factoryUid).toList());
+		standardSources.add(SimOpModeInvokers.FACTORY_UID);
+		return new CustomFilterService(
+				new CustomFilterLoader(expressionService, standard, standardSources), path);
 	}
 
 	/**
@@ -97,13 +105,17 @@ public class SimulatorConfig {
 	}
 
 	/**
-	 * The datum source type registry.
+	 * The registry of supported datum source types: the standard ones, plus the
+	 * custom ones.
 	 *
+	 * @param customFilterService
+	 *        the custom filters service, which updates the registry when the
+	 *        custom filters are reloaded
 	 * @return the registry
 	 */
 	@Bean
-	public DatumSourceTypeRegistry datumSourceTypeRegistry() {
-		return DatumSourceTypeRegistry.standard();
+	public DatumSourceTypeRegistry datumSourceTypeRegistry(CustomFilterService customFilterService) {
+		return customFilterService.datumSourceRegistry();
 	}
 
 	/**
@@ -174,14 +186,16 @@ public class SimulatorConfig {
 	 *
 	 * @param registry
 	 *        the filter type registry
+	 * @param datumSourceTypeRegistry
+	 *        the datum source type registry
 	 * @param settingsFormService
 	 *        the settings form service
 	 * @return the service
 	 */
 	@Bean
 	public SettingsCsvService settingsCsvService(FilterTypeRegistry registry,
-			SettingsFormService settingsFormService) {
-		return new SettingsCsvService(registry, settingsFormService);
+			DatumSourceTypeRegistry datumSourceTypeRegistry, SettingsFormService settingsFormService) {
+		return new SettingsCsvService(registry, datumSourceTypeRegistry, settingsFormService);
 	}
 
 	/**

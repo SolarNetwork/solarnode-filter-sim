@@ -20,14 +20,19 @@
 package s10k.node.sim.filter.registry;
 
 import org.osgi.service.event.EventAdmin;
+import net.solarnetwork.node.dao.LocalStateDao;
+import net.solarnetwork.node.service.DatumService;
+import net.solarnetwork.node.service.LocationService;
+import net.solarnetwork.node.service.OperationalModesService;
 import net.solarnetwork.node.service.PlaceholderService;
+import net.solarnetwork.service.ExpressionService;
 
 /**
  * The simulated SolarNode services a datum source can use, in addition to those
  * a filter can use.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public interface DatumSourceContext extends FilterContext {
 
@@ -46,5 +51,40 @@ public interface DatumSourceContext extends FilterContext {
 	 * @return the event admin
 	 */
 	EventAdmin eventAdmin();
+
+	/**
+	 * Get the location service, which has the node location.
+	 *
+	 * @return the service
+	 */
+	LocationService locationService();
+
+	/**
+	 * Get the Local State DAO.
+	 *
+	 * @return the DAO
+	 */
+	LocalStateDao localStateDao();
+
+	/**
+	 * Get the operational modes service.
+	 *
+	 * @return the service
+	 */
+	OperationalModesService opModesService();
+
+	/**
+	 * Get the datum service, which holds the datum history.
+	 *
+	 * @return the service
+	 */
+	DatumService datumService();
+
+	/**
+	 * Get the expression service.
+	 *
+	 * @return the service
+	 */
+	ExpressionService expressionService();
 
 }

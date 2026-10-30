@@ -43,7 +43,6 @@ import net.solarnetwork.node.service.MultiDatumDataSource;
 import net.solarnetwork.node.service.OperationalModesService;
 import net.solarnetwork.service.OptionalServiceCollection;
 import net.solarnetwork.service.StaticOptionalService;
-import net.solarnetwork.service.StaticOptionalServiceCollection;
 
 /**
  * The simulation's Operational Mode Datum Source Invokers.
@@ -64,7 +63,7 @@ import net.solarnetwork.service.StaticOptionalServiceCollection;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public final class SimOpModeInvokers {
 
@@ -227,7 +226,8 @@ public final class SimOpModeInvokers {
 		final Invoker[] holder = new Invoker[1];
 		final DatumDataSourceOpModeInvoker invoker = new DatumDataSourceOpModeInvoker(
 				new InvokerScheduler(holder), opModesService, new StaticOptionalService<>(datumQueue),
-				new DataSources(), new StaticOptionalServiceCollection<MultiDatumDataSource>(List.of()));
+				new DataSources<>(DatumDataSource.class, false),
+				new DataSources<>(MultiDatumDataSource.class, true));
 		invoker.setMessageSource(MESSAGE_SOURCE);
 		invoker.setTaskExecutor(executor);
 		final Invoker result = new Invoker(id, label, invoker);
@@ -312,12 +312,28 @@ public final class SimOpModeInvokers {
 	 * The datum sources an invoker reads, which tells the listener of each one
 	 * the invoker looks at, as it reads a datum source and offers its datum
 	 * before looking at the next.
+	 *
+	 * <p>
+	 * The invoker has one collection of the {@link DatumDataSource} types'
+	 * datum sources, and one of the multi datum source types', the
+	 * {@link MultiDatumDataSource}s.
+	 * </p>
 	 */
-	private final class DataSources implements OptionalServiceCollection<DatumDataSource> {
+	private final class DataSources<T> implements OptionalServiceCollection<T> {
+
+		private final Class<T> type;
+		private final boolean multi;
+
+		private DataSources(Class<T> type, boolean multi) {
+			super();
+			this.type = type;
+			this.multi = multi;
+		}
 
 		@Override
-		public Iterable<DatumDataSource> services() {
-			final List<SimDatumSources.Source> sources = List.copyOf(datumSources.sources());
+		public Iterable<T> services() {
+			final List<SimDatumSources.Source> sources = datumSources.sources().stream()
+					.filter(s -> s.type().multi() == multi && type.isInstance(s.datumSource())).toList();
 			return () -> new Iterator<>() {
 
 				private final Iterator<SimDatumSources.Source> itr = sources.iterator();
@@ -328,13 +344,13 @@ public final class SimOpModeInvokers {
 				}
 
 				@Override
-				public DatumDataSource next() {
+				public T next() {
 					final SimDatumSources.Source source = itr.next();
 					final Listener l = listener;
 					if ( l != null ) {
 						l.reading(source);
 					}
-					return source.datumSource();
+					return type.cast(source.datumSource());
 				}
 
 			};
