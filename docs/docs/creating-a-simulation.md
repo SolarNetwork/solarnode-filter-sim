@@ -62,11 +62,11 @@ instance ID. When you replace the simulation with a file that has controls, cond
 sources, they replace all of them. ++ctrl+z++ does not undo changes to the **Controls** and
 **Datum Sources** tabs. Exports include only the filter settings.
 
-Now in the Simulator, click on the **Import settings** button in the [Control pane][control-pane]
+Now in the Simulator, click on the **Import settings** button in the [Action pane][action-pane]
 and select the file you exported from SolarNode.
 
 <figure markdown>
-![Import settings button in the Control pane](./images/control-pane-import-button@2x.png){width=352}
+![Import settings button in the Action pane](./images/action-pane-import-button@2x.png){width=352}
 </figure>
 
 ## Making changes
@@ -80,12 +80,13 @@ key.
 You can use ++ctrl+z++ or ++cmd+z++ to undo your changes as you go.
 
 
+[action-pane]: ./getting-your-bearings.md#action-pane
 [bacnet-control]: https://solarnetwork.github.io/solarnode-handbook/users/controls/bacnet/
 [canvas]: ./getting-your-bearings.md#canvas
 [control-conductor]: https://solarnetwork.github.io/solarnode-handbook/users/controls/conductor/
 [control-ds]: https://solarnetwork.github.io/solarnode-handbook/users/datum-sources/control/
-[opmode-switch]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.control.opmode#operational-mode-switch
 [control-pane]: ./getting-your-bearings.md#control-pane
+[opmode-switch]: https://github.com/SolarNetwork/solarnetwork-node/tree/develop/net.solarnetwork.node.control.opmode#operational-mode-switch
 [downsample]: https://solarnetwork.github.io/solarnode-handbook/users/datum-filters/downsample/
 [filter-palette]: ./getting-your-bearings.md#filter-palette
 [gpio-control]: https://solarnetwork.github.io/solarnode-handbook/users/controls/gpio/
