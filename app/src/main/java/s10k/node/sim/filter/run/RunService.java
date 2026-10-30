@@ -63,7 +63,7 @@ import tools.jackson.databind.util.RawValue;
  * </p>
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class RunService implements AutoCloseable {
 
@@ -309,6 +309,35 @@ public class RunService implements AutoCloseable {
 	 */
 	public void writeDatum(String id, boolean output, OutputStream out) throws IOException {
 		run(id).writeDatum(output ? StoredRun.DatumKind.Output : StoredRun.DatumKind.Input, out);
+	}
+
+	/**
+	 * Write a run's datum as CSV.
+	 *
+	 * @param id
+	 *        the run ID
+	 * @param output
+	 *        {@code true} for the datum the filters output, to be persisted;
+	 *        {@code false} for each datum as it entered the Datum Queue
+	 * @param nodeId
+	 *        the node ID to write
+	 * @param bySource
+	 *        {@code true} for a zip archive of one CSV per source ID,
+	 *        {@code false} for one CSV of every datum
+	 * @param out
+	 *        the stream to write to
+	 * @throws IOException
+	 *         if writing fails
+	 * @throws RunNotFoundException
+	 *         if there is no such run
+	 * @throws RunNotFinishedException
+	 *         if the run is still running
+	 * @see DatumCsv
+	 */
+	public void writeCsv(String id, boolean output, long nodeId, boolean bySource, OutputStream out)
+			throws IOException {
+		run(id).writeCsv(output ? StoredRun.DatumKind.Output : StoredRun.DatumKind.Input, nodeId,
+				bySource, out);
 	}
 
 	/**

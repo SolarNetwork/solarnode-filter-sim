@@ -19,8 +19,10 @@
 
 package s10k.node.sim.filter.run.test;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.BDDAssertions.catchThrowable;
 import static org.assertj.core.api.BDDAssertions.then;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Duration;
@@ -29,6 +31,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,7 +64,7 @@ import tools.jackson.databind.util.RawValue;
  * Test cases for simulation runs that run in the background.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class RunServiceTests {
 
@@ -260,6 +264,86 @@ public class RunServiceTests {
 		then(download(again, true))
 			.as("Same output datum")
 			.isEqualTo(download(polled, true))
+			;
+		// @formatter:on
+	}
+
+	/**
+	 * Datum of two sources, with a property name used by two types.
+	 */
+	private static List<JsonNode> csvDatum() {
+		// @formatter:off
+		return List.of(
+				JSON.readTree("""
+						{"created":"2025-10-01 00:00:00.000Z","sourceId":"/a",
+						"i":{"watts":1.25,"current":2},"a":{"wattHours":10},"t":["x","y"]}
+						"""),
+				JSON.readTree("""
+						{"created":"2025-10-01 00:10:00.000Z","sourceId":"/b",
+						"i":{"temp":20},"s":{"watts":"off"}}
+						"""),
+				JSON.readTree("""
+						{"created":"2025-10-01 00:20:00.000Z","sourceId":"/a",
+						"i":{"voltage":230},"s":{"mode":"auto"}}
+						"""));
+		// @formatter:on
+	}
+
+	@Test
+	public void csv() throws Exception {
+		// GIVEN
+		String id = service.start(datum(csvDatum())).id();
+		await(id);
+
+		// WHEN
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		service.writeCsv(id, false, 123L, false, out);
+
+		// THEN
+		// @formatter:off
+		then(out.toString(UTF_8).split("\r\n"))
+			.as("Columns of every source: instantaneous, accumulating, then status, each name once")
+			.containsExactly(
+				"ts,nodeId,sourceId,watts,current,temp,voltage,wattHours,mode,tags",
+				"2025-10-01T00:00:00Z,123,/a,1.25,2,,,10,,\"x,y\"",
+				"2025-10-01T00:10:00Z,123,/b,off,,20,,,,",
+				"2025-10-01T00:20:00Z,123,/a,,,,230,,auto,"
+			)
+			;
+		// @formatter:on
+	}
+
+	@Test
+	public void csvZip() throws Exception {
+		// GIVEN
+		String id = service.start(datum(csvDatum())).id();
+		await(id);
+
+		// WHEN
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		service.writeCsv(id, false, 1L, true, out);
+
+		// THEN
+		Map<String, String> files = new LinkedHashMap<>();
+		try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(out.toByteArray()))) {
+			for ( ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry() ) {
+				files.put(e.getName(), new String(zip.readAllBytes(), UTF_8));
+			}
+		}
+		// @formatter:off
+		then(files)
+			.as("One CSV per source ID, in order, each with its own columns")
+			.containsExactly(
+				Map.entry("a.csv", """
+						ts,nodeId,sourceId,watts,current,voltage,wattHours,mode,tags\r
+						2025-10-01T00:00:00Z,1,/a,1.25,2,,10,,"x,y"\r
+						2025-10-01T00:20:00Z,1,/a,,,230,,auto,\r
+						"""),
+				Map.entry("b.csv", """
+						ts,nodeId,sourceId,temp,watts,tags\r
+						2025-10-01T00:10:00Z,1,/b,20,off,\r
+						""")
+			)
 			;
 		// @formatter:on
 	}

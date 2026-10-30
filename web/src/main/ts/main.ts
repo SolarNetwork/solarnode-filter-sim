@@ -270,6 +270,18 @@ class App {
 			datumSourcesChanged: () => this.#refreshCanvasSources(),
 		});
 		this.#results = new ResultsPanel($("#results"), ws);
+		this.#results.setNodeIdProvider(() => {
+			try {
+				return this.#inputs.nodeId;
+			} catch (e) {
+				if (e instanceof InputError) {
+					this.#inputPanel.showError(e);
+					showToast(e.message);
+					return null;
+				}
+				throw e;
+			}
+		});
 		this.#capture = new CapturePanel($("#capture"));
 		this.#renderPalette(types);
 		const reloadButton = $<HTMLButtonElement>("#reload-filters-button");

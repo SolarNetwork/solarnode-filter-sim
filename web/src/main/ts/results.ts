@@ -4,6 +4,7 @@ import {
 	getRunTraces,
 	MAX_TRACES_PER_REQUEST,
 	runDatumUrl,
+	type DatumDownloadFormat,
 } from "./api.ts";
 import {
 	DatumList,
@@ -483,6 +484,8 @@ export class ResultsPanel extends EventTarget {
 	#zone = "UTC";
 	/** `true` to show dates in UTC, not the run's time zone. */
 	#utc = false;
+	/** Gives the node ID of CSV downloads, or `null` if there is none. */
+	#nodeId: () => number | null = () => 1;
 
 	/**
 	 * Constructor.
@@ -1104,6 +1107,16 @@ export class ResultsPanel extends EventTarget {
 		return tools;
 	}
 
+	/**
+	 * Set what gives the node ID of CSV downloads.
+	 *
+	 * @param provider gives the node ID, or `null`, having shown why, if
+	 *     there is none
+	 */
+	setNodeIdProvider(provider: () => number | null): void {
+		this.#nodeId = provider;
+	}
+
 	/** Get the menu that downloads a run's datum. */
 	#downloadMenu(result: RunResult): HTMLElement {
 		const menu = element("div", "dropdown sim-download-menu");
@@ -1113,7 +1126,7 @@ export class ResultsPanel extends EventTarget {
 			"btn btn-sm btn-link text-body-secondary p-0 sim-tool",
 		);
 		button.type = "button";
-		button.title = "Download the run's datum as JSON";
+		button.title = "Download the run's datum as JSON or CSV";
 		button.setAttribute("aria-label", button.title);
 		button.setAttribute("aria-expanded", "false");
 		button.dataset.bsToggle = "dropdown";
@@ -1133,26 +1146,52 @@ export class ResultsPanel extends EventTarget {
 				"Each datum as it entered the Datum Queue, before the filters",
 			],
 		] as const) {
-			const item = element("button", "dropdown-item");
-			item.type = "button";
-			item.append(
-				element("div", undefined, text),
-				element("div", "small text-body-secondary", help),
+			if (list.childElementCount) {
+				const divider = element("li");
+				divider.append(element("hr", "dropdown-divider"));
+				list.append(divider);
+			}
+			const header = element("li", "dropdown-header");
+			header.append(
+				element("div", "fw-semibold text-body", text),
+				element("div", "small", help),
 			);
-			item.addEventListener(
-				"click",
-				() => void this.#download(result.id, kind),
-			);
-			const li = element("li");
-			li.append(item);
-			list.append(li);
+			list.append(header);
+			for (const [format, label, icon, title] of [
+				[
+					"json",
+					"JSON",
+					"bi-filetype-json",
+					"A JSON array, like the Datum input",
+				],
+				[
+					"csv",
+					"CSV",
+					"bi-filetype-csv",
+					"One CSV file of every source ID",
+				],
+				[
+					"zip",
+					"CSV per source ID",
+					"bi-file-zip",
+					"A zip archive of one CSV file per source ID",
+				],
+			] as const) {
+				const item = element("button", "dropdown-item");
+				item.type = "button";
+				item.title = title;
+				const itemIcon = element("i", `bi ${icon} me-2`);
+				itemIcon.setAttribute("aria-hidden", "true");
+				item.append(itemIcon, label);
+				item.addEventListener(
+					"click",
+					() => void this.#download(result.id, kind, format),
+				);
+				const li = element("li");
+				li.append(item);
+				list.append(li);
+			}
 		}
-		const note = element(
-			"li",
-			"px-3 pt-1 small text-body-secondary sim-download-note",
-			"As JSON, like the Datum input.",
-		);
-		list.append(note);
 		menu.append(button, list);
 		return menu;
 	}
@@ -1162,8 +1201,17 @@ export class ResultsPanel extends EventTarget {
 	 *
 	 * @param id the run ID
 	 * @param kind the datum to download
+	 * @param format the format to download
 	 */
-	async #download(id: string, kind: "output" | "input"): Promise<void> {
+	async #download(
+		id: string,
+		kind: "output" | "input",
+		format: DatumDownloadFormat,
+	): Promise<void> {
+		const nodeId = format === "json" ? 1 : this.#nodeId();
+		if (nodeId === null) {
+			return;
+		}
 		try {
 			await getRunProgress(id);
 		} catch (e) {
@@ -1176,7 +1224,7 @@ export class ResultsPanel extends EventTarget {
 		}
 		// the server names the file
 		const a = document.createElement("a");
-		a.href = runDatumUrl(id, kind);
+		a.href = runDatumUrl(id, kind, format, nodeId);
 		a.download = "";
 		a.click();
 	}

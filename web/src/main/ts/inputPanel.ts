@@ -20,6 +20,7 @@ import {
 	parseDatumList,
 	parseMetadata,
 	parseMaxDatum,
+	parseNodeId,
 	parseRunAfter,
 	parsePlaceholders,
 	parseLocationNumber,
@@ -74,6 +75,7 @@ const TEXT_INPUTS: Record<Exclude<InputField, "entryPoint">, string> = {
 	unfilteredHistory: "#input-unfiltered",
 	opModes: "#input-opmodes",
 	localState: "#input-localstate",
+	nodeId: "#input-node-id",
 	timeZone: "#input-time-zone",
 	startDate: "#input-start-date",
 	runAfter: "#input-runafter",
@@ -94,6 +96,7 @@ const FIELD_TABS: Record<Exclude<InputField, "entryPoint">, InputTab> = {
 	unfilteredHistory: "history",
 	opModes: "environment",
 	localState: "environment",
+	nodeId: "environment",
 	timeZone: "environment",
 	startDate: "environment",
 	runAfter: "environment",
@@ -124,6 +127,7 @@ const FIELD_CHECKS: Partial<
 	unfilteredHistory: (text) =>
 		parseDatumList(text, "Unfiltered History datum"),
 	nodeMetadata: (text) => parseMetadata(text, "Node metadata"),
+	nodeId: (text) => parseNodeId(text),
 	timeZone: (text) => parseTimeZone(text),
 	// any zone checks the form of the date
 	startDate: (text) => parseStartDate(text, "UTC"),

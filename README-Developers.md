@@ -108,6 +108,8 @@ records in the `s10k.node.sim.filter.domain` package.
 | `GET /api/runs/{id}` | A finished run's result: a `RunResult` (see below). A run that is still running gets a `409` response, and one the simulator no longer has a `404`. |
 | `GET /api/runs/{id}/datum?seq=1,2` | The traces of some of a run's datum, by `seq`, up to 200, in the order asked. |
 | `GET /api/runs/{id}/datum.json` | Download a finished run's output datum (persisted, in processing order), or with `kind=input` each datum as it entered the Datum Queue, as a JSON array in the format of the Datum input. |
+| `GET /api/runs/{id}/datum.csv` | Download a finished run's datum (`kind` as above) as CSV, in the style of SolarNetwork's datum stream CSV: `ts`, `nodeId` (the `nodeId` parameter, 1 by default), `sourceId`, the instantaneous, accumulating, and status properties (one column per name), and `tags`. |
+| `GET /api/runs/{id}/datum.zip` | The same, as a zip archive of one CSV per source ID, each with the columns of its own datum. |
 | `DELETE /api/runs/{id}` | Cancel a run, which stops and keeps what it has, with a `Cancelled` message. |
 | `POST /api/capture` | Start capturing the datum a SolarNode captures: a `CaptureRequest` (`url`, `username`, `password`, and optional `sourceIds`) in, a `CaptureInfo` (`id` and `topics`) out. A node that cannot be reached or does not accept the login gets a `400` response with problem details. |
 | `GET /api/capture/{id}/events` | A capture's datum, as a `text/event-stream` (see below). |
@@ -229,6 +231,7 @@ up to the maximum run time.
 curl -H 'Content-Type: application/json' -d @request.json http://localhost:8080/api/runs
 curl -N http://localhost:8080/api/runs/<id>/events
 curl -o output.json 'http://localhost:8080/api/runs/<id>/datum.json'
+curl -o output.zip 'http://localhost:8080/api/runs/<id>/datum.zip?nodeId=123'
 curl -X DELETE http://localhost:8080/api/runs/<id>
 ```
 
@@ -392,7 +395,7 @@ A native image only has the reflection metadata that Spring's AOT processing and
 `SimulatorRuntimeHints` give it, so an expression can fail natively that works on the JVM. The
 `nativeSmokeTest` task builds the executable (if needed), starts it on a free port, and runs
 each smoke fixture twice: through `/api/simulate`, and as a background run through the runs API,
-as the UI does (following its events, then getting its result and both downloads). It then runs
+as the UI does (following its events, then getting its result and the JSON, CSV, and zip downloads). It then runs
 the `datum-sources` fixture for an hour of simulated time, so the result is over 200 datum, and
 checks that the runs API's result, with the traces it loads by number, matches `/api/simulate`'s:
 

@@ -232,16 +232,28 @@ export function getRunTraces(
 	);
 }
 
+/** The formats of downloaded datum. */
+export type DatumDownloadFormat = "json" | "csv" | "zip";
+
 /**
- * Get the address that downloads a run's datum, as a JSON array in the
- * format of the Datum input.
+ * Get the address that downloads a run's datum.
  *
  * @param id the run ID
  * @param kind `output` for the datum the filters output, or `input` for each
  *     datum as it entered the Datum Queue
+ * @param format `json` for a JSON array in the format of the Datum input,
+ *     `csv` for one CSV of every datum, or `zip` for a zip archive of one CSV
+ *     per source ID
+ * @param nodeId the node ID of a CSV's datum
  */
-export function runDatumUrl(id: string, kind: "output" | "input"): string {
-	return `api/runs/${encodeURIComponent(id)}/datum.json?kind=${kind}`;
+export function runDatumUrl(
+	id: string,
+	kind: "output" | "input",
+	format: DatumDownloadFormat = "json",
+	nodeId = 1,
+): string {
+	const url = `api/runs/${encodeURIComponent(id)}/datum.${format}?kind=${kind}`;
+	return format === "json" ? url : `${url}&nodeId=${nodeId}`;
 }
 
 /**

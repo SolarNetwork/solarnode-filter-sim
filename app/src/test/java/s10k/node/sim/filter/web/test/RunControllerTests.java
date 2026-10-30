@@ -59,7 +59,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Test cases for the run web API.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 public class RunControllerTests {
 
@@ -200,6 +200,13 @@ public class RunControllerTests {
 		MvcResult download = mvc.perform(get("/api/runs/{id}/datum.json", id).param("kind", "input"))
 				.andReturn();
 		mvc.perform(asyncDispatch(download));
+		MvcResult csv = mvc
+				.perform(
+						get("/api/runs/{id}/datum.csv", id).param("kind", "input").param("nodeId", "42"))
+				.andReturn();
+		mvc.perform(asyncDispatch(csv));
+		MvcResult zip = mvc.perform(get("/api/runs/{id}/datum.zip", id)).andReturn();
+		mvc.perform(asyncDispatch(zip));
 
 		// THEN
 		// @formatter:off
@@ -230,6 +237,24 @@ public class RunControllerTests {
 		then(JSON.readTree(download.getResponse().getContentAsString()).size())
 			.as("Download has every input datum")
 			.isEqualTo(1441)
+			;
+		then(csv.getResponse().getHeader(HttpHeaders.CONTENT_DISPOSITION))
+			.as("CSV file name")
+			.isEqualTo("attachment; filename=\"solarnode-filter-sim-input-20251001T0000Z.csv\"")
+			;
+		then(csv.getResponse().getContentAsString().split("\r\n"))
+			.as("CSV has a header and every input datum")
+			.hasSize(1442)
+			.as("CSV columns")
+			.startsWith("ts,nodeId,sourceId,watts,tags", "2025-10-01T00:00:00Z,42,/fixed/1,100,")
+			;
+		then(zip.getResponse().getHeader(HttpHeaders.CONTENT_DISPOSITION))
+			.as("Zip file name")
+			.isEqualTo("attachment; filename=\"solarnode-filter-sim-output-20251001T0000Z.zip\"")
+			;
+		then(zip.getResponse().getContentType())
+			.as("Zip content type")
+			.isEqualTo("application/zip")
 			;
 		// @formatter:on
 	}

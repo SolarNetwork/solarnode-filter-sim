@@ -20,6 +20,7 @@
 package s10k.node.sim.filter.run;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.time.Duration;
 import java.time.Instant;
@@ -44,6 +45,8 @@ import s10k.node.sim.filter.domain.RunResult;
 import s10k.node.sim.filter.domain.SimulationResult;
 import s10k.node.sim.filter.sim.SimulationException;
 import s10k.node.sim.filter.sim.SimulationObserver;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.MappingIterator;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.util.RawValue;
 
@@ -53,7 +56,7 @@ import tools.jackson.databind.util.RawValue;
  * to the browsers watching it.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class StoredRun implements SimulationObserver {
 
@@ -76,6 +79,8 @@ final class StoredRun implements SimulationObserver {
 	private final TraceStore traces = new TraceStore();
 	private final JsonArrayStore inputs = new JsonArrayStore();
 	private final JsonArrayStore outputs = new JsonArrayStore();
+	private final DatumCsv.Columns inputColumns = new DatumCsv.Columns();
+	private final DatumCsv.Columns outputColumns = new DatumCsv.Columns();
 	private final List<DatumIndexEntry> index = new ArrayList<>(64);
 	private final Map<Integer, Integer> positions = new HashMap<>(64);
 	private final Map<String, int[]> filterStats = new LinkedHashMap<>(8);
@@ -144,10 +149,14 @@ final class StoredRun implements SimulationObserver {
 				count(filterStats.computeIfAbsent(step.filterId(), _ -> new int[6]), step.status());
 			}
 		}
-		inputs.add(mapper.writeValueAsBytes(DownloadDatum.of(trace.input())));
+		final DownloadDatum input = DownloadDatum.of(trace.input());
+		inputs.add(mapper.writeValueAsBytes(input));
+		inputColumns.add(input);
 		final DatumInfo output = trace.output();
 		if ( output != null && trace.persist() ) {
-			outputs.add(mapper.writeValueAsBytes(DownloadDatum.of(output)));
+			final DownloadDatum datum = DownloadDatum.of(output);
+			outputs.add(mapper.writeValueAsBytes(datum));
+			outputColumns.add(datum);
 		}
 		final int n = processed + 1;
 		processed = n;
@@ -411,6 +420,41 @@ final class StoredRun implements SimulationObserver {
 			throw new RunNotFinishedException(id);
 		}
 		(kind == DatumKind.Input ? inputs : outputs).writeTo(out);
+	}
+
+	/**
+	 * Write the datum as CSV.
+	 *
+	 * @param kind
+	 *        the datum to write
+	 * @param nodeId
+	 *        the node ID to write
+	 * @param bySource
+	 *        {@code true} for a zip archive of one CSV per source ID,
+	 *        {@code false} for one CSV
+	 * @param out
+	 *        the stream to write to
+	 * @throws IOException
+	 *         if writing fails
+	 * @throws RunNotFinishedException
+	 *         if the run is still running
+	 * @see DatumCsv
+	 */
+	void writeCsv(DatumKind kind, long nodeId, boolean bySource, OutputStream out) throws IOException {
+		if ( state == RunProgress.State.Running ) {
+			throw new RunNotFinishedException(id);
+		}
+		final DatumCsv.Columns columns = (kind == DatumKind.Input ? inputColumns : outputColumns);
+		// decimals stay exact
+		try (InputStream in = (kind == DatumKind.Input ? inputs : outputs).read();
+				MappingIterator<DownloadDatum> datum = mapper.readerFor(DownloadDatum.class)
+						.with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readValues(in)) {
+			if ( bySource ) {
+				DatumCsv.writeZip(datum, columns, nodeId, out);
+			} else {
+				DatumCsv.write(datum, columns, nodeId, out);
+			}
+		}
 	}
 
 	/**

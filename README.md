@@ -73,7 +73,7 @@ commands to allow in every simulation can also be set when starting the simulato
 
 A run processes up to its **Maximum Datum** (on the Environment tab, 1,000 when blank), and its
 time limit grows with it: 10 seconds per 1,000 datum. A result over 200 datum shows as a list you
-can filter, and the Execution Flow's download menu saves the output or input datum as JSON. The simulator allows at most 100,000 datum and 10 minutes per run;
+can filter, and the Execution Flow's download menu saves the output or input datum as JSON, as one CSV, or as a zip archive of one CSV per source ID. The simulator allows at most 100,000 datum and 10 minutes per run;
 change these when starting it with `--sim.max-datum` and `--sim.max-run-time` (such as `30m`).
 
 ## Custom filters

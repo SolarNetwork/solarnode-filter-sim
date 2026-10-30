@@ -538,6 +538,20 @@ abstract class NativeSmokeTest extends DefaultTask {
 		return send(http, java.net.http.HttpRequest.newBuilder(URI.create(url)).build())
 	}
 
+	protected static byte[] getBytes(def http, String url) {
+		def req = java.net.http.HttpRequest.newBuilder(URI.create(url)).build()
+		def res = http.send(req, java.net.http.HttpResponse.BodyHandlers.ofByteArray())
+		if ( res.statusCode() != 200 ) {
+			throw new GradleException("GET ${req.uri().path}: HTTP ${res.statusCode()}")
+		}
+		return res.body()
+	}
+
+	/** Count the rows of CSV text after its header, which end with CRLF. */
+	protected static int csvRows(String csv) {
+		return csv.count('\r\n') - 1
+	}
+
 	protected static Object post(def http, String url, String body) {
 		return send(http, java.net.http.HttpRequest.newBuilder(URI.create(url))
 				.header('Content-Type', 'application/json')
@@ -601,6 +615,20 @@ abstract class NativeSmokeTest extends DefaultTask {
 		if ( output.size() > result.stats.output ) {
 			throw new GradleException(
 					"run ${id} has ${output.size()} output datum for ${result.stats.output} output")
+		}
+		def csv = new String(getBytes(http, "${base}/runs/${id}/datum.csv?kind=input&nodeId=7"),
+				'UTF-8')
+		if ( csvRows(csv) != input.size() || !csv.startsWith('ts,nodeId,sourceId,') ) {
+			throw new GradleException("run ${id} has ${csvRows(csv)} input CSV rows for ${input.size()} datum")
+		}
+		int zipRows = 0
+		def zip = new java.util.zip.ZipInputStream(new ByteArrayInputStream(
+				getBytes(http, "${base}/runs/${id}/datum.zip")))
+		for ( def e = zip.nextEntry; e != null; e = zip.nextEntry ) {
+			zipRows += csvRows(new String(zip.readAllBytes(), 'UTF-8'))
+		}
+		if ( zipRows != output.size() ) {
+			throw new GradleException("run ${id} has ${zipRows} output CSV rows for ${output.size()} datum")
 		}
 		return result
 	}

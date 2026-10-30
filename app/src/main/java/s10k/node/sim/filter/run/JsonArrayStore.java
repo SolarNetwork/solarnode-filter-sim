@@ -22,8 +22,12 @@ package s10k.node.sim.filter.run;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.SequenceInputStream;
 import java.io.UncheckedIOException;
+import java.util.Collections;
+import java.util.List;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
@@ -31,7 +35,7 @@ import java.util.zip.InflaterInputStream;
  * A JSON array, compressed as its elements are added, to write out whole.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 final class JsonArrayStore {
 
@@ -98,6 +102,19 @@ final class JsonArrayStore {
 	 *         if the array is not finished
 	 */
 	void writeTo(OutputStream target) throws IOException {
+		try (InputStream in = read()) {
+			in.transferTo(target);
+		}
+	}
+
+	/**
+	 * Read the array.
+	 *
+	 * @return the array, as JSON
+	 * @throws IllegalStateException
+	 *         if the array is not finished
+	 */
+	InputStream read() {
 		final byte[] data;
 		synchronized ( this ) {
 			if ( !finished ) {
@@ -105,11 +122,12 @@ final class JsonArrayStore {
 			}
 			data = bytes.toByteArray();
 		}
-		target.write('[');
-		try (InflaterInputStream in = new InflaterInputStream(new ByteArrayInputStream(data))) {
-			in.transferTo(target);
-		}
-		target.write(']');
+		// @formatter:off
+		return new SequenceInputStream(Collections.enumeration(List.of(
+				new ByteArrayInputStream(new byte[] { '[' }),
+				new InflaterInputStream(new ByteArrayInputStream(data)),
+				new ByteArrayInputStream(new byte[] { ']' }))));
+		// @formatter:on
 	}
 
 }

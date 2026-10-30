@@ -52,7 +52,7 @@ import tools.jackson.databind.util.RawValue;
  * Web API for simulation runs that run in the background.
  *
  * @author matt
- * @version 1.0
+ * @version 1.1
  */
 @RestController
 @RequestMapping("/api/runs")
@@ -154,15 +154,86 @@ public class RunController {
 	@GetMapping("/{id}/datum.json")
 	public ResponseEntity<StreamingResponseBody> download(@PathVariable String id,
 			@RequestParam(required = false) @Nullable String kind) {
-		final boolean output = !"input".equalsIgnoreCase(kind);
+		final boolean output = isOutput(kind);
+		final StreamingResponseBody body = out -> service.writeDatum(id, output, out);
+		return attachment(id, output, "json", MediaType.APPLICATION_JSON, body);
+	}
+
+	/**
+	 * Download a run's datum as CSV, in the style of SolarNetwork's datum
+	 * stream CSV.
+	 *
+	 * @param id
+	 *        the run ID
+	 * @param kind
+	 *        {@code output} (the default) for the datum the filters output, to
+	 *        be persisted, or {@code input} for each datum as it entered the
+	 *        Datum Queue
+	 * @param nodeId
+	 *        the node ID to write, {@code 1} by default
+	 * @return the datum
+	 * @see s10k.node.sim.filter.run.DatumCsv
+	 */
+	@GetMapping("/{id}/datum.csv")
+	public ResponseEntity<StreamingResponseBody> downloadCsv(@PathVariable String id,
+			@RequestParam(required = false) @Nullable String kind,
+			@RequestParam(defaultValue = "1") long nodeId) {
+		final boolean output = isOutput(kind);
+		final StreamingResponseBody body = out -> service.writeCsv(id, output, nodeId, false, out);
+		return attachment(id, output, "csv", MediaType.parseMediaType("text/csv;charset=UTF-8"), body);
+	}
+
+	/**
+	 * Download a run's datum as a zip archive of one CSV per source ID.
+	 *
+	 * @param id
+	 *        the run ID
+	 * @param kind
+	 *        {@code output} (the default) for the datum the filters output, to
+	 *        be persisted, or {@code input} for each datum as it entered the
+	 *        Datum Queue
+	 * @param nodeId
+	 *        the node ID to write, {@code 1} by default
+	 * @return the datum
+	 * @see #downloadCsv(String, String, long)
+	 */
+	@GetMapping("/{id}/datum.zip")
+	public ResponseEntity<StreamingResponseBody> downloadZip(@PathVariable String id,
+			@RequestParam(required = false) @Nullable String kind,
+			@RequestParam(defaultValue = "1") long nodeId) {
+		final boolean output = isOutput(kind);
+		final StreamingResponseBody body = out -> service.writeCsv(id, output, nodeId, true, out);
+		return attachment(id, output, "zip", MediaType.parseMediaType("application/zip"), body);
+	}
+
+	private static boolean isOutput(@Nullable String kind) {
+		return !"input".equalsIgnoreCase(kind);
+	}
+
+	/**
+	 * Get a download of a finished run's datum.
+	 *
+	 * @param id
+	 *        the run ID
+	 * @param output
+	 *        {@code true} for the output datum
+	 * @param extension
+	 *        the file name extension
+	 * @param type
+	 *        the content type
+	 * @param body
+	 *        the content
+	 * @return the response
+	 */
+	private ResponseEntity<StreamingResponseBody> attachment(String id, boolean output, String extension,
+			MediaType type, StreamingResponseBody body) {
 		service.checkFinished(id);
 		final Instant start = service.startDate(id);
-		final String name = "solarnode-filter-sim-%s%s.json".formatted(output ? "output" : "input",
-				start != null ? "-" + FILE_DATE.format(start) : "");
-		final StreamingResponseBody body = out -> service.writeDatum(id, output, out);
+		final String name = "solarnode-filter-sim-%s%s.%s".formatted(output ? "output" : "input",
+				start != null ? "-" + FILE_DATE.format(start) : "", extension);
 		// @formatter:off
 		return ResponseEntity.ok()
-				.contentType(MediaType.APPLICATION_JSON)
+				.contentType(type)
 				.header(HttpHeaders.CONTENT_DISPOSITION,
 						ContentDisposition.attachment().filename(name).build().toString())
 				.body(body);

@@ -211,6 +211,8 @@ export interface InputsState {
 	opModes: string;
 	/** Local State CSV. */
 	localState: string;
+	/** The node ID of exported datum, `1` by default. */
+	nodeId: string;
 	/**
 	 * The time zone the results show dates in, and of the Start Date, or `""`
 	 * for the simulator's time zone.
@@ -313,6 +315,7 @@ function emptyState(): InputsState {
 		unfilteredSameAsHistory: true,
 		opModes: "",
 		localState: "",
+		nodeId: "1",
 		timeZone: "",
 		startDate: "",
 		runAfter: "",
@@ -468,6 +471,22 @@ export function parseMaxDatum(text: string): number | null {
 	const n = Number(t);
 	if (!Number.isInteger(n) || n < 1) {
 		throw new Error("Enter a whole number of datum, like 10000.");
+	}
+	return n;
+}
+
+/**
+ * Parse the Node ID.
+ *
+ * @param text the node ID
+ * @returns the node ID
+ * @throws Error if the text is not a whole number of at least 1
+ */
+export function parseNodeId(text: string): number {
+	const t = text.trim();
+	const n = Number(t);
+	if (!/^\d+$/.test(t) || n < 1 || !Number.isSafeInteger(n)) {
+		throw new Error("Enter the node ID, a whole number like 1.");
 	}
 	return n;
 }
@@ -1039,6 +1058,23 @@ export class RunInputs extends EventTarget {
 	/** `true` if every input is empty. */
 	get isEmpty(): boolean {
 		return JSON.stringify(this.#state) === JSON.stringify(emptyState());
+	}
+
+	/**
+	 * The node ID of exported datum.
+	 *
+	 * @throws InputError if the Node ID is not valid
+	 */
+	get nodeId(): number {
+		try {
+			return parseNodeId(this.#state.nodeId);
+		} catch (e) {
+			throw new InputError(
+				e instanceof Error ? e.message : String(e),
+				"environment",
+				"nodeId",
+			);
+		}
 	}
 
 	/**

@@ -65,11 +65,28 @@ like `today()` use it. Downloaded datum have UTC dates, whatever the Time Zone.
 
 ## Downloading datum
 
-The download menu in the Execution Flow header saves the datum of a run as a JSON file, in the
-format of the **Datum** input, to review or chart them elsewhere:
+The download menu in the Execution Flow header saves the datum of a run, to review or chart them
+elsewhere. It has two kinds of datum:
 
 * **Output datum:** the datum the filters output, which a node persists.
 * **Input datum:** each datum as it entered the Datum Queue, before the filters.
+
+Each comes in three formats:
+
+* **JSON:** a JSON file in the format of the **Datum** input, so you can paste the datum back in.
+* **CSV:** one CSV file of every datum, like SolarNetwork's datum stream CSV.
+* **CSV per source ID:** a zip archive of one CSV file per source ID, named after it (`/meter/1`
+  is `meter_1.csv`).
+
+The CSV columns are `ts` (the date, in UTC), `nodeId`, `sourceId`, then a column for each
+property, and `tags`, with the datum's tags separated by commas. The property columns are the
+instantaneous properties, then the accumulating, then the status, in the order the datum first
+have them. A property has the same column for every source ID, and a property name used by two
+types has one column. In a zip archive, each file has only the columns of its own source ID's
+datum.
+
+The `nodeId` column is the **Node ID** at the top of the **Environment** tab, `1` unless you
+change it. The simulator uses it only for these downloads.
 
 The simulator keeps the last three runs, so download a run's datum before running three more.
 A report of a long run has only the datum you have looked at, up to 200.
