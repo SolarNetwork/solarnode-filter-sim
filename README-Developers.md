@@ -57,7 +57,7 @@ The main TypeScript modules are:
 |:-------|:---------|
 | `main.ts`      | The application: wires the parts together, and handles running simulations, import, export, and keyboard shortcuts. |
 | `workspace.ts` | The configuration being edited: filters, chains, undo and redo, and saving in the browser. |
-| `layout.ts`    | The automatic layout of the flow chart. |
+| `layout.ts`    | The automatic layout of the flow chart, with the static datum and datum sources left of the Main chain. |
 | `canvas.ts`    | The [JointJS][jointjs] canvas, and the gestures that edit chains. |
 | `datumRoutes.ts` | The route each datum took through the drawing, from its steps, for the canvas to draw. |
 | `jsonEditor.ts`, `jsonFormat.ts`, `jsonLint.ts`, `jsonComplete.ts` | The [CodeMirror][codemirror] JSON editor of the JSON inputs, its Format button's formatter, its schema checks, and its key completion. |

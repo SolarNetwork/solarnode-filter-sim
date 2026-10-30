@@ -45,6 +45,27 @@ export interface DatumSourceName {
 	invoker?: boolean;
 }
 
+/** What the canvas shows of a datum source. */
+export interface DatumSourceSummary {
+	/** The datum source id. */
+	id: string;
+	factoryUid: string;
+	/** The type's name. */
+	type: string;
+	/** The Service Name, if it has one. */
+	name?: string;
+	/** The Source ID, if it has one. */
+	sourceId?: string;
+	/** The schedule, as text, like `every 30 s`. */
+	schedule?: string;
+	/** A problem with its settings, if it has one. */
+	problem?: string;
+	/** `true` for the static datum, the Datum tab's input datum. */
+	static?: boolean;
+	/** For the static datum, the number of datum. */
+	count?: number;
+}
+
 /**
  * The datum sources of the run the results show, by id, as they were when it
  * ran, so later edits do not rename them.

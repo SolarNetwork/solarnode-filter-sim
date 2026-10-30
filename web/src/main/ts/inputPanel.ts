@@ -1,6 +1,7 @@
 import { Tab } from "bootstrap";
 import { getDatumSourceTypes, getSettingsForm } from "./api.ts";
 import { datumSourceIcon } from "./icons.ts";
+import { STATIC_SOURCE_ID } from "./layout.ts";
 import {
 	conductorTaskField,
 	conductorTaskProblems,
@@ -51,7 +52,7 @@ import {
 	type SimulationState,
 } from "./model.ts";
 import { SettingsFormRenderer, type SettingsFormHost } from "./settingsForm.ts";
-import type { DatumSourceName } from "./view.ts";
+import type { DatumSourceName, DatumSourceSummary } from "./view.ts";
 import type { Workspace } from "./workspace.ts";
 
 /** How long after typing stops, in milliseconds, an input is checked. */
@@ -224,6 +225,13 @@ export interface InputPanelOptions {
 	 * service filter, for a datum source setting's Choose menu.
 	 */
 	relatedServices(serviceFilter: string): string[];
+
+	/**
+	 * Called when what {@link InputPanel.datumSourceSummaries} gives might
+	 * have changed without the inputs changing, such as when a datum source's
+	 * form loads its defaults.
+	 */
+	datumSourcesChanged?(): void;
 }
 
 /** A rendered datum source card. */
@@ -309,6 +317,8 @@ export class InputPanel {
 	/** The datum each datum source polled in the last run, by id. */
 	#pollCounts: ReadonlyMap<string, number> | null = null;
 	#finalState: SimulationState | null = null;
+	/** The static datum's summary, for the Datum input's text. */
+	#staticSummary: { text: string; summary: DatumSourceSummary } | null = null;
 
 	/**
 	 * Constructor.
@@ -392,6 +402,96 @@ export class InputPanel {
 				];
 			}),
 		);
+	}
+
+	/**
+	 * Get what the canvas shows of the datum sources: the static datum, if
+	 * the Datum input has some, then the datum sources, without the
+	 * Operational Mode Invokers.
+	 *
+	 * @returns the datum sources
+	 */
+	datumSourceSummaries(): DatumSourceSummary[] {
+		const text = this.#inputs.state.datum;
+		const sources = text.trim() ? [this.#staticDatumSummary(text)] : [];
+		return sources.concat(this.#datumSourceSummaries());
+	}
+
+	/** Show the Datum tab, where the static datum are. */
+	showDatumInput(): void {
+		this.#showTab("datum");
+	}
+
+	/**
+	 * Get the static datum's summary, counting the datum only when the text
+	 * changed, as it can be long.
+	 */
+	#staticDatumSummary(text: string): DatumSourceSummary {
+		if (this.#staticSummary?.text !== text) {
+			let count: number | undefined;
+			let problem: string | undefined;
+			try {
+				const json: unknown = JSON.parse(text);
+				count = Array.isArray(json) ? json.length : 1;
+			} catch {
+				problem = "The Datum input is not valid JSON.";
+			}
+			this.#staticSummary = {
+				text,
+				summary: {
+					id: STATIC_SOURCE_ID,
+					factoryUid: "",
+					type: "Static Datum",
+					static: true,
+					count,
+					problem,
+				},
+			};
+		}
+		return this.#staticSummary.summary;
+	}
+
+	#datumSourceSummaries(): DatumSourceSummary[] {
+		return this.#inputs.state.datumSources
+			.filter((d) => !isInvoker(d))
+			.map((d) => {
+				const type = this.#sourceTypes.get(d.factoryUid);
+				const c = this.#sourceCards.get(d.id);
+				const schedule =
+					d.settings[SCHEDULE_KEY] ?? type?.defaultSchedule ?? "";
+				const problem =
+					scheduleProblem(d.settings[SCHEDULE_KEY]) ??
+					c?.form?.problems[0]?.message;
+				return {
+					id: d.id,
+					factoryUid: d.factoryUid,
+					type: type?.name ?? d.factoryUid,
+					name: this.#sourceValue(d, c, SOURCE_UID_KEY) || undefined,
+					sourceId:
+						this.#sourceValue(d, c, SOURCE_ID_KEY) || undefined,
+					schedule: schedule.trim()
+						? scheduleText(schedule)
+						: undefined,
+					problem: problem || undefined,
+				};
+			});
+	}
+
+	/**
+	 * Get a datum source setting, or else its default from the datum source's
+	 * form, trimmed.
+	 */
+	#sourceValue(
+		item: DatumSourceInput,
+		c: SourceCard | undefined,
+		key: string,
+	): string {
+		const v = item.settings[key];
+		if (v !== undefined) {
+			return v.trim();
+		}
+		const field = c?.form ? findField(c.form.fields, key) : undefined;
+		return (field?.value ?? field?.defaultValue ?? "").trim();
 	}
 
 	/**
@@ -1270,14 +1370,7 @@ export class InputPanel {
 			c.body.append(c.controls);
 			this.#refreshSourceControls(id, c);
 		}
-		const value = (key: string): string => {
-			const v = item.settings[key];
-			if (v !== undefined) {
-				return v.trim();
-			}
-			const field = c.form ? findField(c.form.fields, key) : undefined;
-			return (field?.value ?? field?.defaultValue ?? "").trim();
-		};
+		const value = (key: string): string => this.#sourceValue(item, c, key);
 		const parts = [];
 		if (invoker) {
 			const name = value(INVOKER_UID_KEY);
@@ -1299,6 +1392,7 @@ export class InputPanel {
 		}
 		c.summary.textContent = parts.join(" · ");
 		c.summary.title = c.summary.textContent;
+		this.#options.datumSourcesChanged?.();
 	}
 
 	/** Check a datum source's Schedule, which the form also marks. */

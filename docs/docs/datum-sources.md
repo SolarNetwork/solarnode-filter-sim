@@ -41,10 +41,14 @@ runs for its **Keep Running After the Last Datum** time, which must then be more
     A datum source that polls every minute needs a **Keep Running After the Last Datum** time of
     more than a minute to be polled more than once.
 
+Each datum source is drawn on the [Canvas](./getting-your-bearings.md#canvas) as a round node below
+and left of the Main chain, named by its Service Name (or else its Source ID), with a line into the
+Main chain. Its tooltip gives its type, Source ID, and schedule, and clicking it shows its card.
+
 In the Execution Flow, a polled datum reads like `Polled from "Meter" (Mock Energy Meter)`, or
 `Polled from datum source 2 (Mock Energy Meter)` for a datum source without a Service Name, and its
-route on the Canvas leads in from the left, like an input datum's. After a run, each datum source's
-card shows how many datum it polled, and clicking a message about a datum source shows its card.
+route on the Canvas starts at its datum source. After a run, each datum source's card and node show
+how many datum it polled, and clicking a message about a datum source shows its card.
 
 ## Mock Battery controls
 
@@ -77,7 +81,8 @@ instruction, or a mode that expires. A mode that expires is noticed up to 20 sec
 node.
 
 In the Execution Flow, a datum an invoker polled reads like `Polled from "Meter" (Mock Energy
-Meter) by "Boost" (Operational Mode Invoker)`. The simulation warns about an invoker without a
+Meter) by "Boost" (Operational Mode Invoker)`, and its route on the Canvas starts at the datum
+source. Invokers are not drawn on the Canvas. The simulation warns about an invoker without a
 mode, a configuration with no valid schedule or that matches no datum source, and tells you when
 an invoker never polled.
 

@@ -67,6 +67,11 @@ export interface RouteGeometry {
 	linkPoints(key: string): Point[] | undefined;
 	/** Get the bounds of a node, or `undefined` if it is not drawn. */
 	box(key: string): Box | undefined;
+	/**
+	 * `true` if datum source lines come into the left of the entry node, so
+	 * the input datum badges go above their lines, clear of them.
+	 */
+	sources?: boolean;
 }
 
 /** The layers to draw routes in. */
@@ -187,7 +192,8 @@ function textColor(hex: string): string {
 /**
  * Get the points of a route: in from the left of its entry node, or for a
  * generated datum from the filter that made it, up to the queue lane, and
- * down into the entry node; then along the links it travelled.
+ * down into the entry node, or for a polled datum out of its datum source;
+ * then along the links it travelled.
  *
  * @returns the points, and how many lead the line back through the queue
  */
@@ -217,6 +223,9 @@ function routePoints(
 			center,
 		];
 		queued = 4;
+	} else if (line.route.source) {
+		// out of the datum source, from under it
+		points = [center];
 	} else {
 		points = [{ x: entry.x - LEAD_IN, y: center.y }, center];
 	}
@@ -387,6 +396,25 @@ export function drawRoutes(
 				left: false,
 				up: true,
 				perRow: 3,
+			}).chips.push(item);
+		} else if (entry && route.source) {
+			// left of the datum source, down from its top
+			chip(`in:${route.keys[0]}`, {
+				origin: { x: entry.x - CHIP_GAP, y: entry.y },
+				left: true,
+				up: false,
+				perRow: 4,
+			}).chips.push(item);
+		} else if (entry && geo.sources) {
+			// above the line in, clear of the datum sources' lines below it
+			chip(`in:${route.keys[0]}`, {
+				origin: {
+					x: entry.x - LEAD_IN - CHIP_GAP,
+					y: entry.y + entry.height / 2 - bandHalf - CHIP_GAP,
+				},
+				left: true,
+				up: true,
+				perRow: 2,
 			}).chips.push(item);
 		} else if (entry) {
 			chip(`in:${route.keys[0]}`, {

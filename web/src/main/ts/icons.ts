@@ -105,3 +105,56 @@ export function iconGlyph(icon: string): string {
 	glyphs.set(icon, glyph);
 	return glyph;
 }
+
+const glyphShifts = new Map<string, string>();
+let measure: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * Get the SVG transform that centres an icon font glyph's ink on its text
+ * position, for text drawn with JointJS's `middle` anchors. Those centre the
+ * glyph's advance and put its baseline 0.3em below the position, while each
+ * glyph's ink sits differently around them.
+ *
+ * @param glyph the glyph, from {@link iconGlyph}
+ * @param size the font size, in pixels
+ * @returns the transform, or an empty string until the icon font has loaded
+ */
+export function glyphCenterTransform(glyph: string, size: number): string {
+	const font = `${size}px bootstrap-icons`;
+	if (!glyph || !document.fonts.check(font, glyph)) {
+		return "";
+	}
+	const cacheKey = `${size}:${glyph}`;
+	let transform = glyphShifts.get(cacheKey);
+	if (transform !== undefined) {
+		return transform;
+	}
+	if (measure === undefined) {
+		measure = document.createElement("canvas").getContext("2d");
+	}
+	if (!measure) {
+		return "";
+	}
+	measure.font = font;
+	measure.textAlign = "center";
+	measure.textBaseline = "alphabetic";
+	const m = measure.measureText(glyph);
+	// the ink's centre, from the advance's centre and the baseline
+	const x = (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
+	const y = (m.actualBoundingBoxDescent - m.actualBoundingBoxAscent) / 2;
+	const round = (n: number) => Math.round(n * 100) / 100;
+	transform = `translate(${round(-x)},${round(-(0.3 * size + y))})`;
+	glyphShifts.set(cacheKey, transform);
+	return transform;
+}
+
+/**
+ * Wait for the icon font, so {@link glyphCenterTransform} can measure its
+ * glyphs.
+ *
+ * @param size the font size, in pixels
+ * @returns a promise that resolves once the font has loaded, or failed to
+ */
+export function iconFontLoaded(size: number): Promise<unknown> {
+	return document.fonts.load(`${size}px bootstrap-icons`).catch(() => []);
+}

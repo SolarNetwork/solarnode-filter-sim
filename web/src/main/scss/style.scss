@@ -384,6 +384,13 @@ body {
 		cursor: pointer;
 	}
 
+	// a datum source, which feeds the Main chain
+	&.is-source {
+		fill: var(--bs-info-bg-subtle);
+		stroke: var(--bs-info);
+		cursor: pointer;
+	}
+
 	&.is-unsupported,
 	&.is-unknown,
 	&.is-loop {
@@ -491,6 +498,10 @@ rect.sim-badge {
 
 	.is-main ~ & {
 		fill: var(--bs-primary);
+	}
+
+	.is-source ~ & {
+		fill: var(--bs-info-text-emphasis);
 	}
 
 	.is-root ~ &,

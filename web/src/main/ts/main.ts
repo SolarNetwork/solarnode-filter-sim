@@ -38,7 +38,7 @@ import {
 	setServerTimeZone,
 } from "./inputs.ts";
 import { Inspector } from "./inspector.ts";
-import { MAIN_KEY, type FilterNode } from "./layout.ts";
+import { MAIN_KEY, STATIC_SOURCE_ID, type FilterNode } from "./layout.ts";
 import {
 	UNKNOWN_FACTORY_UID,
 	type AppInfo,
@@ -128,21 +128,26 @@ function download(text: string, fileName: string, type: string): void {
 /** Test if keyboard events go to a form control rather than the canvas. */
 /**
  * Count the datum a run polled from each datum source, and with each
- * Operational Mode Invoker.
+ * Operational Mode Invoker, and its input datum, as the static datum's.
  *
  * @param result the result
  * @param sourceIds the ids of the datum sources and invokers the run had
- * @returns the counts, by id
+ * @returns the counts, by id, with the input datum's by
+ *     {@link STATIC_SOURCE_ID}
  */
 function pollCounts(
 	result: SimulationResult,
 	sourceIds: readonly string[],
 ): Map<string, number> {
 	const counts = new Map(sourceIds.map((id) => [id, 0]));
+	counts.set(STATIC_SOURCE_ID, 0);
 	const origins = isLargeResult(result)
 		? result.index.map((e) => e.origin)
 		: result.datum.map((t) => t.origin);
 	for (const origin of origins) {
+		if (origin.type === "Input") {
+			counts.set(STATIC_SOURCE_ID, counts.get(STATIC_SOURCE_ID)! + 1);
+		}
 		if (origin.type !== "Polled") {
 			continue;
 		}
@@ -262,6 +267,7 @@ class App {
 		this.#inputPanel = new InputPanel(inputs, ws, {
 			relatedServices: (serviceFilter) =>
 				this.#relatedServices(serviceFilter),
+			datumSourcesChanged: () => this.#refreshCanvasSources(),
 		});
 		this.#results = new ResultsPanel($("#results"), ws);
 		this.#capture = new CapturePanel($("#capture"));
@@ -317,6 +323,9 @@ class App {
 		this.#canvas.addEventListener("blankclick", () =>
 			this.#results.clearDatum(),
 		);
+		this.#canvas.addEventListener("datumsourceselect", (e) =>
+			this.#showDatumSource((e as CustomEvent<string>).detail),
+		);
 		this.#canvas.addEventListener("filedrop", (e) =>
 			this.openFile((e as CustomEvent<File>).detail),
 		);
@@ -324,7 +333,11 @@ class App {
 			this.#refreshControls();
 			this.#changed();
 		});
-		inputs.addEventListener("change", () => this.#changed());
+		inputs.addEventListener("change", () => {
+			this.#refreshCanvasSources();
+			this.#changed();
+		});
+		this.#refreshCanvasSources();
 		// the inspector warns about commands that are not allowed, and
 		// controls and Control Conductors that are missing
 		let allowed = inputs.state.allowedCommands;
@@ -748,11 +761,13 @@ class App {
 		sourceIds: readonly string[],
 	): void {
 		// the canvas first, as debug mode then highlights the cursor on it
+		const polled = pollCounts(result, sourceIds);
 		this.#canvas.setRun({
 			stats: filterRunStats(result),
 			output: result.stats.output,
 			datum: result.datum,
 			instructionRuns: result.instructionRuns,
+			polled,
 		});
 		if (debug) {
 			this.#results.showDebug(result, mark);
@@ -763,7 +778,33 @@ class App {
 		// the top stays where it is
 		this.#refreshBottom();
 		this.#inputPanel.setFinalState(result.finalState);
-		this.#inputPanel.setPollCounts(pollCounts(result, sourceIds));
+		this.#inputPanel.setPollCounts(polled);
+	}
+
+	/** Draw the datum sources on the canvas, as they are now. */
+	#refreshCanvasSources(): void {
+		// the input panel calls this while it renders its first cards too
+		const panel = this.#inputPanel as InputPanel | undefined;
+		if (panel) {
+			this.#canvas.setDatumSources(panel.datumSourceSummaries());
+		}
+	}
+
+	/**
+	 * Show a datum source's card, or the Datum tab for the static datum,
+	 * showing the inputs panel first if it is hidden.
+	 *
+	 * @param id the datum source id
+	 */
+	#showDatumSource(id: string): void {
+		if ($("#layout").classList.contains("is-left-hidden")) {
+			$("#left-panel-button").click();
+		}
+		if (id === STATIC_SOURCE_ID) {
+			this.#inputPanel.showDatumInput();
+		} else {
+			this.#inputPanel.showDatumSource(id);
+		}
 	}
 
 	#stopDebug(): void {
@@ -923,7 +964,7 @@ class App {
 			this.#canvas.selectFilter((e as CustomEvent<string>).detail),
 		);
 		results.addEventListener("datumsource", (e) =>
-			this.#inputPanel.showDatumSource((e as CustomEvent<string>).detail),
+			this.#showDatumSource((e as CustomEvent<string>).detail),
 		);
 		results.addEventListener("datum", (e) =>
 			this.#canvas.setPath((e as CustomEvent<DatumPath | null>).detail),

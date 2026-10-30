@@ -12,16 +12,26 @@ import {
 	type SeqRange,
 } from "./routesLegend.ts";
 import { showToast } from "./dialogs.ts";
-import { filterIcon, iconGlyph, MAIN_CHAIN_ICON } from "./icons.ts";
+import {
+	datumSourceIcon,
+	filterIcon,
+	glyphCenterTransform,
+	iconFontLoaded,
+	iconGlyph,
+	MAIN_CHAIN_ICON,
+} from "./icons.ts";
 import {
 	END_SIZE,
 	layout,
+	STATIC_SOURCE_ID,
 	NODE_SIZE,
 	UNASSIGNED_SIZE,
 	type ContinuationLink,
 	type EndNode,
 	type FilterNode,
 	type FlowLink,
+	type SourceLink,
+	type SourceNode,
 } from "./layout.ts";
 import {
 	UNASSIGNED_UID,
@@ -38,6 +48,7 @@ import {
 	polledOriginShortText,
 	polledOriginText,
 	quoted,
+	type DatumSourceSummary,
 } from "./view.ts";
 import type {
 	ChainSlot,
@@ -68,7 +79,7 @@ const WHEEL_LINE = 16;
 const FLOW_WIDTH = 1;
 
 type DrawnNode = FilterNode | EndNode;
-type DrawnLink = FlowLink | ContinuationLink;
+type DrawnLink = FlowLink | ContinuationLink | SourceLink;
 
 /** Where a dragged filter would go: a link to insert it at, or a place to fill. */
 interface Drop {
@@ -87,9 +98,17 @@ export interface CanvasRun {
 	datum: DatumTrace[];
 	/** The instruction runs, for the origins of the datum they published. */
 	instructionRuns?: InstructionRun[];
+	/** The number of datum each datum source polled, by datum source id. */
+	polled?: ReadonlyMap<string, number>;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** The font size of the filter and datum source icons. */
+const ICON_SIZE = 28;
+
+/** The icon of the static datum, the Datum tab's input datum. */
+const STATIC_SOURCE_ICON = "braces";
 
 /** Start a sentence's text with a lowercase letter, to use it mid-sentence. */
 function lowerFirst(text: string): string {
@@ -150,7 +169,7 @@ const FilterElement = dia.Element.define(
 				textAnchor: "middle",
 				textVerticalAnchor: "middle",
 				fontFamily: "bootstrap-icons",
-				fontSize: 28,
+				fontSize: ICON_SIZE,
 			},
 			ext: {
 				x: "calc(w-6)",
@@ -332,7 +351,9 @@ function clamp(n: number, min: number, max: number): number {
  * It emits a `select` event with the selected {@link FilterNode} (or `null`)
  * as its detail, a `filedrop` event with a dropped `File` as its detail, and a
  * `datumselect` event with a datum sequence number detail when a datum route
- * is clicked, and a `blankclick` event when the background is clicked.
+ * is clicked, a `datumsourceselect` event with a datum source id detail when a
+ * datum source is clicked, and a `blankclick` event when the background is
+ * clicked.
  */
 export class Canvas extends EventTarget {
 	readonly graph: dia.Graph;
@@ -340,6 +361,12 @@ export class Canvas extends EventTarget {
 	readonly #ws: Workspace;
 	readonly #el: HTMLElement;
 	readonly #nodes = new Map<string, DrawnNode>();
+	/** The datum source nodes, by node key. */
+	readonly #sourceNodes = new Map<string, SourceNode>();
+	/** The datum sources to draw. */
+	#datumSources: DatumSourceSummary[] = [];
+	/** The datum sources as last drawn, to draw them only when they change. */
+	#datumSourcesKey = "[]";
 	readonly #colors = linkColors();
 	#selected: string | null = null;
 	#selectedFilterId: string | null = null;
@@ -441,6 +468,8 @@ export class Canvas extends EventTarget {
 			}
 		});
 		this.render();
+		// the icons are centred by their glyphs' measurements, once the font loads
+		void iconFontLoaded(ICON_SIZE).then(() => this.render());
 	}
 
 	/** The selected filter node, or `null` if none. */
@@ -453,11 +482,18 @@ export class Canvas extends EventTarget {
 
 	/** Draw the workspace. */
 	render(): void {
-		const drawing = layout(this.#ws);
+		const drawing = layout(
+			this.#ws,
+			this.#datumSources.map((d) => d.id),
+		);
 		this.#nodes.clear();
+		this.#sourceNodes.clear();
 		this.#drop = null;
 		for (const node of [...drawing.nodes, ...drawing.ends]) {
 			this.#nodes.set(node.key, node);
+		}
+		for (const source of drawing.sources) {
+			this.#sourceNodes.set(source.key, source);
 		}
 
 		// keep the selection, or else select the same filter where it is now,
@@ -481,6 +517,7 @@ export class Canvas extends EventTarget {
 		const cells: dia.Cell[] = [
 			...drawing.nodes.map((node) => this.#filterCell(node)),
 			...drawing.ends.map((end) => this.#endCell(end)),
+			...drawing.sources.map((source) => this.#sourceCell(source)),
 			...drawing.links.map((link) => this.#linkCell(link)),
 		];
 		// draw the continuations under the flows, and both under the nodes
@@ -505,6 +542,22 @@ export class Canvas extends EventTarget {
 		this.#drawRoutes();
 		// the selected filter might have changed, so always tell listeners
 		this.#emitSelect();
+	}
+
+	/**
+	 * Set the datum sources, which are drawn left of the Main chain, feeding
+	 * it. The canvas is drawn again only if they changed.
+	 *
+	 * @param sources the datum sources, without Operational Mode Invokers
+	 */
+	setDatumSources(sources: readonly DatumSourceSummary[]): void {
+		const key = JSON.stringify(sources);
+		if (key === this.#datumSourcesKey) {
+			return;
+		}
+		this.#datumSources = [...sources];
+		this.#datumSourcesKey = key;
+		this.render();
 	}
 
 	/**
@@ -668,6 +721,11 @@ export class Canvas extends EventTarget {
 		for (const key of this.#nodes.keys()) {
 			this.#refreshNode(key);
 		}
+		for (const source of this.#sourceNodes.values()) {
+			this.graph
+				.getCell(source.key)
+				?.attr("body/class", this.#sourceClass(source));
+		}
 		this.#drawRoutes();
 	}
 
@@ -828,7 +886,10 @@ export class Canvas extends EventTarget {
 					trace.seq !== path.seq,
 			};
 		});
-		drawRoutes(this.#routeLayers, lines, this.#routeGeometry);
+		drawRoutes(this.#routeLayers, lines, {
+			...this.#routeGeometry,
+			sources: this.#sourceNodes.size > 0,
+		});
 		const selection = this.#selection;
 		this.#legend?.show(
 			this.#showRoutes
@@ -1077,7 +1138,8 @@ export class Canvas extends EventTarget {
 		const ws = this.#ws;
 		const filter = ws.filter(node.filterId);
 		const items: dia.Element.Port[] = [];
-		if (!node.main) {
+		// the Main chain takes the datum sources' lines
+		if (!node.main || this.#sourceNodes.size > 0) {
 			items.push({
 				id: "in",
 				group: "in",
@@ -1106,7 +1168,7 @@ export class Canvas extends EventTarget {
 			attrs: {
 				root: { title: this.#tooltip(node, filter) },
 				body: { class: this.#nodeClass(node) },
-				icon: { text: iconGlyph(icon), class: "sim-node-icon" },
+				icon: this.#iconAttrs(icon),
 				// the External Settings marker
 				ext: {
 					text: ws.isExternal(node.filterId)
@@ -1231,6 +1293,17 @@ export class Canvas extends EventTarget {
 	}
 
 	#linkCell(link: DrawnLink): dia.Link {
+		if (link.kind === "source") {
+			return new FlowShape({
+				id: link.key,
+				source: { id: link.source.key, port: link.source.port },
+				target: { id: link.target.key, port: link.target.port },
+				attrs: { line: { stroke: this.#colors.flow } },
+				vertices: link.vertices,
+				router: { name: "normal" },
+				sim: link,
+			});
+		}
 		if (link.kind === "flow") {
 			return new FlowShape({
 				id: link.key,
@@ -1259,6 +1332,139 @@ export class Canvas extends EventTarget {
 			},
 			sim: link,
 		});
+	}
+
+	#sourceCell(node: SourceNode): dia.Element {
+		const source = this.#datumSources.find(
+			(d) => d.id === node.datumSourceId,
+		);
+		const polled = this.#run?.polled?.get(node.datumSourceId);
+		const what = source?.static ? "datum" : "polled";
+		const badge: dia.Cell.Selectors =
+			polled === undefined
+				? {
+						badge: { text: "", display: "none" },
+						badgeBody: { display: "none" },
+					}
+				: {
+						badge: {
+							text: `${polled} ${what}`,
+							display: "block",
+							class: `sim-badge${polled ? "" : " is-idle"} sim-badge-text`,
+						},
+						badgeBody: {
+							display: "block",
+							class: `sim-badge${polled ? "" : " is-idle"}`,
+						},
+					};
+		return new FilterElement({
+			id: node.key,
+			position: node.position,
+			ports: {
+				items: [
+					{
+						id: "out",
+						group: "out",
+						attrs: { portBody: { magnet: false } },
+					},
+				],
+			},
+			attrs: {
+				root: { title: this.#sourceTooltip(source, polled) },
+				body: { rx: NODE_SIZE / 2, ry: NODE_SIZE / 2 },
+				icon: this.#iconAttrs(
+					source?.static
+						? STATIC_SOURCE_ICON
+						: datumSourceIcon(source?.factoryUid ?? ""),
+				),
+				ext: { text: "" },
+				label: {
+					text: source?.static
+						? "Static"
+						: source?.name ||
+							source?.sourceId ||
+							source?.type ||
+							node.datumSourceId,
+					class: "sim-node-label",
+				},
+				...badge,
+			},
+			sim: node,
+		}).attr("body/class", this.#sourceClass(node));
+	}
+
+	/** The attributes of a node's icon, with its glyph's ink centred. */
+	#iconAttrs(icon: string): dia.Cell.Selectors[string] {
+		const text = iconGlyph(icon);
+		return {
+			text,
+			transform: glyphCenterTransform(text, ICON_SIZE),
+			class: "sim-node-icon",
+		};
+	}
+
+	#sourceClass(node: SourceNode): string {
+		const classes = ["sim-node", "is-source"];
+		const source = this.#datumSources.find(
+			(d) => d.id === node.datumSourceId,
+		);
+		if (source?.problem) {
+			classes.push("is-problem");
+		}
+		// the datum source of the selected datum
+		const seq = this.#path?.seq;
+		if (seq !== undefined) {
+			const origin = this.#run?.datum.find((t) => t.seq === seq)?.origin;
+			if (
+				origin?.type === "Polled"
+					? origin.datumSourceId === node.datumSourceId
+					: origin?.type === "Input" &&
+						node.datumSourceId === STATIC_SOURCE_ID
+			) {
+				classes.push("is-visited");
+			}
+		}
+		return classes.join(" ");
+	}
+
+	#sourceTooltip(
+		source: DatumSourceSummary | undefined,
+		polled: number | undefined,
+	): string {
+		if (!source) {
+			return "A datum source.";
+		}
+		if (source.static) {
+			return [
+				"Static: the datum of the Datum tab, which the Main chain processes in order.",
+				source.problem
+					? `Problem: ${source.problem}`
+					: `${source.count ?? 0} datum.`,
+				...(polled !== undefined
+					? [`Last run: ${polled} input datum.`]
+					: []),
+				"Click to show them in the Datum tab.",
+			].join("\n");
+		}
+		const lines = [`${source.type}: a datum source`];
+		if (source.name) {
+			lines.push(`Service Name: ${source.name}`);
+		}
+		if (source.sourceId) {
+			lines.push(`Source ID: ${source.sourceId}`);
+		}
+		if (source.schedule) {
+			lines.push(`Schedule: ${source.schedule}`);
+		}
+		if (source.problem) {
+			lines.push(`Problem: ${source.problem}`);
+		}
+		lines.push("The Main chain processes the datum it polls.");
+		if (polled !== undefined) {
+			lines.push(`Last run: ${polled} datum polled.`);
+		}
+		lines.push("Click to show its settings in the Datum Sources tab.");
+		return lines.join("\n");
 	}
 
 	#nodeClass(node: FilterNode): string {
@@ -1463,9 +1669,18 @@ export class Canvas extends EventTarget {
 
 	#bindPaperEvents(): void {
 		const paper = this.paper;
-		paper.on("element:pointerclick", (view: dia.ElementView) =>
-			this.select(String(view.model.id)),
-		);
+		paper.on("element:pointerclick", (view: dia.ElementView) => {
+			const source = this.#sourceNodes.get(String(view.model.id));
+			if (source) {
+				this.dispatchEvent(
+					new CustomEvent<string>("datumsourceselect", {
+						detail: source.datumSourceId,
+					}),
+				);
+			} else {
+				this.select(String(view.model.id));
+			}
+		});
 		paper.on("blank:pointerclick", () => {
 			this.select(null);
 			this.dispatchEvent(new Event("blankclick"));

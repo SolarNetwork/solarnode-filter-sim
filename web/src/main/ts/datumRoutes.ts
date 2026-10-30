@@ -1,9 +1,11 @@
 import {
 	MAIN_KEY,
+	STATIC_SOURCE_ID,
 	type ContinuationLink,
 	type Drawing,
 	type FilterNode,
 	type FlowLink,
+	type SourceLink,
 } from "./layout.ts";
 import type { DatumTrace, FilterStepStatus } from "./model.ts";
 import type { Workspace } from "./workspace.ts";
@@ -52,6 +54,11 @@ export interface DatumRoute {
 	 * cursor, or the drawing does not match the steps.
 	 */
 	end: RouteEnd | null;
+	/**
+	 * `true` if the route starts at a datum source node: the one that polled
+	 * the datum, or the static datum for an input datum.
+	 */
+	source?: boolean;
 }
 
 /** A chain the datum is going through. */
@@ -69,7 +76,9 @@ export class DatumRoutes {
 	readonly #ws: Workspace;
 	readonly #nodes = new Map<string, FilterNode>();
 	/** The link out of each node's `out` port, by node key. */
-	readonly #outLinks = new Map<string, FlowLink>();
+	readonly #outLinks = new Map<string, FlowLink | SourceLink>();
+	/** The keys of the datum source nodes, by datum source id. */
+	readonly #sourceKeys = new Map<string, string>();
 	/** The link into each chain's filters, by chain node key. */
 	readonly #filtersLinks = new Map<string, FlowLink>();
 	/** The continuation line from each nested chain, by chain node key. */
@@ -87,10 +96,13 @@ export class DatumRoutes {
 		for (const node of drawing.nodes) {
 			this.#nodes.set(node.key, node);
 		}
+		for (const source of drawing.sources) {
+			this.#sourceKeys.set(source.datumSourceId, source.key);
+		}
 		for (const link of drawing.links) {
 			if (link.kind === "continuation") {
 				this.#continuations.set(link.sourceKey, link);
-			} else if (link.source.port === "filters") {
+			} else if (link.kind === "flow" && link.source.port === "filters") {
 				this.#filtersLinks.set(link.source.key, link);
 			} else {
 				this.#outLinks.set(link.source.key, link);
@@ -120,6 +132,14 @@ export class DatumRoutes {
 		const last = upTo ?? steps.length - 1;
 		const statuses = new Map<string, FilterStepStatus>();
 		const open: OpenChain[] = [];
+		// a polled datum comes from its datum source, into the Main chain, and
+		// an input datum from the static datum
+		const sourceKey =
+			trace.origin.type === "Polled" && trace.origin.datumSourceId
+				? this.#sourceKeys.get(trace.origin.datumSourceId)
+				: trace.origin.type === "Input"
+					? this.#sourceKeys.get(STATIC_SOURCE_ID)
+					: undefined;
 		/** Steps inside a chain that is not drawn with its filters. */
 		let hiddenDepth = Infinity;
 		let broken = false;
@@ -146,6 +166,10 @@ export class DatumRoutes {
 					}
 				}
 			}
+			if (route.keys.length === 0 && key === MAIN_KEY && sourceKey) {
+				route.keys.push(sourceKey);
+				route.source = true;
+			}
 			if (!key || !this.#addKey(route, key, statuses)) {
 				broken = true;
 				break;
@@ -170,7 +194,7 @@ export class DatumRoutes {
 			// out of the Main chain, to the Datum Queue output
 			const end = `${MAIN_KEY}/end`;
 			if (
-				route.keys[0] !== MAIN_KEY ||
+				route.keys[route.source ? 1 : 0] !== MAIN_KEY ||
 				this.#addKey(route, end, statuses)
 			) {
 				route.end = "output";

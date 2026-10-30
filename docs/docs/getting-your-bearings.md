@@ -139,6 +139,11 @@ datum takes as it flows through the filters during a simulation run. When a run 
 datum, only the routes of the datum you select in the Execution Flow show, and this button shows
 or hides their legend.
 
+Where the datum come from is drawn as round nodes below and left of the Main chain, each with a
+line into it: **Static** for the datum of the [Setup](#setup-pane) pane's **Datum** tab, then each
+[datum source](./datum-sources.md). A datum's route starts at the node it came from, and after a
+run each node shows how many datum it provided. Click one to show it in the Setup pane.
+
 ## Inspector
 
 <figure markdown>
